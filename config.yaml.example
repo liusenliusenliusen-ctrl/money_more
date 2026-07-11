@@ -1,0 +1,83 @@
+# 复制为 config.yaml 后修改
+
+# 关注板块
+watch_sectors:
+  - 半导体
+  - 新能源
+  - 白酒
+  - 银行
+
+# 关注个股
+watch_stocks:
+  - "600519"   # 贵州茅台
+  - "300750"   # 宁德时代
+  - "601318"   # 中国平安
+
+# 持仓
+holdings:
+  - code: "600519"
+    quantity: 100
+    cost: 1680.0
+
+# 交易约束（中长线：止损更宽、止盈更高）
+trading:
+  max_single_position_pct: 20
+  max_total_position_pct: 80
+  stop_loss_pct: 15
+  take_profit_pct: 40
+
+# 复盘回看窗口（天）
+review_lookback_days: 120
+
+# 调度：每 5 天凌晨 1 点（cron 每天触发，脚本按 interval_days 门禁）
+schedule:
+  cadence: every_5_days
+  interval_days: 5
+  run_hour: 1
+  optimize_after_run: true   # scheduled 命令默认会调 Cursor 优化
+
+# 分析取向：中长线周期
+analysis:
+  prompt_version: v3-midlong-5d
+  investment_horizon: medium_long
+  default_time_horizon: medium
+  review_min_hold_days: 14    # 建议发出后至少观察 14 天再复盘打分
+  paper_horizon_days: 60      # 纸面持仓最长观察天数
+  debate_top_k: 1             # 省 token：只辩最高分 1 只
+  debate_min_score: 55
+
+# Cursor Agent 自优化（需 CURSOR_API_KEY）
+# 人工用 Cursor CLI 改代码时：touch logs/OPTIMIZE_PAUSE ；改完删掉
+optimize:
+  enabled: true
+  model: composer-2.5
+  max_minutes: 45
+  skip_if_dirty: true          # 有未提交代码改动则跳过，防冲突
+  respect_human_lock: true     # 存在 logs/OPTIMIZE_PAUSE 则跳过
+
+# 情报
+intelligence:
+  enabled: true
+  max_news_per_source: 8
+  digest_before_analysis: true
+  news_lookback_days: 14
+
+tushare:
+  enabled: true
+
+rss:
+  enabled: true
+  cls_direct: true
+  use_fallback_rss: false
+  max_items_per_feed: 10
+  feeds: []
+
+sentiment:
+  enabled: true
+
+trend:
+  enabled: true
+
+paths:
+  db: data/money_more.db
+  reports: reports

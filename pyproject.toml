@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "money-more"
+version = "0.1.0"
+description = "A-share AI-assisted investment decision system"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "akshare>=1.14.0",
+    "openai>=1.30.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "pandas>=2.0.0",
+    "rich>=13.0.0",
+    "tushare>=1.4.0",
+    "feedparser>=6.0.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+money-more = "money_more.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
