@@ -127,6 +127,27 @@ money-more history
 - `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`：分析用大模型
 - `TUSHARE_TOKEN`：可选，增强基本面
 - `CURSOR_API_KEY`：周期自优化（Dashboard → API Keys）
+- 邮件：`EMAIL_ENABLED` / `SMTP_*` / `EMAIL_FROM` / `EMAIL_TO`（见下方）
+
+## 邮件通知
+
+分析报告、自优化报告生成后可自动发到邮箱（正文预览 + Markdown 附件）。
+
+```bash
+# .env 示例（QQ 邮箱用授权码）
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=你的QQ邮箱
+SMTP_PASSWORD=授权码
+EMAIL_FROM=你的QQ邮箱
+EMAIL_TO=你的收件邮箱
+
+# 验证
+money-more email-test
+```
+
+`config.yaml` 中 `email.enabled` / `send_analysis` / `send_optimize` 也可控制开关。
 
 ## 人工改动 vs 自优化（防冲突）
 
@@ -162,6 +183,7 @@ crontab -e
 | `money-more weekly` | 同 `scheduled`（兼容旧名） |
 | `money-more run` | 完整分析（不加优化，除非 `--optimize`） |
 | `money-more optimize` | 仅 Cursor 自优化 |
+| `money-more email-test` | 发送测试邮件（验证 SMTP） |
 | `money-more review` | 仅复盘 |
 | `money-more lessons` | 经验库 |
 | `money-more history` | 近期建议 |

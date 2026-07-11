@@ -63,6 +63,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         if dq.get("degraded"):
             console.print(Panel(dq.get("note", "数据降级"), title="数据质量", style="yellow"))
 
+        if config.email.enabled and config.email.send_analysis:
+            from money_more.notify import notify_analysis_report
+
+            mail = notify_analysis_report(config, report_path, run_date.isoformat())
+            if mail.get("skipped"):
+                console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
+            elif mail.get("ok"):
+                console.print(Panel(f"分析报告已发邮件 → {mail.get('to')}", style="green"))
+            else:
+                console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
+
         # 周期流程可选：跑完后调用 Cursor 自优化并写优化报告
         if getattr(args, "optimize", False) or (
             config.schedule.optimize_after_run and getattr(args, "with_optimize", False)
@@ -74,6 +85,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             console.print(Panel(str(opt), title="optimize", style="green" if not opt.get("error") else "red"))
             if opt.get("report_path"):
                 console.print(Panel(f"优化报告已保存: {opt['report_path']}", style="cyan"))
+                if config.email.enabled and config.email.send_optimize:
+                    from money_more.notify import notify_optimize_report
+
+                    mail = notify_optimize_report(config, opt["report_path"], run_date.isoformat())
+                    if mail.get("skipped"):
+                        console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
+                    elif mail.get("ok"):
+                        console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
+                    else:
+                        console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
         return 0
     except Exception as exc:
         console.print(Panel(str(exc), title="运行失败", style="red"))
@@ -90,12 +111,40 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     console.print(Panel(str(opt), title="result"))
     if opt.get("report_path"):
         console.print(Panel(f"优化报告: {opt['report_path']}", style="cyan"))
+        if config.email.enabled and config.email.send_optimize and not opt.get("skipped"):
+            from money_more.notify import notify_optimize_report
+
+            mail = notify_optimize_report(config, opt["report_path"], run_date)
+            if mail.get("ok"):
+                console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
+            elif not mail.get("skipped"):
+                console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
     if opt.get("skipped"):
         console.print(f"[yellow]{opt.get('reason')}[/yellow]")
         return 1
     if opt.get("status") in ("error", "startup_error") or opt.get("error"):
         return 2
     return 0
+
+
+def cmd_email_test(args: argparse.Namespace) -> int:
+    from money_more.notify import email_ready, send_report_email
+
+    config = load_config(args.config)
+    ok, reason = email_ready(config.email)
+    if not ok:
+        console.print(Panel(reason, title="邮件未就绪", style="red"))
+        return 1
+    mail = send_report_email(
+        config,
+        subject="[money_more] 邮件测试",
+        body="这是一封 money_more 测试邮件。若收到说明 SMTP 配置正确。",
+    )
+    if mail.get("ok"):
+        console.print(Panel(f"已发送 → {mail.get('to')}", style="green"))
+        return 0
+    console.print(Panel(str(mail.get("error") or mail), title="发送失败", style="red"))
+    return 2
 
 
 def cmd_scheduled(args: argparse.Namespace) -> int:
@@ -382,6 +431,9 @@ def main() -> int:
     p_optimize = sub.add_parser("optimize", help="仅调用 Cursor Agent 优化本仓库代码")
     p_optimize.add_argument("--date", default=None, help="写入 prompt 的报告日期")
     p_optimize.set_defaults(func=cmd_optimize)
+
+    p_email = sub.add_parser("email-test", help="发送一封测试邮件（验证 SMTP）")
+    p_email.set_defaults(func=cmd_email_test)
 
     p_review = sub.add_parser("review", help="仅执行复盘")
     p_review.add_argument("--date", default=None)

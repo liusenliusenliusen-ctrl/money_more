@@ -93,6 +93,22 @@ class OptimizeConfig:
 
 
 @dataclass
+class EmailConfig:
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 465
+    use_ssl: bool = True
+    use_tls: bool = False
+    smtp_user: str = ""
+    smtp_password: str = ""
+    from_addr: str = ""
+    to_addrs: list[str] = field(default_factory=list)
+    # 分析报告 / 自优化报告是否分别发送
+    send_analysis: bool = True
+    send_optimize: bool = True
+
+
+@dataclass
 class AppConfig:
     watch_sectors: list[str] = field(default_factory=list)
     watch_stocks: list[str] = field(default_factory=list)
@@ -106,6 +122,7 @@ class AppConfig:
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     optimize: OptimizeConfig = field(default_factory=OptimizeConfig)
+    email: EmailConfig = field(default_factory=EmailConfig)
     review_lookback_days: int = 120
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm_api_key: str = ""
@@ -150,6 +167,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     analysis_raw = raw.get("analysis") or {}
     schedule_raw = raw.get("schedule") or {}
     optimize_raw = raw.get("optimize") or {}
+    email_raw = raw.get("email") or {}
     paths_raw = raw.get("paths") or {}
     holdings = [
         Holding(
@@ -159,6 +177,25 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         )
         for h in (raw.get("holdings") or [])
     ]
+
+    # 收件人：EMAIL_TO 可逗号分隔；也可用 email.to 列表
+    to_env = (os.getenv("EMAIL_TO") or "").strip()
+    to_from_env = [x.strip() for x in to_env.replace(";", ",").split(",") if x.strip()]
+    to_from_yaml = email_raw.get("to") or email_raw.get("to_addrs") or []
+    if isinstance(to_from_yaml, str):
+        to_from_yaml = [x.strip() for x in to_from_yaml.replace(";", ",").split(",") if x.strip()]
+    to_addrs = to_from_env or [str(x).strip() for x in to_from_yaml if str(x).strip()]
+
+    smtp_port = int(os.getenv("SMTP_PORT") or email_raw.get("smtp_port") or 465)
+    use_ssl_raw = email_raw.get("use_ssl")
+    use_tls_raw = email_raw.get("use_tls")
+    if use_ssl_raw is None and use_tls_raw is None:
+        # 465 默认 SSL；587 默认 STARTTLS
+        use_ssl = smtp_port == 465
+        use_tls = smtp_port == 587
+    else:
+        use_ssl = bool(use_ssl_raw) if use_ssl_raw is not None else (smtp_port == 465)
+        use_tls = bool(use_tls_raw) if use_tls_raw is not None else (not use_ssl)
 
     return AppConfig(
         watch_sectors=list(raw.get("watch_sectors") or []),
@@ -207,6 +244,22 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             max_minutes=int(optimize_raw.get("max_minutes", 45)),
             skip_if_dirty=bool(optimize_raw.get("skip_if_dirty", True)),
             respect_human_lock=bool(optimize_raw.get("respect_human_lock", True)),
+        ),
+        email=EmailConfig(
+            enabled=bool(
+                (os.getenv("EMAIL_ENABLED") or "").lower() in ("1", "true", "yes")
+                or email_raw.get("enabled", False)
+            ),
+            smtp_host=str(os.getenv("SMTP_HOST") or email_raw.get("smtp_host") or ""),
+            smtp_port=smtp_port,
+            use_ssl=use_ssl,
+            use_tls=use_tls,
+            smtp_user=str(os.getenv("SMTP_USER") or email_raw.get("smtp_user") or ""),
+            smtp_password=str(os.getenv("SMTP_PASSWORD") or email_raw.get("smtp_password") or ""),
+            from_addr=str(os.getenv("EMAIL_FROM") or email_raw.get("from") or email_raw.get("from_addr") or ""),
+            to_addrs=to_addrs,
+            send_analysis=bool(email_raw.get("send_analysis", True)),
+            send_optimize=bool(email_raw.get("send_optimize", True)),
         ),
         review_lookback_days=int(raw.get("review_lookback_days", 120)),
         paths=PathsConfig(

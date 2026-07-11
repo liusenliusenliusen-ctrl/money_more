@@ -314,3 +314,24 @@ def test_optimize_pause_lock(tmp_path: Path):
     skip2, reason2 = should_skip_optimize(tmp_path, skip_if_dirty=False, respect_human_lock=True)
     assert skip2 is True
     assert "OPTIMIZE_PAUSE" in reason2
+
+
+def test_email_ready_and_preview():
+    from money_more.config import EmailConfig
+    from money_more.notify.emailer import _preview, email_ready
+
+    ok, reason = email_ready(EmailConfig(enabled=False))
+    assert ok is False
+    assert "enabled" in reason
+    ok2, _ = email_ready(
+        EmailConfig(
+            enabled=True,
+            smtp_host="smtp.qq.com",
+            smtp_user="a@qq.com",
+            smtp_password="x",
+            from_addr="a@qq.com",
+            to_addrs=["a@qq.com"],
+        )
+    )
+    assert ok2 is True
+    assert "截断" in _preview("字" * 13000)

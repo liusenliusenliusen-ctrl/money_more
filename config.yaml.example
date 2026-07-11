@@ -55,6 +55,13 @@ optimize:
   skip_if_dirty: true          # 有未提交代码改动则跳过，防冲突
   respect_human_lock: true     # 存在 logs/OPTIMIZE_PAUSE 则跳过
 
+# 邮件通知（密钥放 .env；这里只开关）
+email:
+  enabled: false
+  send_analysis: true
+  send_optimize: true
+  # smtp_host / to 也可写在这里，但推荐用 .env
+
 # 情报
 intelligence:
   enabled: true
