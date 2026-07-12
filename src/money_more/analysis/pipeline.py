@@ -16,7 +16,7 @@ from money_more.analysis.sector_map import infer_sector
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
 from money_more.config import AppConfig
-from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code
+from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code, sector_money_flow_present
 from money_more.data.intelligence import IntelligenceFetcher
 from money_more.llm.client import (
     DECISION_SYSTEM,
@@ -790,7 +790,7 @@ class DecisionPipeline:
                 or macro_intel.get("economic_calendar_synthetic")
             ),
             "tushare_macro": has_macro_news,
-            "sector_money_flow": bool(macro_intel.get("sector_money_flow")),
+            "sector_money_flow": sector_money_flow_present(macro_intel.get("sector_money_flow")),
             "macro_hard": bool(macro_intel.get("macro_hard")),
         }
         missing = [k for k, ok in checks.items() if not ok]

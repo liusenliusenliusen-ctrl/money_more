@@ -16,7 +16,14 @@ from money_more.data.as_of import (
     recent_weekdays,
     ymd,
 )
-from money_more.data.fetcher import _df_row_to_dict, _match_board_name, _safe_float, normalize_code
+from money_more.data.fetcher import (
+    _df_row_to_dict,
+    _match_board_name,
+    _safe_float,
+    build_sector_money_flow,
+    fetch_sector_board_summary,
+    normalize_code,
+)
 from money_more.data.rss_feeds import RssFeedFetcher
 from money_more.data.tushare_source import TushareSource
 
@@ -63,6 +70,7 @@ class IntelligenceFetcher:
         self._comment_df: pd.DataFrame | None = None
         self._hot_rank_df: pd.DataFrame | None = None
         self._hot_rank_error: str | None = None
+        self._sector_summary_cache: tuple[pd.DataFrame, str, list[str]] | None = None
 
     def set_as_of(self, as_of: date | str | None) -> None:
         self.as_of = parse_as_of(as_of)
@@ -75,6 +83,7 @@ class IntelligenceFetcher:
         self._comment_df = None
         self._hot_rank_df = None
         self._hot_rank_error = None
+        self._sector_summary_cache = None
 
     def _get_comment_df(self) -> pd.DataFrame:
         if self._comment_df is not None:
@@ -95,6 +104,12 @@ class IntelligenceFetcher:
             self._hot_rank_df = pd.DataFrame()
             self._hot_rank_error = str(exc)
         return self._hot_rank_df
+
+    def _get_sector_summary(self) -> tuple[pd.DataFrame, str, list[str]]:
+        if self._sector_summary_cache is not None:
+            return self._sector_summary_cache
+        self._sector_summary_cache = fetch_sector_board_summary()
+        return self._sector_summary_cache
 
     def _get_rss_bundle(self) -> dict[str, Any]:
         if self._rss_cache is not None:
@@ -137,7 +152,7 @@ class IntelligenceFetcher:
             "margin_trend": {},
             "northbound_summary": [],
             "market_hot_rank": [],
-            "sector_money_flow": [],
+            "sector_money_flow": {},
             "rss_telegraph": [],
             "rss_important": [],
             "tushare_macro_news": [],
@@ -298,19 +313,15 @@ class IntelligenceFetcher:
         elif self._hot_rank_error:
             result["errors"].append(f"人气榜: {self._hot_rank_error}")
 
-        try:
-            sector_flow = ak.stock_board_industry_summary_ths()
-            if not sector_flow.empty:
-                sector_flow = sector_flow.sort_values("涨跌幅", ascending=False)
-                result["sector_money_flow"] = {
-                    "top_gainers": _records(sector_flow.head(10), 10),
-                    "top_losers": _records(sector_flow.tail(10), 10),
-                    "top_inflow": _records(
-                        sector_flow.sort_values("净流入", ascending=False).head(10), 10
-                    ),
-                }
-        except Exception as exc:
-            result["errors"].append(f"板块资金: {exc}")
+        summary_df, flow_source, flow_errors = self._get_sector_summary()
+        result["errors"].extend(flow_errors)
+        if not summary_df.empty:
+            result["sector_money_flow"] = build_sector_money_flow(summary_df, limit=10)
+            result["sector_money_flow_source"] = flow_source
+            if flow_source != "ths_summary":
+                result["errors"].append(f"sector_money_flow_fallback:{flow_source}")
+        elif flow_errors:
+            result["errors"].append("sector_money_flow_all_sources_failed")
 
         rss_bundle = self._get_rss_bundle()
         result["rss_telegraph"] = rss_bundle.get("cls_telegraph") or []
@@ -352,14 +363,12 @@ class IntelligenceFetcher:
         }
 
         news_symbol = sector_name
-        try:
-            summary = ak.stock_board_industry_summary_ths()
-            if not summary.empty and "板块" in summary.columns:
-                matched_board = _match_board_name(summary["板块"], sector_name)
-                if matched_board:
-                    news_symbol = matched_board
-        except Exception:
-            pass
+        summary_df, _, summary_errors = self._get_sector_summary()
+        result["errors"].extend(summary_errors)
+        if not summary_df.empty and "板块" in summary_df.columns:
+            matched_board = _match_board_name(summary_df["板块"], sector_name)
+            if matched_board:
+                news_symbol = matched_board
 
         try:
             news = ak.stock_news_em(symbol=news_symbol)
@@ -387,22 +396,18 @@ class IntelligenceFetcher:
         elif self._hot_rank_error:
             result["errors"].append(f"热点榜: {self._hot_rank_error}")
 
-        try:
-            summary = ak.stock_board_industry_summary_ths()
-            if not summary.empty and "板块" in summary.columns:
-                matched_board = _match_board_name(summary["板块"], sector_name)
-                if matched_board:
-                    row = summary[summary["板块"] == matched_board].iloc[0]
-                    ranked = summary.sort_values("涨跌幅", ascending=False).reset_index(drop=True)
-                    rank_pos = ranked.index[ranked["板块"] == matched_board][0] + 1
-                    result["sector_flow_rank"] = {
-                        "board": matched_board,
-                        "rank_by_change": int(rank_pos),
-                        "total_sectors": len(summary),
-                        "snapshot": _df_row_to_dict(row),
-                    }
-        except Exception as exc:
-            result["errors"].append(f"板块排名: {exc}")
+        if not summary_df.empty and "板块" in summary_df.columns:
+            matched_board = _match_board_name(summary_df["板块"], sector_name)
+            if matched_board:
+                row = summary_df[summary_df["板块"] == matched_board].iloc[0]
+                ranked = summary_df.sort_values("涨跌幅", ascending=False).reset_index(drop=True)
+                rank_pos = ranked.index[ranked["板块"] == matched_board][0] + 1
+                result["sector_flow_rank"] = {
+                    "board": matched_board,
+                    "rank_by_change": int(rank_pos),
+                    "total_sectors": len(summary_df),
+                    "snapshot": _df_row_to_dict(row),
+                }
 
         if self.config.sentiment.enabled:
             pool = result["related_news"] + result["rss_matches"] + result["tushare_news"]

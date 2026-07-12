@@ -59,6 +59,87 @@ def _match_board_name(names: pd.Series, sector_name: str) -> str | None:
     return best
 
 
+def _df_records(df: pd.DataFrame | None, limit: int = 10) -> list[dict[str, Any]]:
+    if df is None or df.empty:
+        return []
+    return df.head(limit).to_dict(orient="records")
+
+
+def _normalize_sector_summary(df: pd.DataFrame, column_map: dict[str, str]) -> pd.DataFrame:
+    """将 THS/东财板块摘要统一为 板块、涨跌幅、净流入 列。"""
+    out = df.copy()
+    for src, dst in column_map.items():
+        if src in out.columns:
+            out[dst] = out[src]
+    if "板块" not in out.columns:
+        return pd.DataFrame()
+    for col in ("涨跌幅", "净流入"):
+        if col in out.columns:
+            out[col] = pd.to_numeric(
+                out[col].astype(str).str.replace("%", "", regex=False),
+                errors="coerce",
+            )
+    return out.dropna(subset=["板块"]).reset_index(drop=True)
+
+
+def fetch_sector_board_summary() -> tuple[pd.DataFrame, str, list[str]]:
+    """板块行业摘要：THS 汇总 → THS 行业资金流 → 东财板块排名，多源回退。"""
+    errors: list[str] = []
+    attempts: list[tuple[str, Any, dict[str, str]]] = [
+        (
+            "ths_summary",
+            lambda: ak.stock_board_industry_summary_ths(),
+            {"板块": "板块", "涨跌幅": "涨跌幅", "净流入": "净流入"},
+        ),
+        (
+            "ths_industry_flow",
+            lambda: ak.stock_fund_flow_industry(symbol="即时"),
+            {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+        ),
+        (
+            "em_rank",
+            lambda: ak.stock_sector_fund_flow_rank(indicator="今日", sector_type="行业资金流"),
+            {"名称": "板块", "今日涨跌幅": "涨跌幅", "今日主力净流入-净额": "净流入"},
+        ),
+    ]
+    for source, caller, column_map in attempts:
+        try:
+            raw = caller()
+            if raw is None or raw.empty:
+                errors.append(f"sector_flow_{source}_empty")
+                continue
+            normalized = _normalize_sector_summary(raw, column_map)
+            if normalized.empty:
+                errors.append(f"sector_flow_{source}_normalize_empty")
+                continue
+            return normalized, source, errors
+        except Exception as exc:
+            errors.append(f"板块资金({source}): {exc}")
+    return pd.DataFrame(), "", errors
+
+
+def build_sector_money_flow(summary: pd.DataFrame, limit: int = 10) -> dict[str, list[dict[str, Any]]]:
+    if summary.empty:
+        return {}
+    by_change = summary.sort_values("涨跌幅", ascending=False) if "涨跌幅" in summary.columns else summary
+    payload: dict[str, list[dict[str, Any]]] = {
+        "top_gainers": _df_records(by_change.head(limit), limit),
+        "top_losers": _df_records(by_change.tail(limit), limit),
+    }
+    if "净流入" in summary.columns:
+        by_inflow = summary.sort_values("净流入", ascending=False)
+        payload["top_inflow"] = _df_records(by_inflow.head(limit), limit)
+    else:
+        payload["top_inflow"] = []
+    return payload
+
+
+def sector_money_flow_present(flow: Any) -> bool:
+    if not isinstance(flow, dict):
+        return False
+    return any(isinstance(flow.get(k), list) and flow.get(k) for k in ("top_gainers", "top_losers", "top_inflow"))
+
+
 class MarketDataFetcher:
     """从 AkShare 拉取 A 股市场数据，多数据源自动回退；支持 as_of 回放。"""
 

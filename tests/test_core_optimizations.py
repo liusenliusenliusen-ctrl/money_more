@@ -198,7 +198,7 @@ def test_macro_news_backfill_and_quality():
         "northbound_freshness": {"stale": False},
         "sentiment_overview": {"aggregate": {"score": 50}},
         "economic_calendar_synthetic": True,
-        "sector_money_flow": {"top_inflow": []},
+        "sector_money_flow": {"top_inflow": [{"板块": "半导体", "净流入": 1.0e8}]},
         "macro_hard": {"pmi": []},
         "errors": ["Tushare 未配置", "tushare_macro_backfill_from_alt_sources"],
     }
@@ -553,3 +553,87 @@ def test_historical_reports_corpus(tmp_path: Path):
     assert corpus["report_count"] >= 2
     assert corpus["digest_count"] >= 1
     assert any(r["date"] == "2026-04-01" for r in corpus["reports"])
+
+
+def test_normalize_sector_summary_em_columns():
+    import pandas as pd
+
+    from money_more.data.fetcher import _normalize_sector_summary, build_sector_money_flow, sector_money_flow_present
+
+    raw = pd.DataFrame(
+        [
+            {"名称": "半导体", "今日涨跌幅": "3.5", "今日主力净流入-净额": "1200000000"},
+            {"名称": "银行", "今日涨跌幅": "-1.2", "今日主力净流入-净额": "-50000000"},
+        ]
+    )
+    normalized = _normalize_sector_summary(
+        raw,
+        {"名称": "板块", "今日涨跌幅": "涨跌幅", "今日主力净流入-净额": "净流入"},
+    )
+    assert list(normalized["板块"]) == ["半导体", "银行"]
+    flow = build_sector_money_flow(normalized, limit=2)
+    assert flow["top_gainers"][0]["板块"] == "半导体"
+    assert flow["top_losers"][-1]["板块"] == "银行"
+    assert flow["top_inflow"][0]["净流入"] == 1200000000.0
+    assert sector_money_flow_present(flow) is True
+    assert sector_money_flow_present({"top_inflow": []}) is False
+
+
+def test_fetch_sector_board_summary_fallback(monkeypatch):
+    import pandas as pd
+
+    from money_more.data.fetcher import fetch_sector_board_summary
+
+    calls: list[str] = []
+
+    def fail_ths_summary():
+        calls.append("ths_summary")
+        raise RuntimeError("ths down")
+
+    def ok_em_rank(indicator: str = "今日", sector_type: str = "行业资金流"):
+        calls.append("em_rank")
+        return pd.DataFrame(
+            [{"名称": "新能源", "今日涨跌幅": 2.1, "今日主力净流入-净额": 880000000}]
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_board_industry_summary_ths", fail_ths_summary)
+    def fail_ths_flow(symbol: str = "即时"):
+        calls.append("ths_industry_flow")
+        raise RuntimeError("ths flow down")
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_fund_flow_industry", fail_ths_flow)
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_sector_fund_flow_rank", ok_em_rank)
+
+    df, source, errors = fetch_sector_board_summary()
+    assert source == "em_rank"
+    assert df.iloc[0]["板块"] == "新能源"
+    assert calls == ["ths_summary", "ths_industry_flow", "em_rank"]
+    assert any("ths down" in e for e in errors)
+
+
+def test_sector_money_flow_quality_gate():
+    from money_more.analysis.pipeline import DecisionPipeline
+
+    base = {
+        "policy_news": [{"title": "p"}],
+        "global_news": [{"title": "g"}],
+        "rss_telegraph": [{"title": "r"}],
+        "tushare_macro_news": [{"title": "alt"}],
+        "margin_trend": {"x": 1},
+        "northbound_summary": [{"日期": "2026-07-10"}],
+        "northbound_freshness": {"stale": False},
+        "sentiment_overview": {"aggregate": {"score": 50}},
+        "economic_calendar_synthetic": True,
+        "macro_hard": {"pmi": [{}]},
+        "errors": [],
+    }
+    missing = DecisionPipeline._assess_data_quality({**base, "sector_money_flow": {}})
+    assert "sector_money_flow" in missing["missing"]
+    ok = DecisionPipeline._assess_data_quality(
+        {
+            **base,
+            "sector_money_flow": {"top_inflow": [{"板块": "白酒", "净流入": 2.87e9}]},
+        }
+    )
+    assert ok["checks"]["sector_money_flow"] is True
+    assert ok["score"] == 1.0
