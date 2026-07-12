@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from money_more.analysis.valuation import build_valuation_percentiles
 from money_more.data.as_of import parse_as_of, ymd, ymd_hms
 from money_more.data.fetcher import _df_row_to_dict, normalize_code
 
@@ -138,7 +139,7 @@ class TushareSource:
     def fetch_stock_bundle(self, code: str, limit: int = 8) -> dict[str, Any]:
         ts_code = to_ts_code(code)
         end = ymd(self.as_of)
-        start = ymd(self.as_of, -90)
+        start_long = ymd(self.as_of, -1100)  # ~3 年交易日，供估值分位
         result: dict[str, Any] = {
             "code": normalize_code(code),
             "ts_code": ts_code,
@@ -185,12 +186,17 @@ class TushareSource:
                 result["errors"].append(f"{method}: {exc}")
 
         try:
-            df = self._safe_call("daily_basic", ts_code=ts_code, start_date=start, end_date=end)
+            df = self._safe_call("daily_basic", ts_code=ts_code, start_date=start_long, end_date=end)
             if not df.empty:
                 if "trade_date" in df.columns:
                     df = df.sort_values("trade_date", ascending=False)
-                result["valuation"]["latest"] = _df_row_to_dict(df.iloc[0])
+                latest_row = _df_row_to_dict(df.iloc[0])
+                result["valuation"]["latest"] = latest_row
                 result["valuation"]["history"] = _records(df.head(5), 5)
+                result["valuation"]["percentiles"] = build_valuation_percentiles(
+                    df.to_dict(orient="records"),
+                    latest_row,
+                )
         except Exception as exc:
             result["errors"].append(f"daily_basic: {exc}")
 

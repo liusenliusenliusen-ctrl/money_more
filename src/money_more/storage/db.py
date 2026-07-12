@@ -545,6 +545,79 @@ class Database:
             )
         return {"market_history": compact, "days": len(compact)}
 
+    def get_analysis_at_date(self, run_date: str, stock_code: str) -> dict[str, Any]:
+        """复盘用：拉取建议发出当日的市场/个股分析与情报摘要。"""
+        code = "".join(ch for ch in str(stock_code) if ch.isdigit())[-6:].zfill(6)
+        out: dict[str, Any] = {"run_date": run_date, "stock_code": code}
+        with self.session() as conn:
+            run = conn.execute(
+                "SELECT id, report_path FROM daily_runs WHERE run_date = ? AND status = 'success'",
+                (run_date,),
+            ).fetchone()
+            if not run:
+                run = conn.execute(
+                    "SELECT id, report_path FROM daily_runs WHERE run_date = ?",
+                    (run_date,),
+                ).fetchone()
+            if not run:
+                out["note"] = "no_run_for_date"
+                return out
+            run_id = int(run["id"])
+            out["report_path"] = run["report_path"]
+
+            m = conn.execute(
+                "SELECT analysis_json FROM market_snapshots WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            if m and m["analysis_json"]:
+                ma = json.loads(m["analysis_json"])
+                sent = ma.get("sentiment_assessment") or {}
+                out["market"] = {
+                    "phase": ma.get("phase"),
+                    "phase_label": ma.get("phase_label"),
+                    "style": ma.get("style"),
+                    "risk_level": ma.get("risk_level"),
+                    "primary_driver": ma.get("primary_driver"),
+                    "summary": (ma.get("summary") or "")[:400],
+                    "sentiment_level": sent.get("level"),
+                    "confidence": ma.get("confidence"),
+                }
+
+            s = conn.execute(
+                """
+                SELECT analysis_json, snapshot_json FROM stock_snapshots
+                WHERE run_id = ? AND stock_code = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (run_id, code),
+            ).fetchone()
+            if s and s["analysis_json"]:
+                sa = json.loads(s["analysis_json"])
+                out["stock_analysis"] = {
+                    "summary": (sa.get("summary") or "")[:500],
+                    "thesis": sa.get("thesis") or sa.get("investment_thesis"),
+                    "action_hint": sa.get("action_hint") or sa.get("suggested_action"),
+                    "confidence": sa.get("confidence"),
+                    "key_risks": (sa.get("key_risks") or sa.get("risks") or [])[:5],
+                    "catalysts": (sa.get("catalysts") or [])[:4],
+                    "valuation": sa.get("valuation"),
+                    "sentiment": sa.get("sentiment"),
+                }
+
+            d = conn.execute(
+                "SELECT digest_json FROM intelligence_digests WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if d and d["digest_json"]:
+                dig = json.loads(d["digest_json"])
+                out["intelligence_digest"] = {
+                    "executive_summary": (dig.get("executive_summary") or "")[:400],
+                    "headline_themes": (dig.get("headline_themes") or [])[:5],
+                    "risk_flags": (dig.get("risk_flags") or [])[:4],
+                    "sentiment_temperature": dig.get("sentiment_temperature"),
+                }
+        return out
+
     def get_trend_report(self) -> dict[str, Any] | None:
         with self.session() as conn:
             row = conn.execute("SELECT report_json, updated_at, last_run_date FROM trend_reports WHERE id = 1").fetchone()

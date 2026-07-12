@@ -12,7 +12,8 @@ A 股 **中长线** AI 研究助手：默认 **每 5 天**、凌晨 **1 点** �
 | 调度 | 每 5 天一次；cron 每天 01:00 触发，脚本按间隔门禁 |
 | 产出 | 分析报告、优化报告、趋势报告、纸面统计 |
 | 通知 | SMTP 邮件（分析 + 自优化报告） |
-| 自进化 | 周期结束后用 Cursor API 改代码；可与人工/CLI 改动防冲突 |
+| 自进化 | 周期结束后 Cursor 优化代码；优先补数据源（宏观/基本面/交易/舆情），再改分析 |
+| 多Agent | 决策：DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
 
 ## 周期流程
 
@@ -56,7 +57,8 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 |------|------|
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 分析用大模型（OpenAI 兼容，如 DeepSeek） |
 | `TUSHARE_TOKEN` | 可选；公告/财务/估值等增强源 |
-| `CURSOR_API_KEY` | 周期自优化（Cursor Dashboard → API Keys） |
+| `CURSOR_API_KEY` | 周期自优化 + 多 Agent 副分析师 |
+| `ANTHROPIC_API_KEY` / `CLAUDE_*` | 可选；`secondary_provider: claude` 时用 |
 | `EMAIL_ENABLED` | `true` 开启邮件 |
 | `SMTP_HOST` / `SMTP_PORT` | 如 `smtp.qq.com` / `465` |
 | `SMTP_USER` / `SMTP_PASSWORD` | 邮箱账号 + **授权码**（不是登录密码） |
@@ -76,6 +78,28 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `optimize.skip_if_dirty` | 有未提交代码改动则跳过自优化 |
 | `optimize.respect_human_lock` | 存在 `logs/OPTIMIZE_PAUSE` 则跳过 |
 | `email.send_analysis` / `send_optimize` | 是否分别发两类报告邮件 |
+| `agents.decision_multi` | 决策环节双分析 + 综合（默认 true） |
+| `agents.secondary_provider` | `cursor` / `claude` / `none` |
+| `agents.synthesizer_provider` | 默认 `deepseek`（推荐） |
+
+## 多 Agent 决策
+
+| 角色 | 默认 | 为什么 |
+|------|------|--------|
+| 主分析师 | DeepSeek | 日常链路；结构化 JSON 稳 |
+| 副分析师 | Cursor | 独立二意见，可读 reports/ 上下文 |
+| 综合委员 | **DeepSeek** | 便宜、schema 稳；Cursor 更适合当分析师 |
+
+```yaml
+agents:
+  enabled: true
+  decision_multi: true
+  primary_provider: deepseek
+  secondary_provider: cursor   # 或 claude / none
+  synthesizer_provider: deepseek
+```
+
+副分析不可用时自动回退单 DeepSeek。
 
 ## 邮件通知
 

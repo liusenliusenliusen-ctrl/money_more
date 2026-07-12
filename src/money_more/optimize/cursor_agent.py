@@ -18,12 +18,29 @@ from money_more.utils.logging_util import setup_logging
 log = setup_logging()
 
 
+DATA_SOURCE_CHECKLIST = """
+## 数据源自检清单（每轮优化必读）
+
+应用效果 = **数据源广度/质量** × **分析能力**。本轮若报告有 data_quality 缺失项，优先补数据；否则按清单找最弱一环。
+
+| 维度 | 已有能力（勿重复造轮子） | 可优化方向 |
+|------|--------------------------|------------|
+| 宏观 | 新闻联播、东财/新浪全球、PMI/CPI/M2、经济日历(含合成)、两融 | 新宏观 API、日历备源、数据新鲜度 |
+| 基本面 | Tushare 财报/公告/forecast、daily_basic 估值分位、AkShare 财务摘要 | 免费替代源、分位窗口、缺失回填 |
+| 交易/资金 | 行情/K线、北向、板块资金流、RS vs 沪深300、ATR 仓位 | 北向新鲜度、资金流多源交叉 |
+| 舆情/情绪 | 财联社/同花顺/富途快讯、RSS、词典+规则舆情打分(0-100)、东财人气/千股千评 | **重点可加强**：社交舆情、行业情绪指数、事件情感、拥挤度 |
+| 产业/主题 | 板块排名、概念板、RSS 关键词匹配 | 产业政策库、景气度指标 |
+| 质量门禁 | as_of、双源校验、data_quality 评分、Tushare 不可用时的 CLS/RSS/东财补位 | 减少 false missing、备源降级策略 |
+"""
+
+
 OPTIMIZE_PROMPT_TEMPLATE = """你是 money_more（A股中长线 AI 研究助手）的代码优化工程师。
 
 ## 项目目标
 - 投资取向：**中长线**（数周到数季），不是短线/日内
 - 运行频率：**每 5 天一次**（节省 token）
 - 流程：情报 → 市场/板块/个股分析 → 建议 → 复盘 → 趋势 →（本步）代码自优化
+- **核心认知**：应用效果取决于两方面——**(1) 数据源越丰富越好**（宏观/基本面/交易/舆情等）；(2) 分析框架与 LLM 用法。自优化时 **优先补数据短板**，再改分析逻辑。
 
 ## 本期已产出
 - 最新报告目录: reports/
@@ -32,29 +49,68 @@ OPTIMIZE_PROMPT_TEMPLATE = """你是 money_more（A股中长线 AI 研究助手�
 - 决策摘要: reports/digests/{run_date}.json （若存在）
 - 进度笔记: logs/optimization_progress.txt （若存在）
 
+{run_context}
+
+{data_source_checklist}
+
 {collab_block}
 
 ## 你的任务（必须改代码，不要只写建议）
-1. 阅读最新报告与 `src/money_more/` 关键模块，找出 **可落地** 的优化点，优先：
-   - 增加/加固中长线相关信息源（基本面、估值分位、产业数据）
-   - 增加分析维度（但避免短线噪声维度）
-   - 改进数据处理、缓存、质量门禁、复盘严谨性
-   - 修复明显 bug / 降低 LLM token 浪费
-2. 本轮只做 **1–3 个高 ROI 改动**，保持小而完整，附带或更新单元测试
-3. **追加** 更新 `logs/optimization_progress.txt`（保留既有人工/历史记录）
-4. 在回复末尾用 Markdown 写一份「本轮优化报告」摘要（改了什么、为什么、如何验证）
-5. 不要提交 git、不要改 .env 里的密钥、不要扩大成短线交易系统
+1. 阅读最新报告、`data_quality` 缺失项与 `src/money_more/data/`、`analysis/` 模块
+2. 找出 **可落地** 的高 ROI 优化，**优先级**：
+   - **P0 数据源**：增加/加固/备源/回填（宏观、基本面、交易数据、**舆情情绪**）；Tushare 不可用时的免费替代
+   - **P1 分析能力**：因子、交叉验证、复盘、prompt 维度（避免短线噪声）
+   - **P2 工程**：缓存、质量门禁、token 压缩、bug 修复
+3. 舆情方向特别关注：快讯覆盖、情感打分准确性、人气/拥挤度、事件驱动标签、与宏观/个股链路的打通
+4. 本轮只做 **1–3 个** 改动，小而完整，附带或更新单元测试
+5. **追加** 更新 `logs/optimization_progress.txt`（保留人工/历史记录；可记「数据源/分析」分类）
+6. 回复末尾写「本轮优化报告」：改了什么、补了哪类数据、如何验证
+7. 不要提交 git、不要改 .env 密钥、不要扩大成短线交易系统
 
 ## 约束
-- 保持中长线 + 每5天周期设定（config 中 investment_horizon / schedule.interval_days）
-- 改完后确保 `python -m pytest tests/ -q` 能过（若环境有 pytest）
+- 保持中长线 + 每5天周期（config: investment_horizon / schedule.interval_days）
+- 新增数据源优先 AkShare/公开 RSS/免费 API；付费源（Tushare 权限）仅作可选增强
+- 改完后确保 `python -m pytest tests/ -q` 能过
 """
 
 
-def build_optimize_prompt(run_date: str | None = None, collab_block: str = "") -> str:
+def _extract_report_context(project_root: Path, run_date: str) -> str:
+    """从最新报告提取 data_quality 等上下文，供自优化 prompt 使用。"""
+    reports = project_root / "reports"
+    md_path = reports / f"{run_date}.md"
+    if not md_path.exists():
+        return ""
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines: list[str] = ["## 本期报告摘要（供优化参考）"]
+    for line in text.splitlines()[:80]:
+        stripped = line.strip()
+        if stripped.startswith("**数据质量**") or stripped.startswith("- 缺失项:"):
+            lines.append(stripped)
+        if stripped.startswith("**量化舆情分**"):
+            lines.append(stripped)
+    digest = reports / "digests" / f"{run_date}.json"
+    if digest.exists():
+        lines.append(f"- digest: reports/digests/{run_date}.json")
+    if len(lines) <= 1:
+        return ""
+    return "\n".join(lines) + "\n"
+
+
+def build_optimize_prompt(
+    run_date: str | None = None,
+    collab_block: str = "",
+    project_root: Path | None = None,
+) -> str:
     d = run_date or date.today().isoformat()
+    root = project_root or Path.cwd()
+    run_context = _extract_report_context(root, d)
     return OPTIMIZE_PROMPT_TEMPLATE.format(
         run_date=d,
+        run_context=run_context or "（暂无本期报告摘要）",
+        data_source_checklist=DATA_SOURCE_CHECKLIST.strip(),
         collab_block=collab_block or "## 与人工协作\n- 避免覆盖人工未提交改动。",
     )
 
@@ -124,7 +180,11 @@ def run_cursor_optimize(config: AppConfig, run_date: str | None = None) -> dict[
         return out
 
     snap = snapshot_workspace(config.project_root)
-    prompt = build_optimize_prompt(d, collab_block=format_collab_context(snap))
+    prompt = build_optimize_prompt(
+        d,
+        collab_block=format_collab_context(snap),
+        project_root=config.project_root,
+    )
     cwd = str(config.project_root.resolve())
     model = config.optimize.model
     log.info("Starting Cursor optimize model=%s cwd=%s", model, cwd)

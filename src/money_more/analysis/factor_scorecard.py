@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from money_more.analysis.valuation import valuation_score_from_percentiles
+
 
 DEFAULT_WEIGHTS = {
     "valuation": 0.25,
@@ -36,11 +38,23 @@ def build_stock_scorecard(
     scores: dict[str, float] = {}
     evidence: dict[str, list[str]] = {k: [] for k in w}
 
-    # --- valuation: PE/PB 越低越好（粗略，A股成长股需结合行业）---
+    # --- valuation: 优先历史分位（中长线），回退绝对 PE/PB ---
     pe = _f(latest_val.get("pe") or latest_val.get("pe_ttm") or quote.get("市盈率-动态") or quote.get("市盈率"))
     pb = _f(latest_val.get("pb") or quote.get("市净率"))
+    percentiles = valuation.get("percentiles") or {}
+    pe_pct = _f(percentiles.get("pe_percentile"))
+    pb_pct = _f(percentiles.get("pb_percentile"))
+    pct_score = valuation_score_from_percentiles(pe_pct, pb_pct)
     val_score = 50.0
-    if pe is not None:
+    if pct_score is not None:
+        val_score = pct_score
+        if pe_pct is not None:
+            evidence["valuation"].append(f"PE历史分位{pe_pct:.0f}%")
+        if pb_pct is not None:
+            evidence["valuation"].append(f"PB历史分位{pb_pct:.0f}%")
+        if percentiles.get("label"):
+            evidence["valuation"].append(f"估值锚={percentiles['label']}")
+    elif pe is not None:
         if pe <= 0:
             val_score = 25.0
             evidence["valuation"].append(f"PE={pe} 亏损/异常")
@@ -56,12 +70,12 @@ def build_stock_scorecard(
         else:
             val_score = 25.0
             evidence["valuation"].append(f"PE={pe:.1f} 很高")
-    if pb is not None and pb > 0:
-        if pb < 1.5:
-            val_score = min(100.0, val_score + 10)
-        elif pb > 8:
-            val_score = max(0.0, val_score - 15)
-        evidence["valuation"].append(f"PB={pb:.2f}")
+        if pb is not None and pb > 0:
+            if pb < 1.5:
+                val_score = min(100.0, val_score + 10)
+            elif pb > 8:
+                val_score = max(0.0, val_score - 15)
+            evidence["valuation"].append(f"PB={pb:.2f}")
     scores["valuation"] = _clamp(val_score)
 
     # --- momentum: 相对均线 + 涨跌幅 ---

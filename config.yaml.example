@@ -62,6 +62,18 @@ email:
   send_optimize: true
   # smtp_host / to 也可写在这里，但推荐用 .env
 
+# 多 Agent 决策（主分析 + 副分析 + 综合）
+# 综合默认 deepseek：JSON 稳、成本低；cursor 更适合当独立分析师
+agents:
+  enabled: true
+  decision_multi: true       # 仅决策环节双分析（省 token）
+  parallel: true
+  primary_provider: deepseek # deepseek | openai
+  secondary_provider: cursor # cursor | claude | none
+  secondary_model: composer-2.5
+  synthesizer_provider: deepseek
+  cursor_model: composer-2.5
+
 # 情报
 intelligence:
   enabled: true

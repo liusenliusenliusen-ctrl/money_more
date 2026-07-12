@@ -16,11 +16,14 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "sector_money_flow": _compact_sector_flow(macro.get("sector_money_flow") or {}),
         "macro_hard": _tail_macro_hard(macro.get("macro_hard") or {}),
         "economic_calendar": (macro.get("economic_calendar") or [])[:5],
+        "economic_calendar_synthetic": macro.get("economic_calendar_synthetic"),
+        "northbound_freshness": macro.get("northbound_freshness"),
         "policy_news": (macro.get("policy_news") or [])[:max_news],
         "global_news": (macro.get("global_news") or [])[:max_news],
         "rss_important": (macro.get("rss_important") or [])[:max_news],
         "rss_telegraph": (macro.get("rss_telegraph") or [])[:max_news],
         "tushare_macro_news": (macro.get("tushare_macro_news") or [])[:max_news],
+        "tushare_macro_backfill": macro.get("tushare_macro_backfill"),
         "market_hot_rank": (macro.get("market_hot_rank") or [])[:10],
         "errors": (macro.get("errors") or [])[:8],
     }
@@ -50,7 +53,10 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             "research_reports": (intel.get("research_reports") or [])[:3],
             "rss_matches": (intel.get("rss_matches") or [])[:4],
             "tushare": {
-                "valuation": ts.get("valuation"),
+                "valuation": {
+                    "latest": (ts.get("valuation") or {}).get("latest"),
+                    "percentiles": (ts.get("valuation") or {}).get("percentiles"),
+                },
                 "announcements": (ts.get("announcements") or [])[:4],
                 "forecast": (ts.get("forecast") or [])[:3],
                 "share_float": (ts.get("share_float") or [])[:3],

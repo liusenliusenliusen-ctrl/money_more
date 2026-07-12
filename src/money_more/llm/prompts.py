@@ -193,12 +193,24 @@ REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练，从结果中提炼
 
 {ANALYSIS_FRAMEWORK}
 
+## 输入说明（必须用）
+- **pending_recommendations**：待复盘荐股，含收益与 **original_context**（建议发出当日的市场/个股分析/情报摘要，以及报告摘录）
+- **historical_reports**：近几个月（默认约 `review_lookback_days`，如 120 天）的历史报告压缩摘要 + decision digests + DB 市场相位骨架；用于提炼跨期经验，不只看单日
+- **trend_report_summary**：滚动趋势（若有）
+- **past_lessons / prior_context**：经验库与近期市场相位
+
+复盘时必须：
+1. 对照「当时报告/分析写了什么 thesis / 风险 / 失效条件」与「后来发生了什么」
+2. 从 **historical_reports** 中归纳重复出现的成功/失败模式（风格切换、叙事误导、仓位纪律等）
+3. 不要只根据涨跌猜原因
+
 ## 复盘维度
 - **宏观/产业误判**
 - **个股基本面/估值误判**
 - **叙事误导**（把短期情绪当中期趋势）
 - **执行问题**（仓位/止损纪律）
 - **噪声**：持有期内正常波动，不应记为逻辑错误
+- **报告一致性**：当时报告结论是否与建议一致、失效条件是否本应触发
 
 ## 输出 JSON
 {{
@@ -209,18 +221,19 @@ REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练，从结果中提炼
       "outcome": "correct|partial|wrong|pending",
       "return_pct": null,
       "diagnosis_category": "macro|sector|stock|sentiment|execution|noise",
-      "diagnosis": "详细原因；若观察期不足标 pending",
-      "what_worked": ["做对的判断"],
-      "what_failed": ["做错的判断"],
+      "diagnosis": "详细原因；对照 original_context 中的 thesis/风险；若观察期不足标 pending",
+      "what_worked": ["做对的判断（引用当时报告要点）"],
+      "what_failed": ["做错的判断（引用当时报告要点）"],
       "lesson": "一条可执行的中长线教训",
       "prompt_adjustment": "对未来周度分析的改进建议"
     }}
   ],
-  "meta_lessons": ["跨案例通用经验，最多3条"],
-  "sentiment_lessons": ["与叙事/情绪相关的经验"]
+  "meta_lessons": ["跨案例/跨月通用经验，最多3条（应引用 historical_reports 中的模式）"],
+  "sentiment_lessons": ["与叙事/情绪相关的经验"],
+  "history_patterns": ["近几个月报告中反复出现的模式（可选，最多3条）"]
 }}
 
-原则：区分逻辑错误与短期噪声；观察期不足不要强行打分。"""
+原则：区分逻辑错误与短期噪声；观察期不足不要强行打分；优先用历史报告证据；跨期经验来自 historical_reports 而非臆测。"""
 
 INTELLIGENCE_DIGEST_SYSTEM = f"""你是财经情报分析师，为 **中长线周度研究** 去噪提炼情报（不是投资建议）。
 

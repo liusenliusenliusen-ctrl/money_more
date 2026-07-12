@@ -12,6 +12,7 @@ from money_more.data.as_of import (
     filter_calendar_upcoming,
     filter_records_by_date,
     parse_as_of,
+    parse_record_date,
     recent_weekdays,
     ymd,
 )
@@ -49,6 +50,8 @@ class IntelligenceFetcher:
         self.tushare = (
             TushareSource(config.tushare_token, as_of=self.as_of) if config.tushare.enabled else None
         )
+        if self.tushare:
+            self.tushare.probe()
         self.rss = RssFeedFetcher(
             feeds=config.rss.feeds or None,
             max_items_per_feed=config.rss.max_items_per_feed,
@@ -216,6 +219,29 @@ class IntelligenceFetcher:
                 except Exception:
                     continue
 
+        # 宏观硬数据：PMI / CPI（失败则跳过）
+        macro_hard: dict[str, Any] = {}
+        for label, fn in [
+            ("pmi", getattr(ak, "macro_china_pmi", None)),
+            ("cpi", getattr(ak, "macro_china_cpi", None)),
+            ("m2", getattr(ak, "macro_china_money_supply", None)),
+        ]:
+            if fn is None:
+                continue
+            try:
+                df = fn()
+                if df is not None and not df.empty:
+                    macro_hard[label] = _records(df.tail(6), 6)
+            except Exception as exc:
+                result["errors"].append(f"宏观{label}: {exc}")
+        result["macro_hard"] = macro_hard
+
+        if not result["economic_calendar"] and macro_hard:
+            synth = _synthetic_calendar_from_macro_hard(macro_hard, self.as_of)
+            if synth:
+                result["economic_calendar"] = synth[: self.max_items]
+                result["economic_calendar_synthetic"] = True
+
         try:
             margin = ak.macro_china_market_margin_sh()
             if not margin.empty:
@@ -245,23 +271,6 @@ class IntelligenceFetcher:
         except Exception as exc:
             result["errors"].append(f"深市两融: {exc}")
 
-        # 宏观硬数据：PMI / CPI（失败则跳过）
-        macro_hard: dict[str, Any] = {}
-        for label, fn in [
-            ("pmi", getattr(ak, "macro_china_pmi", None)),
-            ("cpi", getattr(ak, "macro_china_cpi", None)),
-            ("m2", getattr(ak, "macro_china_money_supply", None)),
-        ]:
-            if fn is None:
-                continue
-            try:
-                df = fn()
-                if df is not None and not df.empty:
-                    macro_hard[label] = _records(df.tail(6), 6)
-            except Exception as exc:
-                result["errors"].append(f"宏观{label}: {exc}")
-        result["macro_hard"] = macro_hard
-
         try:
             nb = ak.stock_hsgt_fund_flow_summary_em()
             result["northbound_summary"] = _records(nb, self.max_items)
@@ -277,6 +286,11 @@ class IntelligenceFetcher:
                     result["northbound_source"] = "hsgt_hist_em"
             except Exception as exc:
                 result["errors"].append(f"北向历史回退: {exc}")
+
+        result["northbound_freshness"] = _northbound_freshness(result["northbound_summary"], self.as_of)
+        if result["northbound_freshness"].get("stale"):
+            days = result["northbound_freshness"].get("staleness_days")
+            result["errors"].append(f"northbound_stale:{days}d")
 
         hot = self._get_hot_rank_df()
         if not hot.empty:
@@ -303,6 +317,13 @@ class IntelligenceFetcher:
         result["rss_important"] = rss_bundle.get("cls_telegraph_important") or []
         result["rss_feeds"] = rss_bundle.get("feeds") or []
         result["errors"].extend(rss_bundle.get("errors") or [])
+
+        if not result["tushare_macro_news"]:
+            fallback = _merge_macro_news_fallback(result, self.max_items)
+            if fallback:
+                result["tushare_macro_news"] = fallback
+                result["tushare_macro_backfill"] = True
+                result["errors"].append("tushare_macro_backfill_from_alt_sources")
 
         if self.config.sentiment.enabled:
             macro_news_pool: list[dict[str, Any]] = []
@@ -520,3 +541,82 @@ def _pct_change(current: float | None, previous: float | None) -> float | None:
     if current is None or previous in (None, 0):
         return None
     return round((current - previous) / previous * 100, 2)
+
+
+def _news_title_key(item: dict[str, Any]) -> str:
+    import re
+
+    title = str(item.get("title") or item.get("标题") or item.get("新闻标题") or "").strip()
+    return re.sub(r"\s+", "", title)[:80]
+
+
+def _merge_macro_news_fallback(macro: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    """Tushare 宏观新闻不可用时，用东财/新浪/财联社/RSS 合并补位。"""
+    pool: list[dict[str, Any]] = []
+    for key in ("global_news", "global_news_sina", "rss_important", "rss_telegraph"):
+        pool.extend(macro.get(key) or [])
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for item in pool:
+        if not isinstance(item, dict):
+            continue
+        key = _news_title_key(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+_MACRO_CAL_LABELS = {
+    "pmi": "中国制造业PMI",
+    "cpi": "中国CPI",
+    "m2": "中国货币供应M2",
+}
+
+
+def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
+    """主经济日历为空时，用 PMI/CPI/M2 最新发布构造宏观事件锚。"""
+    events: list[dict[str, Any]] = []
+    month_keys = ("月份", "month", "日期", "date", "时间", "公布时间")
+    for key, label in _MACRO_CAL_LABELS.items():
+        records = macro_hard.get(key) or []
+        if not records:
+            continue
+        latest = records[-1]
+        if not isinstance(latest, dict):
+            continue
+        date_str = None
+        for mk in month_keys:
+            if mk in latest and latest.get(mk):
+                date_str = str(latest[mk])
+                break
+        events.append(
+            {
+                "日期": date_str or as_of.isoformat(),
+                "event": label,
+                "snapshot": latest,
+                "source": "macro_hard",
+            }
+        )
+    return events
+
+
+def _northbound_freshness(summary: list[dict[str, Any]], as_of: date) -> dict[str, Any]:
+    """检测北向数据是否滞后（节假日/接口空窗）。"""
+    if not summary:
+        return {"stale": True, "staleness_days": None, "latest_date": None}
+    latest_row = summary[-1]
+    latest_date = parse_record_date(latest_row)
+    if latest_date is None:
+        return {"stale": False, "staleness_days": None, "latest_date": None, "note": "date_unparsed"}
+    staleness = (as_of - latest_date).days
+    # 允许周末 + 1 个交易日缓冲
+    stale = staleness > 3
+    return {
+        "stale": stale,
+        "staleness_days": staleness,
+        "latest_date": latest_date.isoformat(),
+    }

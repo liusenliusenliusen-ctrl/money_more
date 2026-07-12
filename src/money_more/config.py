@@ -109,6 +109,24 @@ class EmailConfig:
 
 
 @dataclass
+class AgentsConfig:
+    """多 Agent：主分析师 + 副分析师 + 综合委员。"""
+
+    enabled: bool = True
+    # 仅在决策环节启用双分析（省 token）；可扩展为 all
+    decision_multi: bool = True
+    parallel: bool = True
+    primary_provider: str = "deepseek"  # openai_compat / deepseek
+    primary_model: str = ""
+    secondary_provider: str = "cursor"  # cursor | claude | none
+    secondary_model: str = "composer-2.5"
+    # 综合用 DeepSeek：便宜、JSON 稳；Cursor 更适合当独立分析师
+    synthesizer_provider: str = "deepseek"
+    synthesizer_model: str = ""
+    cursor_model: str = "composer-2.5"
+
+
+@dataclass
 class AppConfig:
     watch_sectors: list[str] = field(default_factory=list)
     watch_stocks: list[str] = field(default_factory=list)
@@ -123,6 +141,7 @@ class AppConfig:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     optimize: OptimizeConfig = field(default_factory=OptimizeConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
+    agents: AgentsConfig = field(default_factory=AgentsConfig)
     review_lookback_days: int = 120
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm_api_key: str = ""
@@ -130,6 +149,9 @@ class AppConfig:
     llm_model: str = "deepseek-chat"
     tushare_token: str = ""
     cursor_api_key: str = ""
+    claude_api_key: str = ""
+    claude_model: str = "claude-sonnet-4-20250514"
+    claude_base_url: str = ""
     project_root: Path = field(default_factory=lambda: Path.cwd())
 
     def resolve(self, relative: str) -> Path:
@@ -168,6 +190,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     schedule_raw = raw.get("schedule") or {}
     optimize_raw = raw.get("optimize") or {}
     email_raw = raw.get("email") or {}
+    agents_raw = raw.get("agents") or {}
     paths_raw = raw.get("paths") or {}
     holdings = [
         Holding(
@@ -261,6 +284,22 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             send_analysis=bool(email_raw.get("send_analysis", True)),
             send_optimize=bool(email_raw.get("send_optimize", True)),
         ),
+        agents=AgentsConfig(
+            enabled=bool(agents_raw.get("enabled", True)),
+            decision_multi=bool(agents_raw.get("decision_multi", True)),
+            parallel=bool(agents_raw.get("parallel", True)),
+            primary_provider=str(agents_raw.get("primary_provider", "deepseek")),
+            primary_model=str(agents_raw.get("primary_model") or ""),
+            secondary_provider=str(agents_raw.get("secondary_provider", "cursor")),
+            secondary_model=str(
+                agents_raw.get("secondary_model")
+                or agents_raw.get("cursor_model")
+                or "composer-2.5"
+            ),
+            synthesizer_provider=str(agents_raw.get("synthesizer_provider", "deepseek")),
+            synthesizer_model=str(agents_raw.get("synthesizer_model") or ""),
+            cursor_model=str(agents_raw.get("cursor_model") or "composer-2.5"),
+        ),
         review_lookback_days=int(raw.get("review_lookback_days", 120)),
         paths=PathsConfig(
             db=str(paths_raw.get("db", "data/money_more.db")),
@@ -271,5 +310,10 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         llm_model=os.getenv("LLM_MODEL", "deepseek-chat"),
         tushare_token=os.getenv("TUSHARE_TOKEN", ""),
         cursor_api_key=os.getenv("CURSOR_API_KEY", ""),
+        claude_api_key=os.getenv("ANTHROPIC_API_KEY")
+        or os.getenv("CLAUDE_API_KEY")
+        or "",
+        claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+        claude_base_url=os.getenv("CLAUDE_BASE_URL", ""),
         project_root=root,
     )

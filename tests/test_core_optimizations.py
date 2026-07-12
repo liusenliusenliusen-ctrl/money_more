@@ -120,6 +120,101 @@ def test_scorecard_bullish_bias():
     assert sc["signal"] in ("bullish", "constructive", "neutral")
 
 
+def test_valuation_percentiles():
+    from money_more.analysis.valuation import (
+        build_valuation_percentiles,
+        percentile_rank,
+        valuation_score_from_percentiles,
+    )
+
+    hist = [{"pe_ttm": float(i), "pb": float(i) / 10} for i in range(1, 101)]
+    pct = build_valuation_percentiles(hist, {"pe_ttm": 10.0, "pb": 1.0})
+    assert pct["ok"] is True
+    assert pct["pe_percentile"] == 9.5
+    assert pct["label"] == "cheap"
+    assert valuation_score_from_percentiles(10.0, 10.0) == 90.0
+    assert percentile_rank([1, 2, 3], 0) is None
+
+
+def test_scorecard_uses_percentiles():
+    sc = build_stock_scorecard(
+        {"history": {}, "quote": {}},
+        {"research_rating": "hold", "confidence": 0.5},
+        {
+            "tushare": {
+                "valuation": {
+                    "latest": {"pe_ttm": 12.0, "pb": 1.2},
+                    "percentiles": {
+                        "ok": True,
+                        "pe_percentile": 12.0,
+                        "pb_percentile": 15.0,
+                        "label": "cheap",
+                    },
+                }
+            }
+        },
+    )
+    assert sc["scores"]["valuation"] >= 75
+    assert any("历史分位" in e for e in sc["evidence"]["valuation"])
+
+
+def test_synthetic_calendar_and_northbound_freshness():
+    from money_more.data.intelligence import _northbound_freshness, _synthetic_calendar_from_macro_hard
+
+    macro_hard = {"pmi": [{"月份": "2026年06月份", "制造业": 49.5}]}
+    events = _synthetic_calendar_from_macro_hard(macro_hard, date(2026, 7, 12))
+    assert len(events) == 1
+    assert events[0]["event"] == "中国制造业PMI"
+
+    fresh = _northbound_freshness([{"日期": "2026-07-10"}], date(2026, 7, 12))
+    assert fresh["stale"] is False
+    stale = _northbound_freshness([{"日期": "2026-07-01"}], date(2026, 7, 12))
+    assert stale["stale"] is True
+
+
+def test_macro_news_backfill_and_quality():
+    from money_more.analysis.pipeline import DecisionPipeline
+    from money_more.data.intelligence import _merge_macro_news_fallback
+
+    macro = {
+        "global_news": [{"title": "东财A", "content": "x"}],
+        "global_news_sina": [{"title": "新浪B", "content": "y"}],
+        "rss_important": [{"title": "财联社C", "content": "z"}],
+        "rss_telegraph": [{"title": "东财A", "content": "dup"}],
+    }
+    merged = _merge_macro_news_fallback(macro, limit=10)
+    assert len(merged) == 3
+    titles = {x["title"] for x in merged}
+    assert titles == {"东财A", "新浪B", "财联社C"}
+
+    intel = {
+        "policy_news": [{"title": "p"}],
+        "global_news": [{"title": "g"}],
+        "rss_telegraph": [{"title": "r"}],
+        "tushare_macro_news": [{"title": "alt"}],
+        "tushare_macro_backfill": True,
+        "margin_trend": {"x": 1},
+        "northbound_summary": [{"日期": "2026-07-10"}],
+        "northbound_freshness": {"stale": False},
+        "sentiment_overview": {"aggregate": {"score": 50}},
+        "economic_calendar_synthetic": True,
+        "sector_money_flow": {"top_inflow": []},
+        "macro_hard": {"pmi": []},
+        "errors": ["Tushare 未配置", "tushare_macro_backfill_from_alt_sources"],
+    }
+    dq = DecisionPipeline._assess_data_quality(intel)
+    assert dq["checks"]["tushare_macro"] is True
+    assert "tushare_available" not in dq["missing"]
+    assert dq["tushare_macro_backfill"] is True
+    assert dq["score"] >= 0.7
+
+
+def test_parse_record_date():
+    from money_more.data.as_of import parse_record_date
+
+    assert parse_record_date({"交易日": "2026-07-10"}) == date(2026, 7, 10)
+
+
 def test_paper_trade_stats(tmp_path: Path):
     db = Database(tmp_path / "t.db")
     tid = db.open_paper_trade(
@@ -335,3 +430,126 @@ def test_email_ready_and_preview():
     )
     assert ok2 is True
     assert "截断" in _preview("字" * 13000)
+
+
+def test_optimize_prompt_includes_data_sources(tmp_path: Path):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "2026-07-12.md").write_text(
+        "**数据质量**: 0.65 (OK)\n- 缺失项: economic_calendar\n**量化舆情分**: 48/100\n",
+        encoding="utf-8",
+    )
+    from money_more.optimize.cursor_agent import build_optimize_prompt
+
+    prompt = build_optimize_prompt("2026-07-12", project_root=tmp_path)
+    assert "数据源" in prompt
+    assert "舆情" in prompt
+    assert "economic_calendar" in prompt
+    assert "P0 数据源" in prompt
+
+
+def test_multi_agent_orchestrator_fallback():
+    from money_more.agents.orchestrator import AnalystAgent, MultiAgentOrchestrator, SynthesisAgent
+    from money_more.llm.providers.base import LLMProvider
+
+    class FakeProvider(LLMProvider):
+        def __init__(self, name: str, payload: dict, fail: bool = False):
+            self.name = name
+            self.payload = payload
+            self.fail = fail
+
+        def complete_json(self, system_prompt, user_payload, **kwargs):
+            if self.fail:
+                raise RuntimeError("boom")
+            out = dict(self.payload)
+            return out
+
+    primary = AnalystAgent(
+        FakeProvider("deepseek", {"recommendations": [{"code": "600519"}], "portfolio_summary": "a"}),
+        role="primary",
+    )
+    secondary = AnalystAgent(
+        FakeProvider("cursor", {"recommendations": [{"code": "300750"}], "portfolio_summary": "b"}),
+        role="secondary",
+    )
+    synth = SynthesisAgent(
+        FakeProvider(
+            "synth",
+            {
+                "recommendations": [{"code": "600519", "action": "hold"}],
+                "portfolio_summary": "merged",
+                "multi_agent": {"agreement": 0.5},
+            },
+        )
+    )
+    orch = MultiAgentOrchestrator(primary, secondary, synth, parallel=False)
+    out = orch.analyze_json("sys", {"x": 1}, required_keys=["recommendations", "portfolio_summary"])
+    assert out["portfolio_summary"] == "merged"
+    assert out["_multi_agent"]["primary"] == "deepseek"
+
+    # secondary fail → primary only
+    orch2 = MultiAgentOrchestrator(
+        primary,
+        AnalystAgent(FakeProvider("cursor", {}, fail=True), role="secondary"),
+        synth,
+        parallel=False,
+    )
+    out2 = orch2.analyze_json("sys", {"x": 1}, required_keys=["recommendations", "portfolio_summary"])
+    assert out2["_multi_agent_fallback"] == "primary_only"
+
+
+def test_agents_config_defaults():
+    from money_more.config import load_config
+
+    c = load_config()
+    assert c.agents.enabled is True
+    assert c.agents.secondary_provider == "cursor"
+    assert c.agents.synthesizer_provider == "deepseek"
+
+
+def test_load_report_excerpt(tmp_path: Path):
+    from money_more.analysis.pipeline import DecisionPipeline
+    from money_more.config import AppConfig, PathsConfig
+
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "2026-07-01.md").write_text(
+        "# report\n**数据质量**: 0.8\n\n## 个股 600519\n贵州茅台建议买入，逻辑是估值低位。\n",
+        encoding="utf-8",
+    )
+    cfg = AppConfig(paths=PathsConfig(reports=str(reports)), project_root=tmp_path)
+
+    class _P:
+        config = cfg
+
+    excerpt = DecisionPipeline._load_report_excerpt(_P(), "2026-07-01", "600519")  # type: ignore[arg-type]
+    assert excerpt["exists"] is True
+    assert "600519" in excerpt.get("excerpt", "")
+
+
+def test_historical_reports_corpus(tmp_path: Path):
+    from datetime import date
+
+    from money_more.analysis.review_history import load_historical_reports_corpus
+
+    reports = tmp_path / "reports"
+    dig = reports / "digests"
+    dig.mkdir(parents=True)
+    (reports / "2026-04-01.md").write_text(
+        "**数据质量**: 0.7\n\n## 0. 情报\n四月市场偏弱，防御优先。\n",
+        encoding="utf-8",
+    )
+    (reports / "2026-07-01.md").write_text(
+        "**数据质量**: 0.8\n\n## 0. 情报\n七月科技主线升温。\n- 600519 buy\n",
+        encoding="utf-8",
+    )
+    (dig / "2026-07-01.json").write_text(
+        '{"run_date":"2026-07-01","market_phase":"range","recommendations":[{"code":"600519","action":"buy"}]}',
+        encoding="utf-8",
+    )
+    corpus = load_historical_reports_corpus(
+        reports, as_of=date(2026, 7, 12), lookback_days=120, max_reports=10
+    )
+    assert corpus["report_count"] >= 2
+    assert corpus["digest_count"] >= 1
+    assert any(r["date"] == "2026-04-01" for r in corpus["reports"])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -50,6 +51,14 @@ class DecisionPipeline:
         self.llm = llm
         self.intelligence = intelligence or IntelligenceFetcher(config)
         self.trend_builder = TrendReportBuilder(db, llm)
+        self._orchestrator = None
+        if getattr(config, "agents", None) and config.agents.enabled:
+            try:
+                from money_more.agents import build_orchestrator
+
+                self._orchestrator = build_orchestrator(config)
+            except Exception as exc:
+                log.warning("multi-agent orchestrator init failed: %s", exc)
 
     def run_daily(self, run_date: date | None = None) -> dict[str, Any]:
         run_date = run_date or date.today()
@@ -274,29 +283,59 @@ class DecisionPipeline:
             "take_profit_pct": self.config.trading.take_profit_pct,
         }
 
-        decision = self.llm.analyze_json(
-            DECISION_SYSTEM,
-            {
-                "date": run_date.isoformat(),
-                "intelligence_digest": intel_digest,
-                "market_analysis": market_analysis,
-                "sector_analyses": [s["analysis"] for s in sector_analyses],
-                "stock_analyses": stock_analyses,
-                "factor_scorecards": scorecards,
-                "hard_gates": {s["code"]: s.get("hard_gates") or {} for s in stock_analyses},
-                "cross_checks": {s["code"]: s.get("cross_check") or {} for s in stock_analyses},
-                "holdings": holdings_enriched,
-                "trading_constraints": trading_constraints,
-                "investment_horizon": self.config.analysis.investment_horizon,
-                "default_time_horizon": self.config.analysis.default_time_horizon,
-                "schedule_cadence": self.config.schedule.cadence,
-                "past_lessons": result["lessons_used"],
-                "prior_context": prior_context,
-                "trend_report_summary": self._trend_summary_for_llm(existing_trend),
-                "data_quality": result["data_quality"],
-            },
-            required_keys=["recommendations", "portfolio_summary"],
+        decision_payload = {
+            "date": run_date.isoformat(),
+            "intelligence_digest": intel_digest,
+            "market_analysis": market_analysis,
+            "sector_analyses": [s["analysis"] for s in sector_analyses],
+            "stock_analyses": stock_analyses,
+            "factor_scorecards": scorecards,
+            "hard_gates": {s["code"]: s.get("hard_gates") or {} for s in stock_analyses},
+            "cross_checks": {s["code"]: s.get("cross_check") or {} for s in stock_analyses},
+            "holdings": holdings_enriched,
+            "trading_constraints": trading_constraints,
+            "investment_horizon": self.config.analysis.investment_horizon,
+            "default_time_horizon": self.config.analysis.default_time_horizon,
+            "schedule_cadence": self.config.schedule.cadence,
+            "past_lessons": result["lessons_used"],
+            "prior_context": prior_context,
+            "trend_report_summary": self._trend_summary_for_llm(existing_trend),
+            "data_quality": result["data_quality"],
+        }
+        use_multi = bool(
+            self._orchestrator
+            and self.config.agents.enabled
+            and self.config.agents.decision_multi
         )
+        if use_multi:
+            log.info(
+                "decision via multi-agent primary=%s secondary=%s synth=%s",
+                self._orchestrator.primary.name,
+                self._orchestrator.secondary.name if self._orchestrator.secondary else None,
+                self._orchestrator.synthesizer.name if self._orchestrator.synthesizer else None,
+            )
+            decision = self._orchestrator.analyze_json(
+                DECISION_SYSTEM,
+                decision_payload,
+                required_keys=["recommendations", "portfolio_summary"],
+                multi=True,
+            )
+        else:
+            decision = self.llm.analyze_json(
+                DECISION_SYSTEM,
+                decision_payload,
+                required_keys=["recommendations", "portfolio_summary"],
+            )
+        result["multi_agent"] = {
+            "enabled": use_multi,
+            "meta": decision.get("_multi_agent") or decision.get("_multi_agent_fallback"),
+            "errors": decision.get("_multi_agent_errors") or [],
+        }
+        # 草稿较大，只保留摘要键，避免报告爆炸
+        drafts = decision.pop("_analyst_drafts", None)
+        if drafts:
+            result["multi_agent"]["draft_agents"] = list(drafts.keys())
+            result["multi_agent_drafts"] = drafts
 
         raw_recs = decision.get("recommendations") or []
         # Top-K 多空辩论（TradingAgents 轻量版）
@@ -480,22 +519,80 @@ class DecisionPipeline:
             return_pct = None
             if entry_price and current_price:
                 return_pct = round((current_price - entry_price) / entry_price * 100, 2)
+
+            original = self.db.get_analysis_at_date(str(rec_date)[:10], str(code))
+            report_excerpt = self._load_report_excerpt(str(rec_date)[:10], str(code))
+            extra = item.get("extra_json")
+            if isinstance(extra, str) and extra.strip():
+                try:
+                    extra = json.loads(extra)
+                except Exception:
+                    extra = {"raw": extra[:500]}
+            elif not isinstance(extra, dict):
+                extra = {}
+
             enriched.append(
                 {
-                    **item,
+                    "id": item["id"],
+                    "run_date": rec_date,
+                    "stock_code": code,
+                    "action": item.get("action"),
+                    "confidence": item.get("confidence"),
+                    "target_price": item.get("target_price"),
+                    "stop_loss": item.get("stop_loss"),
+                    "position_pct": item.get("position_pct"),
+                    "rationale": item.get("rationale"),
                     "entry_price": entry_price,
                     "current_price": current_price,
                     "return_pct": return_pct,
+                    "original_context": {
+                        "db_analysis": original,
+                        "recommendation_extra": {
+                            "evidence_chain": extra.get("evidence_chain"),
+                            "key_risk": extra.get("key_risk"),
+                            "invalidation": extra.get("invalidation"),
+                            "time_horizon": extra.get("time_horizon"),
+                            "factor_scorecard": extra.get("factor_scorecard"),
+                        },
+                        "report_excerpt": report_excerpt,
+                    },
                 }
             )
+
+        existing_trend = self.db.get_trend_report()
+        if existing_trend:
+            existing_trend.pop("_meta", None)
+
+        from money_more.analysis.review_history import (
+            load_db_market_history,
+            load_historical_reports_corpus,
+        )
+
+        lookback = int(self.config.review_lookback_days)
+        historical_reports = load_historical_reports_corpus(
+            self.config.resolve(self.config.paths.reports),
+            as_of=run_date,
+            lookback_days=lookback,
+            max_reports=24,
+        )
+        historical_reports["db_market_spine"] = load_db_market_history(
+            self.db, lookback_days=lookback, limit=30
+        )
 
         review_payload = self.llm.analyze_json(
             REVIEW_SYSTEM,
             {
                 "date": run_date.isoformat(),
                 "pending_recommendations": enriched,
-                "past_lessons": self.db.get_active_lessons(),
-                "prior_context": self.db.get_prior_context(limit=5),
+                "past_lessons": self.db.get_active_lessons(limit=30),
+                "prior_context": self.db.get_prior_context(limit=min(20, max(5, lookback // 7))),
+                "historical_reports": historical_reports,
+                "trend_report_summary": self._trend_summary_for_llm(existing_trend),
+                "instruction": (
+                    "1) 用每条建议的 original_context 对照当时 thesis；"
+                    "2) 用 historical_reports（近几个月报告/digest 压缩摘要）总结跨期经验与反复出现的误判；"
+                    "3) 结合 trend_report_summary；不要只根据 return_pct 下结论。"
+                ),
             },
             required_keys=["reviews"],
         )
@@ -570,6 +667,47 @@ class DecisionPipeline:
                 continue
             self.db.insert_lesson_if_new(category=category, content=text, lookback_days=7)
 
+    def _load_report_excerpt(self, run_date: str, stock_code: str, max_chars: int = 1800) -> dict[str, Any]:
+        """从 reports/YYYY-MM-DD.md 抽取与该股相关的段落，供复盘对照。"""
+        from pathlib import Path
+
+        code = normalize_code(stock_code)
+        reports_dir = self.config.resolve(self.config.paths.reports)
+        path = Path(reports_dir) / f"{run_date}.md"
+        out: dict[str, Any] = {"path": str(path), "exists": path.exists()}
+        if not path.exists():
+            return out
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            out["error"] = str(exc)
+            return out
+
+        # 头部：数据质量 + 情报综述前几行
+        head_lines = text.splitlines()[:40]
+        head = "\n".join(head_lines)[:800]
+
+        # 含股票代码的段落
+        chunks: list[str] = []
+        buf: list[str] = []
+        for line in text.splitlines():
+            if line.startswith("## ") or line.startswith("### "):
+                block = "\n".join(buf).strip()
+                if block and code in block:
+                    chunks.append(block[:600])
+                buf = [line]
+            else:
+                buf.append(line)
+        block = "\n".join(buf).strip()
+        if block and code in block:
+            chunks.append(block[:600])
+
+        body = "\n\n---\n\n".join(chunks[:3])
+        combined = (head + "\n\n" + body).strip()
+        out["excerpt"] = combined[:max_chars]
+        out["matched_sections"] = len(chunks)
+        return out
+
     def _mark_paper_trades(self, run_date: date) -> None:
         open_trades = self.db.get_open_paper_trades()
         for trade in open_trades:
@@ -626,17 +764,32 @@ class DecisionPipeline:
         err_text = " ".join(errors).lower()
         tushare_bad = any(
             x in err_text
-            for x in ("token", "权限", "积分", "tushare 未配置", "tushare_unavailable", "认证")
+            for x in (
+                "token",
+                "权限",
+                "积分",
+                "tushare 未配置",
+                "tushare_unavailable",
+                "认证",
+                "频率超限",
+                "鉴权",
+            )
         )
+        has_macro_news = bool(macro_intel.get("tushare_macro_news"))
         checks = {
             "policy_news": bool(macro_intel.get("policy_news")),
             "global_news": bool(macro_intel.get("global_news") or macro_intel.get("global_news_sina")),
             "rss_or_flash": bool(macro_intel.get("rss_telegraph") or macro_intel.get("rss_important")),
             "margin_trend": bool(macro_intel.get("margin_trend")),
-            "northbound": bool(macro_intel.get("northbound_summary")),
+            "northbound": bool(macro_intel.get("northbound_summary"))
+            and (macro_intel.get("northbound_freshness") or {}).get("stale") is not True,
             "sentiment_overview": bool((macro_intel.get("sentiment_overview") or {}).get("aggregate")),
-            "economic_calendar": bool(macro_intel.get("economic_calendar")),
-            "tushare_macro": bool(macro_intel.get("tushare_macro_news")) and not tushare_bad,
+            "economic_calendar": bool(
+                macro_intel.get("economic_calendar")
+                or macro_intel.get("economic_calendar_alt")
+                or macro_intel.get("economic_calendar_synthetic")
+            ),
+            "tushare_macro": has_macro_news,
             "sector_money_flow": bool(macro_intel.get("sector_money_flow")),
             "macro_hard": bool(macro_intel.get("macro_hard")),
         }
@@ -644,7 +797,8 @@ class DecisionPipeline:
         if "policy_news_stale_or_empty" in errors:
             missing.append("policy_news_fresh")
         score = round(sum(1 for ok in checks.values() if ok) / max(len(checks), 1), 2)
-        if tushare_bad:
+        # Tushare 不可用且替代源也无法补宏观新闻时才扣分
+        if tushare_bad and not has_macro_news:
             score = round(max(0.0, score - 0.15), 2)
             missing.append("tushare_available")
         degraded = score < 0.6
@@ -655,6 +809,7 @@ class DecisionPipeline:
             "error_count": len(errors),
             "errors_sample": errors[:8],
             "degraded": degraded,
+            "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
             "note": "DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓" if degraded else "数据完整度尚可",
         }
 

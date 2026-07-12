@@ -34,6 +34,20 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- 缺失项: {', '.join(dq['missing'])}")
         lines.append("")
 
+    ma = result.get("multi_agent") or {}
+    if ma.get("enabled"):
+        meta = ma.get("meta") or {}
+        if isinstance(meta, dict):
+            lines.append(
+                f"**多Agent决策**: {meta.get('primary', '?')} + {meta.get('secondary', '?')} "
+                f"→ 综合 {meta.get('synthesizer', '?')}"
+            )
+        else:
+            lines.append(f"**多Agent决策**: {meta}")
+        if ma.get("draft_agents"):
+            lines.append(f"- 独立草案: {', '.join(ma['draft_agents'])}")
+        lines.append("")
+
     digest = (result.get("intelligence") or {}).get("digest") or {}
     macro_intel = (result.get("intelligence") or {}).get("macro_raw") or {}
     sentiment_overview = macro_intel.get("sentiment_overview") or {}

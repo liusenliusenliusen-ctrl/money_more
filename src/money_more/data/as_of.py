@@ -46,6 +46,26 @@ def recent_weekdays(as_of: date, count: int) -> list[str]:
     return dates[: count + 2]
 
 
+def parse_record_date(
+    item: dict,
+    date_keys: tuple[str, ...] = (
+        "date",
+        "日期",
+        "发布时间",
+        "pub_time",
+        "datetime",
+        "time",
+        "ctime",
+        "公告日期",
+        "发布日期",
+        "交易日",
+        "trade_date",
+    ),
+) -> date | None:
+    """从记录中解析日期，供新鲜度/日历判断复用。"""
+    return _extract_date(item, date_keys)
+
+
 def filter_records_by_date(
     records: list[dict],
     as_of: date,
