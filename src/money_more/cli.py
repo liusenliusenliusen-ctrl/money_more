@@ -70,7 +70,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             if mail.get("skipped"):
                 console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
             elif mail.get("ok"):
-                console.print(Panel(f"分析报告已发邮件 → {mail.get('to')}", style="green"))
+                msg = f"分析报告已发邮件 → {mail.get('to')}"
+                if mail.get("guide_sent_to"):
+                    msg += f"\n首次附带解读文档 → {mail.get('guide_sent_to')}"
+                console.print(Panel(msg, style="green"))
             else:
                 console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
 
@@ -128,20 +131,28 @@ def cmd_optimize(args: argparse.Namespace) -> int:
 
 
 def cmd_email_test(args: argparse.Namespace) -> int:
-    from money_more.notify import email_ready, send_report_email
+    from money_more.notify import email_ready
+    from money_more.notify.emailer import _send_with_optional_guide
 
     config = load_config(args.config)
     ok, reason = email_ready(config.email)
     if not ok:
         console.print(Panel(reason, title="邮件未就绪", style="red"))
         return 1
-    mail = send_report_email(
+    mail = _send_with_optional_guide(
         config,
         subject="[money_more] 邮件测试",
-        body="这是一封 money_more 测试邮件。若收到说明 SMTP 配置正确。",
+        body=(
+            "这是一封 money_more 测试邮件。若收到说明 SMTP 配置正确。\n"
+            "若这是该收件人首次收到本系统邮件，将附带《如何解读报告》。"
+        ),
+        attachments=[],
+        kind="test",
     )
     if mail.get("ok"):
-        console.print(Panel(f"已发送 → {mail.get('to')}", style="green"))
+        guide_to = mail.get("guide_sent_to") or []
+        extra = f"\n首次附带解读文档 → {guide_to}" if guide_to else "\n（收件人均已收过解读文档，未再附送）"
+        console.print(Panel(f"已发送 → {mail.get('to')}{extra}", style="green"))
         return 0
     console.print(Panel(str(mail.get("error") or mail), title="发送失败", style="red"))
     return 2

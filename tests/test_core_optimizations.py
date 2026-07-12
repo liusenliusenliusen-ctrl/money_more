@@ -827,3 +827,54 @@ def test_decision_digest_includes_dimensions():
     assert d["market_phase_label"] == "震荡偏强"
     assert d["sectors"][0]["sector"] == "新能源"
     assert d["headline_themes"] == ["半导体"]
+
+
+def test_parse_and_merge_email_addrs():
+    from money_more.config import EmailConfig, _merge_email_addrs, parse_email_addrs
+
+    assert parse_email_addrs("a@qq.com, b@example.com") == ["a@qq.com", "b@example.com"]
+    assert parse_email_addrs("a@qq.com;b@example.com") == ["a@qq.com", "b@example.com"]
+    assert parse_email_addrs(["a@qq.com", "b@example.com, c@x.com"]) == [
+        "a@qq.com",
+        "b@example.com",
+        "c@x.com",
+    ]
+    merged = _merge_email_addrs("a@qq.com, b@x.com", ["B@x.com", "c@y.com"])
+    assert merged == ["a@qq.com", "b@x.com", "c@y.com"]
+    # 默认不发优化邮件
+    assert EmailConfig().send_optimize is False
+    assert EmailConfig().send_analysis is True
+
+
+def test_email_ledger_guide_once(tmp_path: Path):
+    from money_more.notify.email_ledger import (
+        has_received_guide,
+        record_send,
+        split_by_guide_status,
+        load_ledger,
+    )
+
+    root = tmp_path
+    first, returning = split_by_guide_status(root, ["A@qq.com", "b@x.com"])
+    assert first == ["A@qq.com", "b@x.com"]
+    assert returning == []
+
+    record_send(
+        root,
+        to_addrs=["A@qq.com"],
+        subject="test",
+        ok=True,
+        kind="analysis",
+        guide_attached=True,
+    )
+    assert has_received_guide(root, "a@qq.com")
+    assert not has_received_guide(root, "b@x.com")
+
+    first2, returning2 = split_by_guide_status(root, ["a@qq.com", "b@x.com"])
+    assert first2 == ["b@x.com"]
+    assert returning2 == ["a@qq.com"]
+
+    ledger = load_ledger(root)
+    assert ledger["recipients"]["a@qq.com"]["send_count"] == 1
+    assert ledger["recipients"]["a@qq.com"]["guide_sent_at"]
+    assert len(ledger["sends"]) == 1

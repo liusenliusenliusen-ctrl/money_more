@@ -62,7 +62,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `EMAIL_ENABLED` | `true` 开启邮件 |
 | `SMTP_HOST` / `SMTP_PORT` | 如 `smtp.qq.com` / `465` |
 | `SMTP_USER` / `SMTP_PASSWORD` | 邮箱账号 + **授权码**（不是登录密码） |
-| `EMAIL_FROM` / `EMAIL_TO` | 发件人 / 收件人（可相同） |
+| `EMAIL_FROM` / `EMAIL_TO` | 发件人 / 收件人；`EMAIL_TO` 可多个（逗号或分号分隔） |
 
 `config.yaml`、`.env`、本地 `data/` / `reports/` / `logs/` **不会**进 Git。
 
@@ -77,7 +77,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
 | `optimize.skip_if_dirty` | 有未提交代码改动则跳过自优化 |
 | `optimize.respect_human_lock` | 存在 `logs/OPTIMIZE_PAUSE` 则跳过 |
-| `email.send_analysis` / `send_optimize` | 是否分别发两类报告邮件 |
+| `email.send_analysis` / `send_optimize` | 默认只发分析报告；自优化邮件默认关闭 |
 | `agents.decision_multi` | 决策环节双分析 + 综合（默认 true） |
 | `agents.secondary_provider` | `cursor` / `claude` / `none` |
 | `agents.synthesizer_provider` | 默认 `deepseek`（推荐） |
@@ -103,17 +103,20 @@ agents:
 
 ## 邮件通知
 
-报告生成后自动发信：正文为 Markdown 预览，完整文件作附件。
+默认**只发送分析报告**（`email.send_optimize: false`）。自优化仍会跑并写 `reports/optimize-*.md`，但不发邮件，除非在 `config.yaml` 打开 `send_optimize`。
+
+正文为 Markdown 预览，完整文件作附件。`EMAIL_TO` 支持多个收件人。
+
+**首次发送**：每个收件人第一次收到系统邮件时，会额外附带 `docs/how-to-read-report.md`（如何解读报告）；之后同一邮箱不再附送。发送记录在 `logs/email_ledger.json`。
 
 ```bash
-# QQ 邮箱示例（密码填授权码）
 EMAIL_ENABLED=true
 SMTP_HOST=smtp.qq.com
 SMTP_PORT=465
 SMTP_USER=你的QQ邮箱
 SMTP_PASSWORD=授权码
 EMAIL_FROM=你的QQ邮箱
-EMAIL_TO=你的收件邮箱
+EMAIL_TO=a@qq.com, b@example.com
 
 money-more email-test
 ```

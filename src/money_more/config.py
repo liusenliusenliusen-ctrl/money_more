@@ -103,9 +103,9 @@ class EmailConfig:
     smtp_password: str = ""
     from_addr: str = ""
     to_addrs: list[str] = field(default_factory=list)
-    # 分析报告 / 自优化报告是否分别发送
+    # 分析报告 / 自优化报告是否分别发送（默认只发分析）
     send_analysis: bool = True
-    send_optimize: bool = True
+    send_optimize: bool = False
 
 
 @dataclass
@@ -166,6 +166,37 @@ def _normalize_code(code: str) -> str:
     return digits[-6:].zfill(6) if digits else code
 
 
+def parse_email_addrs(value: Any) -> list[str]:
+    """解析收件人：支持 str（逗号/分号/空白分隔）或 list。"""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        out: list[str] = []
+        for item in value:
+            out.extend(parse_email_addrs(item))
+        return out
+    text = str(value).strip()
+    if not text:
+        return []
+    for sep in (";", "\n", "\t", " "):
+        text = text.replace(sep, ",")
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
+def _merge_email_addrs(*sources: Any) -> list[str]:
+    """按出现顺序合并去重（大小写不敏感）。"""
+    out: list[str] = []
+    seen: set[str] = set()
+    for source in sources:
+        for addr in parse_email_addrs(source):
+            key = addr.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(addr)
+    return out
+
+
 def load_config(config_path: str | Path | None = None) -> AppConfig:
     load_dotenv()
     root = Path.cwd()
@@ -201,13 +232,11 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         for h in (raw.get("holdings") or [])
     ]
 
-    # 收件人：EMAIL_TO 可逗号分隔；也可用 email.to 列表
-    to_env = (os.getenv("EMAIL_TO") or "").strip()
-    to_from_env = [x.strip() for x in to_env.replace(";", ",").split(",") if x.strip()]
-    to_from_yaml = email_raw.get("to") or email_raw.get("to_addrs") or []
-    if isinstance(to_from_yaml, str):
-        to_from_yaml = [x.strip() for x in to_from_yaml.replace(";", ",").split(",") if x.strip()]
-    to_addrs = to_from_env or [str(x).strip() for x in to_from_yaml if str(x).strip()]
+    # 收件人：EMAIL_TO 支持多个（逗号/分号/空白分隔）；也可在 email.to 写列表；两者合并去重
+    to_addrs = _merge_email_addrs(
+        os.getenv("EMAIL_TO") or "",
+        email_raw.get("to") or email_raw.get("to_addrs") or [],
+    )
 
     smtp_port = int(os.getenv("SMTP_PORT") or email_raw.get("smtp_port") or 465)
     use_ssl_raw = email_raw.get("use_ssl")
@@ -282,7 +311,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             from_addr=str(os.getenv("EMAIL_FROM") or email_raw.get("from") or email_raw.get("from_addr") or ""),
             to_addrs=to_addrs,
             send_analysis=bool(email_raw.get("send_analysis", True)),
-            send_optimize=bool(email_raw.get("send_optimize", True)),
+            send_optimize=bool(email_raw.get("send_optimize", False)),
         ),
         agents=AgentsConfig(
             enabled=bool(agents_raw.get("enabled", True)),

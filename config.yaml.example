@@ -55,11 +55,15 @@ optimize:
   skip_if_dirty: true          # 有未提交代码改动则跳过，防冲突
   respect_human_lock: true     # 存在 logs/OPTIMIZE_PAUSE 则跳过
 
-# 邮件通知（密钥放 .env；这里只开关）
+# 邮件通知（密钥放 .env；这里只开关。默认只发分析报告）
 email:
   enabled: false
   send_analysis: true
-  send_optimize: true
+  send_optimize: false
+  # 收件人也可写列表（与 EMAIL_TO 合并去重）
+  # to:
+  #   - a@qq.com
+  #   - b@example.com
   # smtp_host / to 也可写在这里，但推荐用 .env
 
 # 多 Agent 决策（主分析 + 副分析 + 综合）
