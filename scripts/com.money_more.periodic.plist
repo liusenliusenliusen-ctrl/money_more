@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent：每天 01:00 跑周期任务。
+  安装：./scripts/install_launchd.sh
+  注意：项目在 ~/Documents 下时，需给 /bin/bash（或本脚本调用的解释器）完整磁盘访问权限。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.money_more.periodic</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/liusen/Documents/money_more</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/liusen/Documents/money_more/scripts/periodic_run.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>1</key>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/liusen/Documents/money_more/logs/cron.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/liusen/Documents/money_more/logs/cron.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

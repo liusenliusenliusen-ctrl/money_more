@@ -99,17 +99,45 @@ QQ 授权码获取（新版界面）：网页版 mail.qq.com → 右上角头像
 
 ## 定时运行
 
-cron **每天** 01:00 触发；脚本内按 `interval_days=5` 门禁，未到间隔则跳过（几乎不费分析/Cursor token）。
+每天 **01:00** 触发；脚本内按 `interval_days=5` 门禁，未到间隔则跳过。
+
+### macOS 必读（`Operation not permitted`）
+
+项目在 `~/Documents` 下时，系统会拦截 **cron / 后台 bash** 访问该目录，于是：
+
+- `logs/cron.log` 出现：`./scripts/periodic_run.sh: Operation not permitted`
+- **不会**生成报告，也 **不会**发邮件
+
+处理步骤：
+
+1. **完整磁盘访问权限**（必需）  
+   系统设置 → 隐私与安全性 → **完整磁盘访问权限** → `+` → `⌘⇧G` → 添加并勾选：
+   - `/bin/bash`
+   - `/usr/sbin/cron`（若继续用 crontab）
+2. **改用 LaunchAgent**（推荐）  
+   ```bash
+   chmod +x scripts/install_launchd.sh
+   ./scripts/install_launchd.sh
+   ```
+
+也可把仓库挪出 `Documents`（例如 `~/code/money_more`），减少拦截。
+
+### 安装定时任务
 
 ```bash
-chmod +x scripts/periodic_run.sh scripts/install_cron.sh
-./scripts/install_cron.sh
+# 推荐（macOS）
+./scripts/install_launchd.sh
 
-# 或手动 crontab -e：
-# 0 1 * * * cd /path/to/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
+# 或 crontab
+./scripts/install_cron.sh
+# 0 1 * * * /bin/bash /path/to/money_more/scripts/periodic_run.sh >> .../logs/cron.log 2>&1
 ```
 
-清空 `logs/`（含 `last_full_run.txt`）后，下一次 01:00 会当作首次完整运行。
+清空 `logs/last_full_run.txt` 后，下一次 01:00 会当作首次完整运行。手动补跑：
+
+```bash
+./scripts/periodic_run.sh --force
+```
 
 ## 人工改动 vs 自优化
 
