@@ -189,51 +189,64 @@ DECISION_SYSTEM = f"""你是 A 股 **中长线** 投资组合经理（PM），�
   "contradictions_handled": ["如何处理矛盾"]
 }}"""
 
-REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练，从结果中提炼可复用经验。
+REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练。目标是对「过去各维度的分析与预测」做事后审计，并提炼可复用经验。
 
 {ANALYSIS_FRAMEWORK}
 
 ## 输入说明（必须用）
-- **pending_recommendations**：待复盘荐股，含收益与 **original_context**（建议发出当日的市场/个股分析/情报摘要，以及报告摘录）
-- **historical_reports**：近几个月（默认约 `review_lookback_days`，如 120 天）的历史报告压缩摘要 + decision digests + DB 市场相位骨架；用于提炼跨期经验，不只看单日
-- **trend_report_summary**：滚动趋势（若有）
-- **past_lessons / prior_context**：经验库与近期市场相位
+- **pending_recommendations**：待复盘荐股（可为空），含收益与 **original_context**
+- **prior_dimension_forecasts**：已满观察期的历史「维度预测」快照（市场阶段/风格、板块优先级、主叙事/风险旗标、当时建议）。这是复盘市场/板块/叙事的主材料
+- **current_view**：本轮分析给出的「当前现实」压缩版，用来对照历史预测是否仍成立或已被证伪
+- **historical_reports**：近几个月报告/digest 压缩语料
+- **trend_report_summary / past_lessons / prior_context**：趋势与经验库
 
-复盘时必须：
-1. 对照「当时报告/分析写了什么 thesis / 风险 / 失效条件」与「后来发生了什么」
-2. 从 **historical_reports** 中归纳重复出现的成功/失败模式（风格切换、叙事误导、仓位纪律等）
-3. 不要只根据涨跌猜原因
+## 复盘任务（按维度，缺材料可标 pending）
+1. **市场阶段/风格**：过去预测的 phase/style/risk/主驱动，对照 current_view 与后续演变，判 correct/partial/wrong/pending
+2. **板块优先级**：哪些 high/左侧/回避追高判断对了或错了
+3. **主叙事/舆情**：主题与风险旗标是否被后来事实支持，有无把短期噪声当中期趋势
+4. **个股建议**：对照 original_context 的 thesis/失效条件与收益（观察期不足标 pending）
+5. **维度一致性**：当时「板块→个股→动作」是否自洽；若板块看多却空仓/观察，事后看是否合理
 
-## 复盘维度
-- **宏观/产业误判**
-- **个股基本面/估值误判**
-- **叙事误导**（把短期情绪当中期趋势）
-- **执行问题**（仓位/止损纪律）
-- **噪声**：持有期内正常波动，不应记为逻辑错误
-- **报告一致性**：当时报告结论是否与建议一致、失效条件是否本应触发
+原则：
+- 正确则说明「什么信号有效」；不正确则归因（macro|sector|stock|sentiment|execution|noise|linkage）
+- 不要只根据涨跌猜原因；优先引用 prior_dimension_forecasts 与 original_context
+- 区分逻辑错误与正常波动；观察期不足不要强行打分
 
 ## 输出 JSON
 {{
+  "dimension_reviews": [
+    {{
+      "dimension": "market|sector|narrative|linkage",
+      "subject": "如 range→成长 / 新能源 / 地缘叙事 / 板块到动作",
+      "as_of_forecast": "YYYY-MM-DD 或日期范围",
+      "outcome": "correct|partial|wrong|pending",
+      "diagnosis_category": "macro|sector|stock|sentiment|execution|noise|linkage",
+      "diagnosis": "对照当时预测与后来事实；说明对/错原因",
+      "what_worked": ["有效信号"],
+      "what_failed": ["失效判断"],
+      "lesson": "一条可执行中长线教训"
+    }}
+  ],
   "reviews": [
     {{
       "recommendation_id": 1,
       "stock_code": "代码",
       "outcome": "correct|partial|wrong|pending",
       "return_pct": null,
-      "diagnosis_category": "macro|sector|stock|sentiment|execution|noise",
-      "diagnosis": "详细原因；对照 original_context 中的 thesis/风险；若观察期不足标 pending",
-      "what_worked": ["做对的判断（引用当时报告要点）"],
-      "what_failed": ["做错的判断（引用当时报告要点）"],
-      "lesson": "一条可执行的中长线教训",
+      "diagnosis_category": "macro|sector|stock|sentiment|execution|noise|linkage",
+      "diagnosis": "详细原因；对照 original_context",
+      "what_worked": ["..."],
+      "what_failed": ["..."],
+      "lesson": "一条可执行教训",
       "prompt_adjustment": "对未来周度分析的改进建议"
     }}
   ],
-  "meta_lessons": ["跨案例/跨月通用经验，最多3条（应引用 historical_reports 中的模式）"],
-  "sentiment_lessons": ["与叙事/情绪相关的经验"],
-  "history_patterns": ["近几个月报告中反复出现的模式（可选，最多3条）"]
+  "meta_lessons": ["跨维度通用经验，最多3条"],
+  "sentiment_lessons": ["叙事/情绪相关经验，最多3条"],
+  "history_patterns": ["近几个月反复出现的模式，最多3条"]
 }}
 
-原则：区分逻辑错误与短期噪声；观察期不足不要强行打分；优先用历史报告证据；跨期经验来自 historical_reports 而非臆测。"""
+若 pending_recommendations 为空，reviews 可为 []，但仍须尽量填写 dimension_reviews（至少市场或叙事 1 条；材料不足则 pending 并说明缺什么）。"""
 
 INTELLIGENCE_DIGEST_SYSTEM = f"""你是财经情报分析师，为 **中长线周度研究** 去噪提炼情报（不是投资建议）。
 

@@ -193,7 +193,23 @@ def cmd_review(args: argparse.Namespace) -> int:
     result = pipeline.run_review(run_id, run_date)
     db.finish_run(run_id, "review_only")
 
-    table = Table(title="复盘结果")
+    dims = result.get("dimension_reviews") or []
+    if dims:
+        dtable = Table(title="维度复盘")
+        dtable.add_column("维度")
+        dtable.add_column("对象")
+        dtable.add_column("结果")
+        dtable.add_column("诊断")
+        for dr in dims:
+            dtable.add_row(
+                str(dr.get("dimension")),
+                str(dr.get("subject") or "")[:24],
+                str(dr.get("outcome")),
+                str(dr.get("diagnosis") or "")[:40],
+            )
+        console.print(dtable)
+
+    table = Table(title="个股复盘")
     table.add_column("代码")
     table.add_column("结果")
     table.add_column("收益%")

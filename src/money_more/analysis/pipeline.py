@@ -472,8 +472,19 @@ class DecisionPipeline:
             "holdings_enriched": holdings_enriched,
         }
 
-        review_result = self.run_review(run_id, run_date)
+        review_result = self.run_review(
+            run_id,
+            run_date,
+            current_view={
+                "market": market_analysis,
+                "sectors": sector_analyses,
+                "intelligence_digest": intel_digest,
+                "recommendations": recommendations,
+            },
+        )
         result["reviews"] = review_result.get("reviews", [])
+        result["dimension_reviews"] = review_result.get("dimension_reviews", [])
+        result["history_patterns"] = review_result.get("history_patterns", [])
         result["meta_lessons"] = review_result.get("meta_lessons", [])
         result["sentiment_lessons"] = review_result.get("sentiment_lessons", [])
 
@@ -489,7 +500,12 @@ class DecisionPipeline:
         result["decision_digest"] = build_decision_digest(result)
         return result
 
-    def run_review(self, run_id: int, run_date: date) -> dict[str, Any]:
+    def run_review(
+        self,
+        run_id: int,
+        run_date: date,
+        current_view: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         pending = self.db.get_recommendations_for_review(
             before_date=run_date,
             lookback_days=self.config.review_lookback_days,
@@ -507,8 +523,32 @@ class DecisionPipeline:
             filtered.append(item)
         pending = filtered
 
-        if not pending:
-            return {"reviews": [], "meta_lessons": [], "sentiment_lessons": []}
+        lookback = int(self.config.review_lookback_days)
+        from money_more.analysis.review_history import (
+            build_prior_dimension_forecasts,
+            compact_current_view,
+            load_db_market_history,
+            load_historical_reports_corpus,
+        )
+
+        reports_dir = self.config.resolve(self.config.paths.reports)
+        prior_dims = build_prior_dimension_forecasts(
+            reports_dir,
+            as_of=run_date,
+            lookback_days=lookback,
+            min_age_days=min_hold,
+            max_items=8,
+        )
+        current_compact = compact_current_view(current_view)
+
+        if not pending and not prior_dims:
+            return {
+                "reviews": [],
+                "dimension_reviews": [],
+                "history_patterns": [],
+                "meta_lessons": [],
+                "sentiment_lessons": [],
+            }
 
         enriched: list[dict[str, Any]] = []
         for item in pending:
@@ -563,14 +603,8 @@ class DecisionPipeline:
         if existing_trend:
             existing_trend.pop("_meta", None)
 
-        from money_more.analysis.review_history import (
-            load_db_market_history,
-            load_historical_reports_corpus,
-        )
-
-        lookback = int(self.config.review_lookback_days)
         historical_reports = load_historical_reports_corpus(
-            self.config.resolve(self.config.paths.reports),
+            reports_dir,
             as_of=run_date,
             lookback_days=lookback,
             max_reports=24,
@@ -584,17 +618,19 @@ class DecisionPipeline:
             {
                 "date": run_date.isoformat(),
                 "pending_recommendations": enriched,
+                "prior_dimension_forecasts": prior_dims,
+                "current_view": current_compact,
                 "past_lessons": self.db.get_active_lessons(limit=30),
                 "prior_context": self.db.get_prior_context(limit=min(20, max(5, lookback // 7))),
                 "historical_reports": historical_reports,
                 "trend_report_summary": self._trend_summary_for_llm(existing_trend),
                 "instruction": (
-                    "1) 用每条建议的 original_context 对照当时 thesis；"
-                    "2) 用 historical_reports（近几个月报告/digest 压缩摘要）总结跨期经验与反复出现的误判；"
-                    "3) 结合 trend_report_summary；不要只根据 return_pct 下结论。"
+                    "1) 用 prior_dimension_forecasts 对照 current_view，复盘市场阶段/板块优先级/主叙事/维度联动；"
+                    "2) 若有 pending_recommendations，用 original_context 对照个股 thesis；"
+                    "3) 正确则写清有效信号，错误则归因；不要只根据 return_pct 下结论。"
                 ),
             },
-            required_keys=["reviews"],
+            required_keys=["dimension_reviews"],
         )
 
         saved_reviews: list[dict[str, Any]] = []
@@ -649,11 +685,25 @@ class DecisionPipeline:
                 }
             )
 
+        dimension_reviews = [
+            r for r in (review_payload.get("dimension_reviews") or []) if isinstance(r, dict)
+        ]
+        # 维度教训入库（按 dimension 分类）
+        for dr in dimension_reviews:
+            lesson = str(dr.get("lesson") or "").strip()
+            if not lesson:
+                continue
+            dim = str(dr.get("dimension") or "meta").strip() or "meta"
+            self.db.insert_lesson_if_new(category=f"dim:{dim}"[:32], content=lesson, lookback_days=14)
+
         self._insert_unique_lessons(review_payload.get("meta_lessons") or [], "meta")
         self._insert_unique_lessons(review_payload.get("sentiment_lessons") or [], "sentiment")
+        self._insert_unique_lessons(review_payload.get("history_patterns") or [], "pattern")
 
         return {
             "reviews": saved_reviews,
+            "dimension_reviews": dimension_reviews,
+            "history_patterns": review_payload.get("history_patterns") or [],
             "meta_lessons": review_payload.get("meta_lessons") or [],
             "sentiment_lessons": review_payload.get("sentiment_lessons") or [],
         }

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
-import json
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+from money_more.analysis.sector_map import infer_sector
 from money_more.utils.json_util import dumps_json
+
+_ACTION_LABEL = {
+    "buy": "买入",
+    "add": "加仓",
+    "sell": "卖出",
+    "hold": "持有",
+    "watch": "观察",
+}
 
 
 def _fmt_sentiment(sent: dict[str, Any] | None) -> str:
@@ -16,6 +24,252 @@ def _fmt_sentiment(sent: dict[str, Any] | None) -> str:
         if sent.get(key):
             parts.append(f"{key}={sent[key]}")
     return " | ".join(parts)
+
+
+def _one_line(text: Any, limit: int = 72) -> str:
+    s = " ".join(str(text or "").split())
+    if len(s) <= limit:
+        return s
+    return s[: limit - 1] + "…"
+
+
+def _stock_name_map(result: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for st in result.get("stocks") or []:
+        a = st.get("analysis") or {}
+        code = str(a.get("code") or st.get("code") or "")
+        name = str(a.get("name") or "")
+        if code:
+            out[code] = name
+    return out
+
+
+def _recs_by_sector(result: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    by_sec: dict[str, list[dict[str, Any]]] = {}
+    for rec in result.get("recommendations") or []:
+        code = str(rec.get("code") or "")
+        tag = str(rec.get("sector_tag") or "") or (infer_sector(code) or "")
+        if not tag:
+            continue
+        by_sec.setdefault(tag, []).append(rec)
+    return by_sec
+
+
+def _sector_stance(analysis: dict[str, Any], related: list[dict[str, Any]]) -> str:
+    """由板块结论 + 对应个股动作派生一句态度（非再调 LLM）。"""
+    priority = str(analysis.get("priority") or "medium")
+    valuation = str(analysis.get("valuation") or "")
+    prosperity = str(analysis.get("prosperity") or "")
+    crowding = str((analysis.get("sentiment") or {}).get("crowding_risk") or "")
+    actions = {str(r.get("action") or "watch") for r in related}
+
+    if "sell" in actions:
+        return "组合侧规避/减仓"
+    if crowding == "high" or valuation == "expensive":
+        return "逻辑可跟，回避追高（等回调）"
+    if actions & {"buy", "add"}:
+        return "可配置（见下方动作）"
+    if "hold" in actions:
+        return "已有敞口则持有观察"
+    if "watch" in actions:
+        return "赛道可看，个股等确认再动"
+    if priority == "high" and valuation == "cheap" and prosperity == "up":
+        return "左侧可关注，等资金/催化剂"
+    if priority == "high":
+        return "高优先级跟踪，不宜盲目加仓"
+    if prosperity == "down":
+        return "景气偏弱，反弹宜谨慎"
+    return "中性跟踪"
+
+
+def render_conclusion_card(result: dict[str, Any]) -> list[str]:
+    """结论卡：从已有结果派生，便于外行速读验证。"""
+    lines: list[str] = []
+    market = (result.get("market") or {}).get("analysis") or {}
+    digest = (result.get("intelligence") or {}).get("digest") or {}
+    summary = result.get("decision_summary") or {}
+    names = _stock_name_map(result)
+    by_sec = _recs_by_sector(result)
+
+    phase = market.get("phase_label") or market.get("phase") or "-"
+    style = market.get("style_label") or market.get("style") or "-"
+    risk = market.get("risk_level") or "-"
+    conf = market.get("confidence", "-")
+    driver = market.get("primary_driver") or "-"
+    alloc = market.get("sector_allocation_hint") or "-"
+
+    lines.append("## 结论卡（速读）")
+    lines.append("")
+    lines.append("_只看结论时读本节即可；下方 §0–§6 是完整论证。后果自负，仅供参考。_")
+    lines.append("")
+
+    lines.append("### 分析：现在怎么看")
+    lines.append("")
+    lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
+    if driver and driver != "-":
+        lines.append(f"- **主驱动**: {_one_line(driver, 100)}")
+    lines.append(f"- **配置倾向**: {alloc}")
+    facts: list[str] = []
+    for theme in (digest.get("headline_themes") or [])[:2]:
+        facts.append(_one_line(theme, 80))
+    for c in (market.get("contradictions") or [])[:2]:
+        facts.append(f"矛盾：{_one_line(c, 70)}")
+    for flag in (digest.get("risk_flags") or [])[:1]:
+        facts.append(f"风险：{_one_line(flag, 70)}")
+    if not facts and market.get("summary"):
+        facts.append(_one_line(market["summary"], 100))
+    for f in facts[:4]:
+        lines.append(f"- {f}")
+    lines.append("")
+
+    lines.append("### 预测：接下来怎么预期")
+    lines.append("")
+    outlook = summary.get("market_context") or market.get("summary") or ""
+    if outlook:
+        lines.append(f"- **主情景**: {_one_line(outlook, 140)}")
+    inv = list(market.get("invalidation") or [])[:2]
+    if not inv:
+        # 从建议里抽失效条件
+        for rec in (result.get("recommendations") or [])[:2]:
+            if rec.get("invalidation"):
+                inv.append(str(rec["invalidation"]))
+            if len(inv) >= 2:
+                break
+    risks = list(digest.get("risk_flags") or [])[:2]
+    if risks:
+        lines.append(f"- **主要风险**: {'；'.join(_one_line(r, 60) for r in risks)}")
+    if inv:
+        lines.append(f"- **若出现则认错**: {'；'.join(_one_line(x, 60) for x in inv)}")
+    vs = market.get("vs_prior") or {}
+    if vs.get("continuity"):
+        lines.append(
+            f"- **相对上周**: {vs.get('continuity')}"
+            + (f" — {_one_line('；'.join(vs.get('what_changed') or []), 80)}" if vs.get("what_changed") else "")
+        )
+    lines.append("")
+
+    lines.append("### 动作：怎么做")
+    lines.append("")
+    recs = result.get("recommendations") or []
+    if not recs:
+        lines.append("- （本轮无结构化建议）")
+    else:
+        for rec in recs:
+            code = str(rec.get("code") or "")
+            action = str(rec.get("action") or "watch")
+            label = _ACTION_LABEL.get(action, action)
+            name = names.get(code, "")
+            pos = rec.get("position_pct")
+            pos_s = f" · 仓位 {pos}%" if pos is not None else ""
+            conf_s = rec.get("confidence", "-")
+            why = _one_line(rec.get("rationale"), 64)
+            sector = rec.get("sector_tag") or infer_sector(code) or ""
+            sec_s = f" · 板块:{sector}" if sector else ""
+            lines.append(
+                f"- **{label}** {code}{(' ' + name) if name else ''} "
+                f"(置信度 {conf_s}{pos_s}{sec_s}) — {why}"
+            )
+    lines.append("")
+
+    lines.append("### 板块：赛道态度")
+    lines.append("")
+    sectors = result.get("sectors") or []
+    if not sectors:
+        lines.append("- （无板块筛选）")
+    else:
+        for sec in sectors:
+            a = sec.get("analysis") or {}
+            name = str(a.get("sector") or sec.get("sector") or "")
+            related = by_sec.get(name) or []
+            stance = _sector_stance(a, related)
+            pri = a.get("priority", "-")
+            bits = [
+                f"政策:{a.get('policy_wind', '-')}",
+                f"景气:{a.get('prosperity', '-')}",
+                f"估值:{a.get('valuation', '-')}",
+            ]
+            crowd = (a.get("sentiment") or {}).get("crowding_risk")
+            if crowd:
+                bits.append(f"拥挤:{crowd}")
+            link = ""
+            if related:
+                parts = []
+                for r in related:
+                    c = str(r.get("code") or "")
+                    parts.append(f"{c}{_ACTION_LABEL.get(str(r.get('action')), r.get('action'))}")
+                link = " → " + "、".join(parts)
+            lines.append(
+                f"- **{name}** [{pri}] {' · '.join(bits)} — **{stance}**{link}"
+            )
+    lines.append("")
+
+    lines.append("### 逻辑链：维度如何串起来")
+    lines.append("")
+    lines.append(
+        "_情报主题 → 市场阶段/风格 → 板块态度 → 个股研究 → 组合动作。"
+        "下面每条是本轮可核对的因果链（不是另起一套结论）。_"
+    )
+    lines.append("")
+    theme0 = ""
+    themes = (digest.get("headline_themes") or [])
+    if themes:
+        theme0 = _one_line(themes[0], 40)
+    elif digest.get("market_narratives"):
+        theme0 = _one_line(digest["market_narratives"][0], 40)
+    head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
+    lines.append(f"1. {head} → 配置倾向「{alloc}」")
+    # 每条有对应个股动作的板块
+    chain_i = 2
+    for sec in sectors:
+        a = sec.get("analysis") or {}
+        name = str(a.get("sector") or sec.get("sector") or "")
+        related = by_sec.get(name) or []
+        if not related and str(a.get("priority") or "") != "high":
+            continue
+        stance = _sector_stance(a, related)
+        if related:
+            for r in related:
+                code = str(r.get("code") or "")
+                nm = names.get(code, "")
+                act = _ACTION_LABEL.get(str(r.get("action")), r.get("action"))
+                rating = ""
+                for st in result.get("stocks") or []:
+                    sa = st.get("analysis") or {}
+                    if str(sa.get("code") or st.get("code")) == code:
+                        rating = str(sa.get("research_rating") or "")
+                        break
+                rate_s = f"研究评级:{rating} → " if rating else ""
+                lines.append(
+                    f"{chain_i}. 板块「{name}」[{a.get('priority','-')}/"
+                    f"{a.get('prosperity','-')}/{a.get('valuation','-')}] "
+                    f"— {stance} → {rate_s}**{act}** {code}{(' '+nm) if nm else ''}"
+                )
+                chain_i += 1
+        else:
+            lines.append(
+                f"{chain_i}. 板块「{name}」[{a.get('priority','-')}] — {stance} "
+                f"→ 关注池暂无对应个股动作（板块结论仍约束追高/回避）"
+            )
+            chain_i += 1
+        if chain_i > 6:
+            break
+    # 无板块映射的建议也列一行
+    for rec in recs:
+        code = str(rec.get("code") or "")
+        tag = str(rec.get("sector_tag") or infer_sector(code) or "")
+        if tag and tag in {str((s.get("analysis") or {}).get("sector") or s.get("sector") or "") for s in sectors}:
+            continue
+        act = _ACTION_LABEL.get(str(rec.get("action")), rec.get("action"))
+        lines.append(
+            f"{chain_i}. （未映射板块）→ **{act}** {code}{(' '+names.get(code,'')) if names.get(code) else ''}"
+        )
+        chain_i += 1
+        if chain_i > 7:
+            break
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    return lines
 
 
 def render_daily_report(result: dict[str, Any]) -> str:
@@ -48,10 +302,17 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- 独立草案: {', '.join(ma['draft_agents'])}")
         lines.append("")
 
+    lines.extend(render_conclusion_card(result))
+
     digest = (result.get("intelligence") or {}).get("digest") or {}
     macro_intel = (result.get("intelligence") or {}).get("macro_raw") or {}
     sentiment_overview = macro_intel.get("sentiment_overview") or {}
     agg = sentiment_overview.get("aggregate") or {}
+
+    lines.append("## 详细论证")
+    lines.append("")
+    lines.append("_以下为完整分析过程，供核对结论卡依据。_")
+    lines.append("")
 
     if digest or agg:
         lines.append("## 0. 情报综述（新闻 / 政策 / 舆论）")
@@ -129,13 +390,17 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     lines.append("## 2. 板块筛选")
     lines.append("")
+    by_sec = _recs_by_sector(result)
     for sec in result.get("sectors") or []:
         a = sec.get("analysis") or {}
+        sec_name = str(a.get("sector") or sec.get("sector") or "")
         worth = "✅" if a.get("worth_research") else "⏸"
         sent = _fmt_sentiment(a.get("sentiment"))
         quant = a.get("sentiment") or {}
+        related = by_sec.get(sec_name) or []
+        stance = _sector_stance(a, related)
         lines.append(
-            f"- {worth} **{a.get('sector', sec.get('sector'))}** "
+            f"- {worth} **{sec_name}** "
             f"[{a.get('priority', '-')}优先级] | "
             f"政策:{a.get('policy_wind')} 景气:{a.get('prosperity')} 估值:{a.get('valuation')}"
         )
@@ -146,6 +411,13 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append(f"  - {a.get('summary', '')}")
         if a.get("narrative"):
             lines.append(f"  - 叙事: {a['narrative']}")
+        link_bits = []
+        for r in related:
+            link_bits.append(
+                f"{r.get('code')}→{_ACTION_LABEL.get(str(r.get('action')), r.get('action'))}"
+            )
+        link_s = ("；".join(link_bits) + "。") if link_bits else "关注池暂无对应个股动作。"
+        lines.append(f"  - **落到动作**: {stance} — {link_s}")
     lines.append("")
 
     lines.append("## 3. 个股研究")
@@ -203,10 +475,15 @@ def render_daily_report(result: dict[str, Any]) -> str:
         "hold": "🟡持有",
         "watch": "👀观察",
     }
+    sector_analysis = {
+        str((sec.get("analysis") or {}).get("sector") or sec.get("sector") or ""): (sec.get("analysis") or {})
+        for sec in (result.get("sectors") or [])
+    }
     for rec in result.get("recommendations") or []:
         action = str(rec.get("action", "watch"))
         label = action_emoji.get(action, action)
-        lines.append(f"### {label} {rec.get('code')}")
+        code = str(rec.get("code") or "")
+        lines.append(f"### {label} {code}")
         lines.append("")
         lines.append(f"- 置信度: {rec.get('confidence', '-')}")
         if rec.get("time_horizon"):
@@ -217,10 +494,23 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- 目标价: {rec.get('target_price')}")
         if rec.get("stop_loss") is not None:
             lines.append(f"- 止损: {rec.get('stop_loss')}")
+        sector = str(rec.get("sector_tag") or infer_sector(code) or "")
+        if sector:
+            sa = sector_analysis.get(sector) or {}
+            if sa:
+                lines.append(
+                    f"- **承接板块**: {sector} "
+                    f"[优先级 {sa.get('priority', '-')}, 景气 {sa.get('prosperity', '-')}, "
+                    f"估值 {sa.get('valuation', '-')}, "
+                    f"拥挤 {(sa.get('sentiment') or {}).get('crowding_risk', '-')}] "
+                    f"— {_sector_stance(sa, [rec])}"
+                )
+            else:
+                lines.append(f"- **承接板块**: {sector}")
         sc = rec.get("factor_scorecard") or {}
         if sc.get("total_score") is not None:
             lines.append(f"- 因子总分: {sc.get('total_score')} ({sc.get('signal')})")
-        debate = rec.get("debate") or (result.get("debates") or {}).get(str(rec.get("code")))
+        debate = rec.get("debate") or (result.get("debates") or {}).get(code)
         if debate and not debate.get("error"):
             lines.append(
                 f"- 辩论: {debate.get('referee')} | haircut={debate.get('confidence_haircut')} | "
@@ -239,9 +529,36 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     lines.append("## 5. 复盘与经验")
     lines.append("")
+    dim_reviews = result.get("dimension_reviews") or []
+    if dim_reviews:
+        lines.append("### 维度复盘（市场 / 板块 / 叙事 / 联动）")
+        lines.append("")
+        for dr in dim_reviews:
+            dim = dr.get("dimension") or "?"
+            subject = dr.get("subject") or ""
+            outcome = dr.get("outcome") or "pending"
+            as_of = dr.get("as_of_forecast") or ""
+            cat = dr.get("diagnosis_category") or ""
+            lines.append(
+                f"- **[{dim}]** {subject} → `{outcome}`"
+                + (f" · 预测日:{as_of}" if as_of else "")
+                + (f" · [{cat}]" if cat else "")
+            )
+            if dr.get("diagnosis"):
+                lines.append(f"  - {dr['diagnosis']}")
+            if dr.get("what_worked"):
+                lines.append(f"  - 做对: {'; '.join(str(x) for x in dr['what_worked'][:3])}")
+            if dr.get("what_failed"):
+                lines.append(f"  - 做错: {'; '.join(str(x) for x in dr['what_failed'][:3])}")
+            if dr.get("lesson"):
+                lines.append(f"  - 经验: {dr['lesson']}")
+        lines.append("")
+
     reviews = result.get("reviews") or []
+    lines.append("### 个股建议复盘")
+    lines.append("")
     if not reviews:
-        lines.append("_今日无新增复盘（或暂无可复盘的历史建议）_")
+        lines.append("_本轮无新增个股复盘（或暂无可复盘的历史建议）_")
     else:
         for rv in reviews:
             cat = rv.get("diagnosis_category") or ""
@@ -253,14 +570,20 @@ def render_daily_report(result: dict[str, Any]) -> str:
                 lines.append(f"  - 经验: {rv['lesson']}")
             if rv.get("prompt_adjustment"):
                 lines.append(f"  - 分析改进: {rv['prompt_adjustment']}")
+    if not dim_reviews and not reviews:
+        lines.append("")
+        lines.append("_提示：维度复盘依赖历史 digest/报告；满观察期后会对照市场阶段、板块优先级与主叙事。_")
     lines.append("")
 
+    patterns = result.get("history_patterns") or []
     meta = result.get("meta_lessons") or []
     sentiment_lessons = result.get("sentiment_lessons") or []
     lessons_used = result.get("lessons_used") or []
-    if meta or sentiment_lessons or lessons_used:
+    if patterns or meta or sentiment_lessons or lessons_used:
         lines.append("### 经验库")
         lines.append("")
+        for item in patterns:
+            lines.append(f"- 🔁 [pattern] {item}")
         for item in meta:
             lines.append(f"- 🆕 {item}")
         for item in sentiment_lessons:

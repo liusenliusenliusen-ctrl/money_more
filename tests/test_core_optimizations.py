@@ -637,3 +637,193 @@ def test_sector_money_flow_quality_gate():
     )
     assert ok["checks"]["sector_money_flow"] is True
     assert ok["score"] == 1.0
+
+
+def test_render_conclusion_card_and_cross_links():
+    from money_more.report.writer import render_conclusion_card, render_daily_report
+
+    result = {
+        "run_date": "2026-07-12",
+        "data_quality": {"score": 0.9, "degraded": False, "note": "ok", "missing": []},
+        "intelligence": {
+            "digest": {
+                "headline_themes": ["地缘风险", "半导体存储"],
+                "risk_flags": ["中东冲突升级"],
+                "executive_summary": "摘要",
+            },
+            "macro_raw": {"sentiment_overview": {"aggregate": {"score_100": 51, "label": "neutral", "count": 10}}},
+        },
+        "market": {
+            "analysis": {
+                "phase_label": "震荡偏强，结构性行情",
+                "style_label": "题材驱动，科技成长为主",
+                "risk_level": "medium",
+                "confidence": 0.75,
+                "primary_driver": "政策与产业主题",
+                "sector_allocation_hint": "偏成长",
+                "summary": "指数震荡结构分化",
+                "contradictions": ["政策宽松与地缘风险拉锯"],
+                "invalidation": ["地缘失控引发全面避险"],
+                "vs_prior": {"continuity": "continuation", "what_changed": ["地缘升级"]},
+            }
+        },
+        "sectors": [
+            {
+                "sector": "新能源",
+                "analysis": {
+                    "sector": "新能源",
+                    "worth_research": True,
+                    "priority": "high",
+                    "policy_wind": "tailwind",
+                    "prosperity": "up",
+                    "valuation": "cheap",
+                    "sentiment": {"crowding_risk": "low", "quant_score_100": 66},
+                    "summary": "左侧窗口",
+                    "narrative": "政策与基本面支撑",
+                },
+            },
+            {
+                "sector": "半导体",
+                "analysis": {
+                    "sector": "半导体",
+                    "worth_research": True,
+                    "priority": "high",
+                    "policy_wind": "tailwind",
+                    "prosperity": "up",
+                    "valuation": "expensive",
+                    "sentiment": {"crowding_risk": "high"},
+                    "summary": "拥挤",
+                },
+            },
+        ],
+        "stocks": [
+            {"code": "300750", "analysis": {"code": "300750", "name": "宁德时代", "research_rating": "buy"}},
+            {"code": "600519", "analysis": {"code": "600519", "name": "贵州茅台", "research_rating": "buy"}},
+        ],
+        "recommendations": [
+            {
+                "code": "300750",
+                "action": "watch",
+                "confidence": 0.55,
+                "position_pct": 0,
+                "rationale": "基本面强但资金未稳",
+                "sector_tag": "新能源",
+                "invalidation": "半年报不及预期",
+            },
+            {
+                "code": "600519",
+                "action": "hold",
+                "confidence": 0.45,
+                "rationale": "持仓等待旺季",
+                "sector_tag": "白酒",
+            },
+        ],
+        "decision_summary": {
+            "market_context": "震荡偏强，成长活跃但半导体拥挤不宜追高，新能源等资金确认",
+            "portfolio_summary": "维持茅台，观察宁德",
+        },
+    }
+    card = "\n".join(render_conclusion_card(result))
+    assert "## 结论卡（速读）" in card
+    assert "### 分析：现在怎么看" in card
+    assert "### 预测：接下来怎么预期" in card
+    assert "### 动作：怎么做" in card
+    assert "### 板块：赛道态度" in card
+    assert "观察" in card and "300750" in card
+    assert "新能源" in card and "等确认" in card
+    assert "回避追高" in card  # 半导体 expensive+crowding
+
+    md = render_daily_report(result)
+    assert "## 结论卡（速读）" in md
+    assert "## 详细论证" in md
+    assert "**落到动作**" in md
+    assert "**承接板块**: 新能源" in md
+    assert "### 逻辑链：维度如何串起来" in md
+    assert "板块「新能源」" in md
+
+    # 维度复盘渲染
+    result["dimension_reviews"] = [
+        {
+            "dimension": "market",
+            "subject": "震荡偏强",
+            "outcome": "correct",
+            "as_of_forecast": "2026-06-20",
+            "diagnosis_category": "macro",
+            "diagnosis": "阶段判断延续成立",
+            "lesson": "结构市不宜赌指数方向",
+        }
+    ]
+    result["history_patterns"] = ["左侧须等资金确认"]
+    md2 = render_daily_report(result)
+    assert "### 维度复盘" in md2
+    assert "[market]" in md2
+    assert "🔁 [pattern]" in md2
+
+
+def test_build_prior_dimension_forecasts(tmp_path: Path):
+    from money_more.analysis.review_history import build_prior_dimension_forecasts
+
+    dig = tmp_path / "digests"
+    dig.mkdir()
+    old = {
+        "run_date": "2026-06-01",
+        "market_phase": "range",
+        "market_phase_label": "震荡",
+        "market_style": "theme",
+        "primary_driver": "政策",
+        "sectors": [{"sector": "新能源", "priority": "high", "valuation": "cheap"}],
+        "headline_themes": ["碳达峰"],
+        "recommendations": [{"code": "300750", "action": "watch"}],
+    }
+    (dig / "2026-06-01.json").write_text(
+        __import__("json").dumps(old, ensure_ascii=False), encoding="utf-8"
+    )
+    # too recent — should be excluded when min_age=14 and as_of=2026-07-12
+    (dig / "2026-07-10.json").write_text(
+        __import__("json").dumps({"run_date": "2026-07-10", "market_phase": "bull"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    items = build_prior_dimension_forecasts(
+        tmp_path, as_of=date(2026, 7, 12), lookback_days=120, min_age_days=14, max_items=8
+    )
+    assert any(i.get("date") == "2026-06-01" for i in items)
+    assert not any(i.get("date") == "2026-07-10" for i in items)
+    hit = next(i for i in items if i["date"] == "2026-06-01")
+    assert hit["market"]["phase"] == "range"
+    assert hit["sectors"][0]["sector"] == "新能源"
+
+
+def test_decision_digest_includes_dimensions():
+    from money_more.analysis.decision_digest import build_decision_digest
+
+    d = build_decision_digest(
+        {
+            "run_date": "2026-07-12",
+            "market": {
+                "analysis": {
+                    "phase": "range",
+                    "phase_label": "震荡偏强",
+                    "style": "theme",
+                    "primary_driver": "政策",
+                    "invalidation": ["地缘失控"],
+                }
+            },
+            "intelligence": {"digest": {"headline_themes": ["半导体"], "risk_flags": ["地缘"]}},
+            "sectors": [
+                {
+                    "analysis": {
+                        "sector": "新能源",
+                        "priority": "high",
+                        "prosperity": "up",
+                        "valuation": "cheap",
+                        "sentiment": {"crowding_risk": "low"},
+                    }
+                }
+            ],
+            "recommendations": [],
+            "data_quality": {"score": 1.0},
+        }
+    )
+    assert d["market_phase_label"] == "震荡偏强"
+    assert d["sectors"][0]["sector"] == "新能源"
+    assert d["headline_themes"] == ["半导体"]
