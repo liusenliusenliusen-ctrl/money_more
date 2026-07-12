@@ -139,6 +139,7 @@ class TushareSource:
     def fetch_stock_bundle(self, code: str, limit: int = 8) -> dict[str, Any]:
         ts_code = to_ts_code(code)
         end = ymd(self.as_of)
+        start = ymd(self.as_of, -30)
         start_long = ymd(self.as_of, -1100)  # ~3 年交易日，供估值分位
         result: dict[str, Any] = {
             "code": normalize_code(code),
