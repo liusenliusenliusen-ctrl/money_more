@@ -140,6 +140,83 @@ def sector_money_flow_present(flow: Any) -> bool:
     return any(isinstance(flow.get(k), list) and flow.get(k) for k in ("top_gainers", "top_losers", "top_inflow"))
 
 
+def _canonicalize_spot_df(df: pd.DataFrame | None) -> pd.DataFrame:
+    """统一全 A 快照：代码 6 位、去重。"""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    out = df.copy()
+    if "代码" not in out.columns:
+        return pd.DataFrame()
+    out["代码"] = out["代码"].astype(str).map(normalize_code)
+    out = out[out["代码"].str.fullmatch(r"\d{6}", na=False)]
+    return out.drop_duplicates(subset=["代码"], keep="first").reset_index(drop=True)
+
+
+def _fetch_em_split_spot() -> pd.DataFrame:
+    """东财分市场快照（沪/深/北），全量 push2 失败时有时仍可通。"""
+    parts: list[pd.DataFrame] = []
+    for fn_name in ("stock_sh_a_spot_em", "stock_sz_a_spot_em", "stock_bj_a_spot_em"):
+        fn = getattr(ak, fn_name, None)
+        if fn is None:
+            continue
+        raw = fn()
+        if raw is not None and not raw.empty:
+            parts.append(raw)
+    if not parts:
+        return pd.DataFrame()
+    merged = pd.concat(parts, ignore_index=True)
+    return _canonicalize_spot_df(merged)
+
+
+def fetch_spot_with_fallback(
+    *,
+    cache_key: str,
+    cache: Any | None = None,
+) -> tuple[pd.DataFrame, str, list[str]]:
+    """全 A 现货：东财 → 东财分市场 → 新浪 → 过期磁盘缓存。"""
+    from money_more.data.cache import DiskTTLCache
+
+    errors: list[str] = []
+    disk = cache if cache is not None else DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
+
+    cached = disk.get(cache_key)
+    if isinstance(cached, list) and cached:
+        df = _canonicalize_spot_df(pd.DataFrame(cached))
+        if not df.empty:
+            return df, "cache", errors
+
+    attempts: list[tuple[str, Any]] = [
+        ("em_all", ak.stock_zh_a_spot_em),
+        ("em_split", _fetch_em_split_spot),
+        ("sina", ak.stock_zh_a_spot),
+    ]
+    for source, caller in attempts:
+        try:
+            raw = caller()
+            df = _canonicalize_spot_df(raw)
+            if df.empty:
+                errors.append(f"spot_{source}_empty")
+                continue
+            try:
+                disk.set(cache_key, df.to_dict(orient="records"), ttl_sec=3600)
+            except Exception:
+                pass
+            if source != "em_all":
+                errors.append(f"spot_fallback:{source}")
+            return df, source, errors
+        except Exception as exc:
+            errors.append(f"spot({source}): {exc}")
+
+    stale = disk.get_stale(cache_key)
+    if isinstance(stale, list) and stale:
+        df = _canonicalize_spot_df(pd.DataFrame(stale))
+        if not df.empty:
+            errors.append("spot_stale_cache")
+            return df, "stale_cache", errors
+
+    return pd.DataFrame(), "", errors
+
+
 class MarketDataFetcher:
     """从 AkShare 拉取 A 股市场数据，多数据源自动回退；支持 as_of 回放。"""
 
@@ -147,17 +224,27 @@ class MarketDataFetcher:
         self.as_of = parse_as_of(as_of)
         self._spot_df: pd.DataFrame | None = None
         self._spot_error: str | None = None
+        self._spot_source: str | None = None
+        self._spot_warnings: list[str] = []
         self._hs300_hist: pd.DataFrame | None = None
+
+    @property
+    def spot_source(self) -> str | None:
+        return self._spot_source
 
     def set_as_of(self, as_of: date | str | None) -> None:
         self.as_of = parse_as_of(as_of)
         self._spot_df = None
         self._spot_error = None
+        self._spot_source = None
+        self._spot_warnings = []
         self._hs300_hist = None
 
     def reset_run_cache(self) -> None:
         self._spot_df = None
         self._spot_error = None
+        self._spot_source = None
+        self._spot_warnings = []
         self._hs300_hist = None
 
     def _get_hs300_hist(self) -> pd.DataFrame:
@@ -175,27 +262,19 @@ class MarketDataFetcher:
             return self._spot_df
         if self._spot_error:
             return pd.DataFrame()
-        try:
-            # 同日磁盘缓存，避免多进程/重跑反复拉全市场
-            from money_more.data.cache import DiskTTLCache
+        from money_more.data.cache import DiskTTLCache
 
-            cache = DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
-            key = f"spot_em:{self.as_of.isoformat()}"
-            cached = cache.get(key)
-            if isinstance(cached, list) and cached:
-                self._spot_df = pd.DataFrame(cached)
-                return self._spot_df
-            self._spot_df = ak.stock_zh_a_spot_em()
-            if self._spot_df is not None and not self._spot_df.empty:
-                try:
-                    cache.set(key, self._spot_df.to_dict(orient="records"), ttl_sec=3600)
-                except Exception:
-                    pass
-            return self._spot_df if self._spot_df is not None else pd.DataFrame()
-        except Exception as exc:
-            self._spot_error = str(exc)
-            self._spot_df = pd.DataFrame()
+        cache = DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
+        key = f"spot_em:{self.as_of.isoformat()}"
+        df, source, warnings = fetch_spot_with_fallback(cache_key=key, cache=cache)
+        self._spot_source = source or None
+        self._spot_warnings = warnings
+        if df is not None and not df.empty:
+            self._spot_df = df
             return self._spot_df
+        self._spot_error = "; ".join(warnings) if warnings else "spot_all_sources_failed"
+        self._spot_df = pd.DataFrame()
+        return self._spot_df
 
     def _fetch_daily_hist(self, code: str, start: str, end: str) -> pd.DataFrame:
         """优先东方财富 K 线，失败则回退新浪日线。"""
@@ -475,13 +554,15 @@ class MarketDataFetcher:
         try:
             spot = self._get_spot_df()
             if spot is not None and not spot.empty:
-                row = spot[spot["代码"].astype(str).str.zfill(6) == code]
+                row = spot[spot["代码"].astype(str).map(normalize_code) == code]
                 if not row.empty:
                     result["quote"] = _df_row_to_dict(row.iloc[0])
+                    if self._spot_source and self._spot_source not in ("em_all", "cache"):
+                        result["quote"]["_spot_source"] = self._spot_source
             elif self._spot_error:
-                result["errors"].append(f"实时行情(东财): {self._spot_error}")
+                result["errors"].append(f"实时行情: {self._spot_error}")
         except Exception as exc:
-            result["errors"].append(f"实时行情(东财): {exc}")
+            result["errors"].append(f"实时行情: {exc}")
 
         try:
             hist = self._fetch_daily_hist(code, start, end)
@@ -607,7 +688,7 @@ class MarketDataFetcher:
         try:
             spot = self._get_spot_df()
             if spot is not None and not spot.empty:
-                row = spot[spot["代码"].astype(str).str.zfill(6) == code]
+                row = spot[spot["代码"].astype(str).map(normalize_code) == code]
                 if not row.empty:
                     return _safe_float(row.iloc[0].get("最新价"))
         except Exception:

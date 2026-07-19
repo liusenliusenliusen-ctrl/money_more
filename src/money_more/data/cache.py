@@ -34,6 +34,17 @@ class DiskTTLCache:
         except Exception:
             return None
 
+    def get_stale(self, key: str) -> Any | None:
+        """读取已过 TTL 的缓存（不删除文件），供行情全源失败时降级。"""
+        path = self._path(key)
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload.get("value")
+        except Exception:
+            return None
+
     def set(self, key: str, value: Any, ttl_sec: int | None = None) -> None:
         ttl = self.default_ttl_sec if ttl_sec is None else ttl_sec
         path = self._path(key)

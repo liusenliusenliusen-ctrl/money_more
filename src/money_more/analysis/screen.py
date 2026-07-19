@@ -186,6 +186,10 @@ def run_stock_screen(
         out["ok"] = False
         out["errors"] = ["coverage_collapsed"]
         out["plain_note"] += " 警告：深度池几乎未扩出必跟，覆盖偏窄。"
+    spot_source = getattr(fetcher, "spot_source", None)
+    if spot_source and spot_source not in ("em_all", "cache"):
+        out["spot_source"] = spot_source
+        out["plain_note"] += f" 行情备源={spot_source}（PE/PB 可能缺失，打分已中性处理）。"
     log.info("screen %s", out["note"])
     return out
 
