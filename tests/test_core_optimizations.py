@@ -667,6 +667,7 @@ def test_sector_money_flow_quality_gate():
         "sentiment_overview": {"aggregate": {"score": 50}},
         "economic_calendar_synthetic": True,
         "macro_hard": {"pmi": [{}]},
+        "global_liquidity": {"stance": "mixed", "us_10y": {"latest": 4.5}},
         "errors": [],
     }
     missing = DecisionPipeline._assess_data_quality({**base, "sector_money_flow": {}})
@@ -767,10 +768,11 @@ def test_render_conclusion_card_and_cross_links():
     }
     card = "\n".join(render_conclusion_card(result))
     assert "## 结论卡（速读）" in card
-    assert "### 分析：现在怎么看" in card
-    assert "### 预测：接下来怎么预期" in card
-    assert "### 动作：怎么做" in card
+    assert "### 【主结论】分析：现在怎么看" in card
+    assert "### 【主结论】预测：接下来怎么预期" in card
+    assert "### 【主结论】动作：怎么做" in card
     assert "### 板块：赛道态度" in card
+    assert "阅读分层" in card
     assert "观察" in card and "300750" in card
     assert "新能源" in card and "等确认" in card
     assert "回避追高" in card  # 半导体 expensive+crowding

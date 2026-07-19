@@ -82,6 +82,57 @@ def _sector_stance(analysis: dict[str, Any], related: list[dict[str, Any]]) -> s
     return "中性跟踪"
 
 
+def _render_contested_block(
+    result: dict[str, Any],
+    *,
+    heading: str,
+    limit: int = 3,
+) -> list[str]:
+    """争议叙事 / 尾部情景侧栏。"""
+    market = (result.get("market") or {}).get("analysis") or {}
+    summary = result.get("decision_summary") or {}
+    items = list(market.get("contested_narratives") or summary.get("contested_narratives") or [])
+    pol = market.get("policy_market_scenario") or summary.get("policy_market_scenario") or {}
+    if not items and not pol:
+        return []
+    lines = [heading, ""]
+    lines.append(
+        "_【侧栏语气】下列高争议/尾部情景：须确认信号出现才升权，"
+        "不得单独作为买入理由。来源：硬数据 / 市场定价 / 网络叙事。"
+        "与上方【主结论】分层阅读。_"
+    )
+    lines.append("")
+    for item in items[:limit]:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or "-"
+        src = item.get("source_type") or "-"
+        prob = item.get("probability") or "-"
+        lines.append(f"- **{title}** · 来源 `{src}` · 概率粗分 `{prob}`")
+        if item.get("confirm_signals"):
+            lines.append(
+                f"  - 确认: {'；'.join(_one_line(x, 40) for x in item['confirm_signals'][:2])}"
+            )
+        if item.get("falsify_signals"):
+            lines.append(
+                f"  - 证伪: {'；'.join(_one_line(x, 40) for x in item['falsify_signals'][:2])}"
+            )
+        if item.get("portfolio_if_true"):
+            lines.append(f"  - 若成立: {_one_line(item.get('portfolio_if_true'), 70)}")
+    if pol and pol.get("status") and pol.get("status") != "inactive":
+        lines.append(
+            f"- **政策市假说** `{pol.get('status')}`: {_one_line(pol.get('title') or pol.get('thesis'), 80)}"
+        )
+        if pol.get("implication"):
+            lines.append(f"  - 若成立: {_one_line(pol.get('implication'), 70)}")
+    elif pol and pol.get("title"):
+        lines.append(
+            f"- **政策市假说** `inactive`（模板待命）: {_one_line(pol.get('title'), 70)}"
+        )
+    lines.append("")
+    return lines
+
+
 def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     """结论卡：从已有结果派生，便于外行速读验证。"""
     lines: list[str] = []
@@ -100,7 +151,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
 
     lines.append("## 结论卡（速读）")
     lines.append("")
-    lines.append("_只看结论时读本节即可；下方 §0–§6 是完整论证。后果自负，仅供参考。_")
+    lines.append(
+        "_阅读分层：**【主结论】**可交易、可复核；"
+        "**【侧栏】**高争议/尾部，须确认信号才升权，不得单独当买入理由。"
+        "下方 §0–§6 是完整论证。后果自负，仅供参考。_"
+    )
     lines.append("")
 
     dq = result.get("data_quality") or {}
@@ -116,12 +171,35 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
         lines.append("")
 
-    lines.append("### 分析：现在怎么看")
+    lines.append("### 【主结论】分析：现在怎么看")
     lines.append("")
     lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
     if driver and driver != "-":
         lines.append(f"- **主驱动**: {_one_line(driver, 100)}")
     lines.append(f"- **配置倾向**: {alloc}")
+    gl = (
+        ((result.get("intelligence") or {}).get("macro_raw") or {}).get("global_liquidity")
+        or {}
+    )
+    if gl.get("stance") and gl.get("stance") != "unknown":
+        us10 = (gl.get("us_10y") or {}).get("latest")
+        lines.append(
+            f"- **全球流动性**: `{gl.get('stance')}`"
+            + (f" · 美债10Y {us10}%" if us10 is not None else "")
+            + f" — {_one_line(gl.get('a_share_implication') or gl.get('plain_note'), 90)}"
+        )
+    liq = market.get("liquidity_assessment") or {}
+    if liq.get("global_liquidity_note"):
+        lines.append(f"- **流动性解读**: {_one_line(liq.get('global_liquidity_note'), 100)}")
+    micro = result.get("market_microstructure") or market.get("market_microstructure") or {}
+    if micro.get("regime") and micro.get("regime") != "normal":
+        lines.append(
+            f"- **微观结构**: `{micro.get('regime')}` · "
+            f"传导{'受扰' if not micro.get('fundamental_channel_ok', True) else '大致可用'}"
+            f" — {_one_line(micro.get('implication') or micro.get('plain_note'), 90)}"
+        )
+    elif market.get("microstructure_note"):
+        lines.append(f"- **微观结构**: {_one_line(market.get('microstructure_note'), 100)}")
     facts: list[str] = []
     for theme in (digest.get("headline_themes") or [])[:2]:
         facts.append(_one_line(theme, 80))
@@ -135,7 +213,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         lines.append(f"- {f}")
     lines.append("")
 
-    lines.append("### 预测：接下来怎么预期")
+    lines.append("### 【主结论】预测：接下来怎么预期")
     lines.append("")
     outlook = summary.get("market_context") or market.get("summary") or ""
     if outlook:
@@ -161,7 +239,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
     lines.append("")
 
-    lines.append("### 动作：怎么做")
+    lines.extend(
+        _render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景", limit=3)
+    )
+
+    lines.append("### 【主结论】动作：怎么做")
     lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
@@ -342,7 +424,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append("")
 
     if digest or agg:
-        lines.append("## 0. 情报综述（新闻 / 政策 / 舆论）")
+        lines.append("## 0. 情报综述（新闻 / 政策 / 舆论）【主结论层】")
         lines.append("")
         if digest.get("executive_summary"):
             lines.append(digest["executive_summary"])
@@ -374,10 +456,42 @@ def render_daily_report(result: dict[str, Any]) -> str:
         if digest.get("risk_flags"):
             lines.append("")
             lines.append("**风险旗标**: " + "；".join(digest["risk_flags"]))
+        radar_assess = digest.get("narrative_radar_assessment") or []
+        if radar_assess:
+            lines.append("")
+            lines.append("**叙事雷达评估**:")
+            for item in radar_assess[:4]:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"- [{item.get('stance', '?')}] {item.get('title') or item.get('track_id')} "
+                        f"· {item.get('source_type', '-')} — {_one_line(item.get('why'), 80)}"
+                    )
+        lines.append("")
+
+    radar = (result.get("intelligence") or {}).get("narrative_radar") or {}
+    if radar:
+        lines.append("## 0.1 叙事雷达（争议线索扫描）【侧栏】")
+        lines.append("")
+        lines.append(
+            f"> {radar.get('plain_note') or '规则扫描高争议/尾部叙事线索；侧栏用，非主剧本。'}"
+        )
+        lines.append("")
+        for t in radar.get("tracks") or []:
+            strength = t.get("signal_strength") or "none"
+            if strength == "none":
+                lines.append(
+                    f"- ○ **{t.get('title')}** — 本轮无线索（`{t.get('source_type', '-')}`）"
+                )
+                continue
+            lines.append(
+                f"- ● **{t.get('title')}** [{strength}] · {t.get('source_type', '-')} · 命中 {t.get('hit_count', 0)}"
+            )
+            for snip in (t.get("evidence_snippets") or [])[:2]:
+                lines.append(f"  - {_one_line(snip, 100)}")
         lines.append("")
 
     market = result.get("market", {}).get("analysis") or {}
-    lines.append("## 1. 市场阶段（数据 + 舆情综合）")
+    lines.append("## 1. 市场阶段（数据 + 舆情综合）【主结论层】")
     lines.append("")
     lines.append(
         f"- **阶段**: {market.get('phase_label') or market.get('phase', 'unknown')} | "
@@ -406,6 +520,114 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append(
             f"- 跨日: {vs.get('continuity', '-')} | 变化: {'; '.join(vs.get('what_changed') or [])[:120]}"
         )
+
+    gl = ((result.get("intelligence") or {}).get("macro_raw") or {}).get("global_liquidity") or {}
+    if gl:
+        lines.append("")
+        lines.append("### 1.0 全球流动性硬指标【主结论层】")
+        lines.append("")
+        lines.append(f"> {gl.get('plain_note') or '美债/汇率等外因硬指标。'}")
+        lines.append("")
+        lines.append(f"- **stance**: `{gl.get('stance', '-')}`")
+        us10 = gl.get("us_10y") or {}
+        if us10:
+            lines.append(
+                f"- **美债10Y**: {us10.get('latest')}% · "
+                f"Δ5d {us10.get('change_5d_bp')}bp · Δ20d {us10.get('change_20d_bp')}bp · "
+                f"Δ60d {us10.get('change_60d_bp')}bp"
+            )
+        curve = gl.get("us_2s10s") or {}
+        if curve.get("latest") is not None:
+            lines.append(f"- **美债10Y-2Y**: {curve.get('latest')}")
+        cn10 = gl.get("cn_10y") or {}
+        if cn10.get("latest") is not None:
+            lines.append(f"- **中国10Y**: {cn10.get('latest')}%")
+        if gl.get("us_cn_10y_spread_bp") is not None:
+            lines.append(f"- **中美10Y利差**: {gl.get('us_cn_10y_spread_bp')}bp（美-中）")
+        fx = gl.get("usd_cny") or {}
+        if fx.get("latest") is not None:
+            lines.append(
+                f"- **USD/CNY**: {fx.get('latest')} · Δ20d {fx.get('change_20d_pct')}%"
+            )
+        if gl.get("signals"):
+            lines.append("- **信号**: " + "；".join(str(x) for x in gl["signals"][:4]))
+        if gl.get("a_share_implication"):
+            lines.append(f"- **对 A 股含义**: {gl['a_share_implication']}")
+        liq = market.get("liquidity_assessment") or {}
+        if liq.get("global_liquidity_note"):
+            lines.append(f"- LLM: {_one_line(liq.get('global_liquidity_note'), 120)}")
+        lines.append("")
+
+    micro = result.get("market_microstructure") or market.get("market_microstructure") or {}
+    if micro:
+        lines.append("")
+        lines.append("### 1.1 微观结构 / 流动性断点【机制层】")
+        lines.append("")
+        lines.append(
+            f"> {micro.get('plain_note') or ''} "
+            "（机制信号可进入主结论纪律，但仍与侧栏「叙事指控」区分。）"
+        )
+        lines.append("")
+        lines.append(
+            f"- **状态**: `{micro.get('regime', '-')}` · "
+            f"基本面→价格传导: "
+            f"{'可能受扰' if not micro.get('fundamental_channel_ok', True) else '大致可用'}"
+        )
+        if micro.get("implication"):
+            lines.append(f"- **含义**: {micro['implication']}")
+        if micro.get("flags"):
+            lines.append("- **信号**: " + "；".join(str(x) for x in micro["flags"][:6]))
+        m = micro.get("metrics") or {}
+        if m:
+            bits = []
+            for k in (
+                "up_ratio",
+                "down_ratio",
+                "median_abs_change_pct",
+                "amount_top50_share",
+                "limit_up_count",
+                "limit_down_count",
+                "index_abs_change_max",
+            ):
+                if m.get(k) is not None:
+                    bits.append(f"{k}={m[k]}")
+            if bits:
+                lines.append("- **指标**: " + " · ".join(bits[:8]))
+        if market.get("microstructure_note"):
+            lines.append(f"- LLM: {_one_line(market.get('microstructure_note'), 120)}")
+        lines.append("")
+
+    lines.extend(_render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景", limit=3))
+    pol_scen = market.get("policy_market_scenario") or {}
+    if pol_scen:
+        lines.append("")
+        lines.append("### 【侧栏】政策市假说（护盘 / 出清）")
+        lines.append("")
+        lines.append(
+            f"- **状态**: `{pol_scen.get('status', '-')}` · 来源 {pol_scen.get('source_type', '-')}"
+        )
+        if pol_scen.get("thesis"):
+            lines.append(f"- **假说**: {_one_line(pol_scen.get('thesis'), 160)}")
+        if pol_scen.get("confirm_signals"):
+            lines.append(
+                "- **确认信号**: "
+                + "；".join(_one_line(x, 50) for x in pol_scen["confirm_signals"][:3])
+            )
+        if pol_scen.get("falsify_signals"):
+            lines.append(
+                "- **证伪信号**: "
+                + "；".join(_one_line(x, 50) for x in pol_scen["falsify_signals"][:3])
+            )
+        if pol_scen.get("implication"):
+            lines.append(f"- **若成立**: {_one_line(pol_scen.get('implication'), 120)}")
+        if pol_scen.get("evidence_now"):
+            lines.append(
+                "- **本轮线索**: "
+                + "；".join(_one_line(x, 50) for x in pol_scen["evidence_now"][:3])
+            )
+        if pol_scen.get("note"):
+            lines.append(f"- _{pol_scen['note']}_")
+        lines.append("")
     snap = (result.get("market") or {}).get("snapshot") or {}
     if snap.get("style_proxy") or snap.get("limit_up_count") is not None:
         sp = snap.get("style_proxy") or {}
@@ -503,7 +725,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- ⚠️ **遴选降级**: {screen.get('note')}")
         lines.append("")
 
-    lines.append("## 3. 个股研究")
+    lines.append("## 3. 个股研究【主结论层】")
     lines.append("")
     for st in result.get("stocks") or []:
         a = st.get("analysis") or {}
@@ -522,6 +744,34 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"  - 舆情: {sent}")
         if a.get("expectation_gap"):
             lines.append(f"  - 预期差: {a['expectation_gap']}")
+        info = st.get("info_completeness") or a.get("info_completeness") or {}
+        if info.get("status"):
+            lines.append(
+                f"  - **信息完备性**: `{info.get('status')}`"
+                f"（{info.get('severity', '-')}）— {_one_line(info.get('note'), 80)}"
+            )
+            if info.get("unexplained"):
+                lines.append(
+                    "  - 缺口线索: "
+                    + "；".join(_one_line(x, 40) for x in info["unexplained"][:2])
+                )
+            if a.get("info_gap_note"):
+                lines.append(f"  - {_one_line(a.get('info_gap_note'), 100)}")
+        earn = st.get("earnings_revision") or a.get("earnings_revision") or {}
+        if earn.get("signal"):
+            lines.append(
+                f"  - **盈利预期修正**: `{earn.get('signal')}` / bias={earn.get('revision_bias')} "
+                f"— {_one_line(earn.get('note'), 80)}"
+            )
+            if earn.get("evidence"):
+                lines.append(
+                    "  - 修正证据: "
+                    + "；".join(_one_line(x, 40) for x in earn["evidence"][:2])
+                )
+            if a.get("earnings_revision_note"):
+                lines.append(f"  - {_one_line(a.get('earnings_revision_note'), 100)}")
+            if a.get("earnings_revision_override"):
+                lines.append(f"  - ⚠ {a['earnings_revision_override']}")
         sc = st.get("factor_scorecard") or a.get("factor_scorecard") or {}
         if sc.get("total_score") is not None:
             scores = sc.get("scores") or {}
@@ -533,7 +783,11 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append("")
 
     summary = result.get("decision_summary") or {}
-    lines.append("## 4. 买卖建议")
+    lines.append("## 4. 买卖建议【主结论层】")
+    lines.append("")
+    lines.append(
+        "> 本节仅写**可执行主结论**；争议叙事见结论卡/§1【侧栏】，模拟账本见文末附录。"
+    )
     lines.append("")
     basis = summary.get("holdings_basis") or {}
     if basis.get("is_empty"):
@@ -558,6 +812,9 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append("")
     if summary.get("sentiment_regime_note"):
         lines.append(f"**舆情环境**: {summary['sentiment_regime_note']}")
+        lines.append("")
+    if summary.get("tail_risk_note"):
+        lines.append(f"**尾部/争议侧栏对仓位**: {summary['tail_risk_note']}")
         lines.append("")
     if summary.get("portfolio_summary"):
         lines.append(summary["portfolio_summary"])

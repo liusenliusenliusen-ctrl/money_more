@@ -16,6 +16,7 @@ from money_more.data.as_of import (
     recent_weekdays,
     ymd,
 )
+from money_more.data.global_liquidity import fetch_global_liquidity
 from money_more.data.fetcher import (
     _df_row_to_dict,
     _match_board_name,
@@ -158,6 +159,7 @@ class IntelligenceFetcher:
             "tushare_macro_news": [],
             "sentiment_overview": {},
             "macro_hard": {},
+            "global_liquidity": {},
             "errors": [],
         }
 
@@ -250,6 +252,14 @@ class IntelligenceFetcher:
             except Exception as exc:
                 result["errors"].append(f"宏观{label}: {exc}")
         result["macro_hard"] = macro_hard
+
+        # 全球流动性硬指标（美债 + USD/CNY）——主线宏观外因
+        try:
+            result["global_liquidity"] = fetch_global_liquidity(self.as_of)
+            result["errors"].extend(result["global_liquidity"].get("errors") or [])
+        except Exception as exc:
+            result["errors"].append(f"global_liquidity: {exc}")
+            result["global_liquidity"] = {"stance": "unknown", "errors": [str(exc)]}
 
         if not result["economic_calendar"] and macro_hard:
             synth = _synthetic_calendar_from_macro_hard(macro_hard, self.as_of)

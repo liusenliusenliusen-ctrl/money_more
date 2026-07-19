@@ -16,6 +16,10 @@ def validate_recommendations(
     hard_gates: dict[str, dict[str, Any]] | None = None,
     quotes_meta: dict[str, dict[str, Any]] | None = None,
     allowed_codes: set[str] | list[str] | None = None,
+    info_completeness: dict[str, dict[str, Any]] | None = None,
+    microstructure: dict[str, Any] | None = None,
+    earnings_revisions: dict[str, dict[str, Any]] | None = None,
+    global_liquidity: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -46,8 +50,26 @@ def validate_recommendations(
         regime_mult *= 0.8
         overrides.append(f"market_risk={market_risk_level} → 总仓位×0.8")
 
+    # 微观结构断点：收紧总仓、抑制新开仓（机制层信号）
+    micro = microstructure or {}
+    micro_regime = str(micro.get("regime") or "normal")
+    if micro_regime == "liquidity_stress":
+        regime_mult *= 0.7
+        overrides.append("microstructure=liquidity_stress → 总仓位×0.7，抑制新开仓")
+    elif micro_regime == "crowded_sync":
+        regime_mult *= 0.85
+        overrides.append("microstructure=crowded_sync → 总仓位×0.85")
+
+    gl = global_liquidity or {}
+    gl_stance = str(gl.get("stance") or "unknown")
+    if gl_stance == "tightening":
+        regime_mult *= 0.85
+        overrides.append("global_liquidity=tightening → 总仓位×0.85")
+
     effective_max_total = max_total * regime_mult
-    forbid_new_buys = score < 0.4
+    forbid_new_buys = score < 0.4 or micro_regime == "liquidity_stress"
+    info_map = info_completeness or {}
+    earn_map = earnings_revisions or {}
 
     holding_by_code = {
         "".join(ch for ch in str(h.get("code") or "") if ch.isdigit())[-6:].zfill(6): h
@@ -104,6 +126,31 @@ def validate_recommendations(
             rec["action"] = "watch"
             rec["position_pct"] = 0.0
 
+        # 信息完备性：公开信息不足以解释异动 → 观望（非指控内幕）
+        info = info_map.get(code) or {}
+        if info.get("status") == "gap_suspected" and action in ("buy", "add"):
+            sev = str(info.get("severity") or "low")
+            if sev in ("high", "medium") or info.get("action_hint") == "watch":
+                overrides.append(
+                    f"{code}: 信息缺口({sev}) → watch | "
+                    + "; ".join(info.get("unexplained") or info.get("reasons") or [])[:80]
+                )
+                action = "watch"
+                rec["action"] = "watch"
+                rec["position_pct"] = 0.0
+                rec["info_completeness"] = info
+
+        earn = earn_map.get(code) or {}
+        if earn.get("signal") == "negative" and action in ("buy", "add"):
+            overrides.append(
+                f"{code}: 盈利预期下修 → watch | "
+                + "; ".join(earn.get("evidence") or [])[:80]
+            )
+            action = "watch"
+            rec["action"] = "watch"
+            rec["position_pct"] = 0.0
+            rec["earnings_revision"] = earn
+
         conf = rec.get("confidence")
         try:
             conf_f = float(conf) if conf is not None else 0.5
@@ -112,6 +159,13 @@ def validate_recommendations(
         conf_f = max(0.0, min(1.0, conf_f))
         if conf is not None and abs(conf_f - float(conf)) > 1e-9:
             overrides.append(f"{code}: confidence clamp {conf}→{conf_f}")
+        try:
+            ih = float(info.get("confidence_haircut") or 0)
+            if ih > 0:
+                conf_f = max(0.05, conf_f - ih)
+                overrides.append(f"{code}: 信息完备性 haircut -{ih}")
+        except (TypeError, ValueError):
+            pass
         rec["confidence"] = conf_f
 
         pos = rec.get("position_pct")

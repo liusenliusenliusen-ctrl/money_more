@@ -12,6 +12,14 @@ from money_more.analysis.decision_validator import enrich_holdings, validate_rec
 from money_more.analysis.factor_ic import compute_factor_ic_from_db
 from money_more.analysis.factor_scorecard import build_stock_scorecard
 from money_more.analysis.invalidation import evaluate_invalidation
+from money_more.analysis.earnings_revision import assess_earnings_revision
+from money_more.analysis.info_completeness import assess_info_completeness
+from money_more.analysis.market_microstructure import assess_market_microstructure
+from money_more.analysis.narrative_radar import (
+    build_narrative_radar,
+    merge_contested_narratives,
+    merge_policy_market_scenario,
+)
 from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
@@ -107,9 +115,23 @@ class DecisionPipeline:
         macro_intel: dict[str, Any] = {}
         intel_digest: dict[str, Any] = {}
 
+        market_snapshot = self.fetcher.fetch_market_overview()
+        try:
+            spot_df = self.fetcher._get_spot_df()
+        except Exception:
+            spot_df = None
+        market_micro = assess_market_microstructure(market_snapshot, spot_df)
+        result["market_microstructure"] = market_micro
+
         if intel_enabled:
             macro_intel = self.intelligence.fetch_macro_intelligence()
+            # 叙事雷达：争议/尾部线索扫描（侧栏，非主剧本）
+            narrative_radar = build_narrative_radar(
+                macro_intel, market_snapshot, microstructure=market_micro
+            )
+            macro_intel["narrative_radar"] = narrative_radar
             result["intelligence"]["macro_raw"] = macro_intel
+            result["intelligence"]["narrative_radar"] = narrative_radar
             result["data_quality"] = self._assess_data_quality(macro_intel)
 
             if self.config.intelligence.digest_before_analysis:
@@ -118,6 +140,8 @@ class DecisionPipeline:
                     {
                         "date": run_date.isoformat(),
                         "macro_intelligence": compact_macro_intel(macro_intel),
+                        "narrative_radar": narrative_radar,
+                        "market_microstructure": market_micro,
                         "past_lessons": result["lessons_used"],
                         "prior_context": prior_context,
                         "data_quality": result["data_quality"],
@@ -126,8 +150,12 @@ class DecisionPipeline:
                 )
                 result["intelligence"]["digest"] = intel_digest
                 self.db.save_intelligence_digest(run_id, intel_digest)
+        else:
+            narrative_radar = build_narrative_radar(
+                {}, market_snapshot, microstructure=market_micro
+            )
+            result["intelligence"]["narrative_radar"] = narrative_radar
 
-        market_snapshot = self.fetcher.fetch_market_overview()
         if intel_enabled:
             market_snapshot["intelligence"] = macro_intel
 
@@ -140,12 +168,26 @@ class DecisionPipeline:
                     "intelligence": compact_macro_intel(macro_intel) if intel_enabled else {},
                 },
                 "intelligence_digest": intel_digest,
+                "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
+                "market_microstructure": market_micro,
                 "past_lessons": result["lessons_used"],
                 "prior_context": prior_context,
                 "trend_report_summary": self._trend_summary_for_llm(existing_trend),
                 "data_quality": result["data_quality"],
             },
             required_keys=["phase", "style", "risk_level", "summary", "confidence", "vs_prior"],
+        )
+        market_analysis["market_microstructure"] = market_micro
+        # 侧栏：争议叙事 / 政策市假说（LLM 优先，雷达回退）
+        radar = result.get("intelligence", {}).get("narrative_radar") or {}
+        market_analysis["contested_narratives"] = merge_contested_narratives(
+            market_analysis.get("contested_narratives"),
+            radar,
+            limit=3,
+        )
+        market_analysis["policy_market_scenario"] = merge_policy_market_scenario(
+            market_analysis.get("policy_market_scenario"),
+            radar,
         )
         self.db.save_market_snapshot(run_id, market_snapshot, market_analysis)
         result["market"] = {"snapshot": market_snapshot, "analysis": market_analysis}
@@ -273,8 +315,12 @@ class DecisionPipeline:
             ts_bundle = (stock_intel.get("tushare") or {}) if stock_intel else {}
             xcheck = cross_check_stock(snap, ts_bundle)
             gates = apply_hard_gates(code, snap, ts_bundle)
+            info_comp = assess_info_completeness(code, snap, ts_bundle, xcheck, gates)
+            earn_rev = assess_earnings_revision(ts_bundle, snap)
             snap["cross_check"] = xcheck
             snap["hard_gates"] = gates
+            snap["info_completeness"] = info_comp
+            snap["earnings_revision"] = earn_rev
 
             analysis = self.llm.analyze_json(
                 STOCK_SYSTEM,
@@ -284,8 +330,11 @@ class DecisionPipeline:
                     "stock_intelligence": compact_stock_snap(snap).get("intelligence"),
                     "cross_check": xcheck,
                     "hard_gates": gates,
+                    "info_completeness": info_comp,
+                    "earnings_revision": earn_rev,
                     "intelligence_digest": intel_digest,
                     "market_context": market_analysis,
+                    "market_microstructure": market_micro,
                     "sector_context": [
                         {"sector": s.get("sector"), "analysis": s.get("analysis")} for s in sector_analyses
                     ],
@@ -294,13 +343,23 @@ class DecisionPipeline:
                 },
                 required_keys=["code", "research_rating", "summary", "confidence"],
             )
-            # 双源不一致 → 下调 LLM 置信度
+            # 双源不一致 / 信息缺口 → 下调 LLM 置信度
             try:
                 conf = float(analysis.get("confidence") or 0.5)
                 conf = max(0.05, conf - float(xcheck.get("confidence_haircut") or 0))
+                conf = max(0.05, conf - float(info_comp.get("confidence_haircut") or 0))
                 analysis["confidence"] = round(conf, 3)
             except (TypeError, ValueError):
                 pass
+            analysis["info_completeness"] = info_comp
+            analysis["earnings_revision"] = earn_rev
+            # 盈利下修：研究评级偏保守（规则层，不替代 LLM）
+            if earn_rev.get("signal") == "negative" and str(analysis.get("research_rating") or "").lower() in (
+                "strong_buy",
+                "buy",
+            ):
+                analysis["research_rating"] = "hold"
+                analysis["earnings_revision_override"] = "盈利预期偏下修 → research_rating buy→hold"
 
             scorecard = build_stock_scorecard(snap, analysis, stock_intel, weights=adapted_weights)
             analysis["factor_scorecard"] = scorecard
@@ -326,10 +385,18 @@ class DecisionPipeline:
                     "factor_scorecard": scorecard,
                     "cross_check": xcheck,
                     "hard_gates": gates,
+                    "info_completeness": info_comp,
+                    "earnings_revision": earn_rev,
                 }
             )
         result["stocks"] = stock_analyses
         result["factor_scorecards"] = scorecards
+        result["info_completeness"] = {
+            s["code"]: s.get("info_completeness") or {} for s in stock_analyses
+        }
+        result["earnings_revisions"] = {
+            s["code"]: s.get("earnings_revision") or {} for s in stock_analyses
+        }
 
         holdings_enriched = enrich_holdings(self.config.holdings, quotes)
         holdings_basis = {
@@ -353,6 +420,13 @@ class DecisionPipeline:
             "date": run_date.isoformat(),
             "intelligence_digest": intel_digest,
             "market_analysis": market_analysis,
+            "contested_narratives": market_analysis.get("contested_narratives") or [],
+            "policy_market_scenario": market_analysis.get("policy_market_scenario") or {},
+            "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
+            "market_microstructure": market_micro,
+            "global_liquidity": (macro_intel or {}).get("global_liquidity") or {},
+            "info_completeness": result.get("info_completeness") or {},
+            "earnings_revisions": result.get("earnings_revisions") or {},
             "sector_analyses": [s["analysis"] for s in sector_analyses],
             "stock_analyses": stock_analyses,
             "factor_scorecards": scorecards,
@@ -506,6 +580,10 @@ class DecisionPipeline:
             hard_gates=gate_map,
             quotes_meta=quotes_meta,
             allowed_codes=set(stock_codes),
+            info_completeness=result.get("info_completeness") or {},
+            microstructure=market_micro,
+            earnings_revisions=result.get("earnings_revisions") or {},
+            global_liquidity=(macro_intel or {}).get("global_liquidity") or {},
         )
         overrides = debate_overrides + overrides
         result["validation_overrides"] = overrides
@@ -574,11 +652,14 @@ class DecisionPipeline:
             "portfolio_summary": decision.get("portfolio_summary"),
             "market_context": decision.get("market_context"),
             "sentiment_regime_note": decision.get("sentiment_regime_note"),
+            "tail_risk_note": decision.get("tail_risk_note"),
             "factor_weights_used": decision.get("factor_weights_used"),
             "contradictions_handled": decision.get("contradictions_handled"),
             "validation_overrides": overrides,
             "holdings_enriched": holdings_enriched,
             "holdings_basis": holdings_basis,
+            "contested_narratives": market_analysis.get("contested_narratives") or [],
+            "policy_market_scenario": market_analysis.get("policy_market_scenario") or {},
         }
 
         # 模拟组合：按本轮报告动作调仓（与真实 holdings 分离）
@@ -1126,6 +1207,10 @@ class DecisionPipeline:
             "tushare_macro": has_macro_news,
             "sector_money_flow": sector_money_flow_present(macro_intel.get("sector_money_flow")),
             "macro_hard": bool(macro_intel.get("macro_hard")),
+            "global_liquidity": bool(
+                (macro_intel.get("global_liquidity") or {}).get("stance")
+                and (macro_intel.get("global_liquidity") or {}).get("stance") != "unknown"
+            ),
         }
         missing = [k for k, ok in checks.items() if not ok]
         if "policy_news_stale_or_empty" in errors:

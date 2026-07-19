@@ -15,6 +15,7 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "northbound_summary": (macro.get("northbound_summary") or [])[:3],
         "sector_money_flow": _compact_sector_flow(macro.get("sector_money_flow") or {}),
         "macro_hard": _tail_macro_hard(macro.get("macro_hard") or {}),
+        "global_liquidity": _compact_global_liquidity(macro.get("global_liquidity") or {}),
         "economic_calendar": (macro.get("economic_calendar") or [])[:5],
         "economic_calendar_synthetic": macro.get("economic_calendar_synthetic"),
         "northbound_freshness": macro.get("northbound_freshness"),
@@ -25,9 +26,47 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "tushare_macro_news": (macro.get("tushare_macro_news") or [])[:max_news],
         "tushare_macro_backfill": macro.get("tushare_macro_backfill"),
         "market_hot_rank": (macro.get("market_hot_rank") or [])[:10],
+        "narrative_radar": _compact_narrative_radar(macro.get("narrative_radar") or {}),
         "errors": (macro.get("errors") or [])[:8],
     }
     return out
+
+
+def _compact_narrative_radar(radar: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(radar, dict) or not radar:
+        return {}
+    tracks = []
+    for t in radar.get("tracks") or []:
+        if not isinstance(t, dict):
+            continue
+        tracks.append(
+            {
+                "id": t.get("id"),
+                "title": t.get("title"),
+                "source_type": t.get("source_type"),
+                "signal_strength": t.get("signal_strength"),
+                "hit_count": t.get("hit_count"),
+                "evidence_snippets": (t.get("evidence_snippets") or [])[:3],
+            }
+        )
+    pol = radar.get("policy_market_hypothesis") or {}
+    return {
+        "plain_note": radar.get("plain_note"),
+        "active_track_ids": radar.get("active_track_ids") or [],
+        "tracks": tracks,
+        "policy_market_hypothesis": {
+            "id": pol.get("id"),
+            "title": pol.get("title"),
+            "status": pol.get("status"),
+            "thesis": (pol.get("thesis") or "")[:220],
+            "entry_conditions": (pol.get("entry_conditions") or [])[:3],
+            "falsify_signals": (pol.get("falsify_signals") or [])[:3],
+            "observe_metrics": (pol.get("observe_metrics") or [])[:3],
+            "if_true_portfolio_implication": pol.get("if_true_portfolio_implication"),
+            "evidence_now": (pol.get("evidence_now") or [])[:3],
+            "note": pol.get("note"),
+        },
+    }
 
 
 def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
@@ -67,6 +106,8 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             },
             "errors": (intel.get("errors") or [])[:5],
         },
+        "earnings_revision": snap.get("earnings_revision"),
+        "info_completeness": snap.get("info_completeness"),
         "errors": (snap.get("errors") or [])[:5],
     }
 
@@ -89,6 +130,24 @@ def _tail_macro_hard(hard: dict[str, Any]) -> dict[str, Any]:
         else:
             out[k] = v
     return out
+
+
+def _compact_global_liquidity(gl: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(gl, dict) or not gl:
+        return {}
+    return {
+        "stance": gl.get("stance"),
+        "plain_note": gl.get("plain_note"),
+        "a_share_implication": gl.get("a_share_implication"),
+        "us_10y": gl.get("us_10y"),
+        "us_2s10s": gl.get("us_2s10s"),
+        "cn_10y": gl.get("cn_10y"),
+        "usd_cny": gl.get("usd_cny"),
+        "us_cn_10y_spread_bp": gl.get("us_cn_10y_spread_bp"),
+        "signals": (gl.get("signals") or [])[:5],
+        "series_tail": (gl.get("series_tail") or [])[-5:],
+        "source": gl.get("source"),
+    }
 
 
 def _keep_keys(d: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
