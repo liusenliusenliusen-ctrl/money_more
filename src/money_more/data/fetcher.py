@@ -357,6 +357,35 @@ class MarketDataFetcher:
 
         return overview
 
+    def list_sector_constituent_codes(self, sector_name: str, limit: int = 60) -> list[str]:
+        """东财行业/概念成分代码（供筛选漏斗，不截断到 10 只）。"""
+        codes: list[str] = []
+        try:
+            boards_em = ak.stock_board_industry_name_em()
+            board_name_em = _match_board_name(boards_em["板块名称"], sector_name)
+            if board_name_em:
+                cons = ak.stock_board_industry_cons_em(symbol=board_name_em)
+                if cons is not None and not cons.empty and "代码" in cons.columns:
+                    for c in cons["代码"].astype(str).str.zfill(6).tolist()[: max(1, limit)]:
+                        if c not in codes:
+                            codes.append(c)
+        except Exception:
+            pass
+        try:
+            concepts = ak.stock_board_concept_name_em()
+            if concepts is not None and not concepts.empty:
+                name_col = "板块名称" if "板块名称" in concepts.columns else concepts.columns[0]
+                matched = _match_board_name(concepts[name_col], sector_name)
+                if matched:
+                    cons = ak.stock_board_concept_cons_em(symbol=matched)
+                    if cons is not None and not cons.empty and "代码" in cons.columns:
+                        for c in cons["代码"].astype(str).str.zfill(6).tolist()[: max(1, limit // 2)]:
+                            if c not in codes:
+                                codes.append(c)
+        except Exception:
+            pass
+        return codes[: max(1, limit)]
+
     def fetch_sector_data(self, sector_name: str) -> dict[str, Any]:
         result: dict[str, Any] = {
             "sector": sector_name,

@@ -12,7 +12,7 @@ from money_more.analysis.decision_validator import enrich_holdings, validate_rec
 from money_more.analysis.factor_ic import compute_factor_ic_from_db
 from money_more.analysis.factor_scorecard import build_stock_scorecard
 from money_more.analysis.invalidation import evaluate_invalidation
-from money_more.analysis.sector_map import infer_sector
+from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
 from money_more.config import AppConfig
@@ -150,8 +150,22 @@ class DecisionPipeline:
         self.db.save_market_snapshot(run_id, market_snapshot, market_analysis)
         result["market"] = {"snapshot": market_snapshot, "analysis": market_analysis}
 
+        watch_sectors = list(self.config.watch_sectors)
+        auto_n = int(getattr(getattr(self.config, "screen", None), "auto_sector_from_flow", 3) or 0)
+        auto_sectors = (
+            self._auto_sectors_from_flow(macro_intel, watch_sectors, limit=auto_n) if auto_n > 0 else []
+        )
+        result["sector_universe"] = {
+            "watch_sectors": watch_sectors,
+            "auto_sectors": auto_sectors,
+            "note": (
+                "§2 含「关注板块」+ 资金流入自动扩板块；个股漏斗另见 §2.1。"
+                if auto_sectors
+                else "§2 仅覆盖 config.watch_sectors；个股漏斗可更宽（见 screen.universe_mode）。"
+            ),
+        }
         sector_analyses: list[dict[str, Any]] = []
-        for sector in self.config.watch_sectors:
+        for sector, src in [(s, "watch") for s in watch_sectors] + [(s, "auto_flow") for s in auto_sectors]:
             snap = self.fetcher.fetch_sector_data(sector)
             sector_intel: dict[str, Any] = {}
             if intel_enabled:
@@ -168,16 +182,58 @@ class DecisionPipeline:
                     "market_context": market_analysis,
                     "past_lessons": result["lessons_used"],
                     "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
+                    "sector_source": src,
                 },
                 required_keys=["sector", "worth_research", "summary", "confidence"],
             )
+            analysis["sector_source"] = src
             self.db.save_sector_snapshot(run_id, sector, snap, analysis)
             sector_analyses.append(
-                {"sector": sector, "snapshot": snap, "intelligence": sector_intel, "analysis": analysis}
+                {
+                    "sector": sector,
+                    "source": src,
+                    "snapshot": snap,
+                    "intelligence": sector_intel,
+                    "analysis": analysis,
+                }
             )
         result["sectors"] = sector_analyses
 
-        stock_codes = list(dict.fromkeys(self.config.watch_stocks + [h.code for h in self.config.holdings]))
+        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（watch_stocks 为必跟）
+        from money_more.analysis.screen import run_stock_screen
+
+        must_codes = list(
+            dict.fromkeys(
+                [normalize_code(c) for c in self.config.watch_stocks]
+                + [h.code for h in self.config.holdings]
+            )
+        )
+        screen_cfg = getattr(self.config, "screen", None)
+        if screen_cfg is None:
+            from money_more.config import ScreenConfig
+
+            screen_cfg = ScreenConfig(enabled=False)
+        screen_result = run_stock_screen(
+            self.fetcher,
+            config=screen_cfg,
+            watch_sectors=list(self.config.watch_sectors),
+            must_codes=must_codes,
+            sector_analyses=sector_analyses,
+        )
+        result["screen"] = screen_result
+        result["data_quality"] = self._merge_screen_into_dq(
+            result.get("data_quality") or {}, screen_result
+        )
+        stock_codes = list(screen_result.get("deep_codes") or must_codes)
+        log.info(
+            "run_id=%s screen deep=%s quant=%s universe=%s ok=%s",
+            run_id,
+            len(stock_codes),
+            screen_result.get("quant_size"),
+            screen_result.get("universe_size"),
+            screen_result.get("ok"),
+        )
+
         stock_analyses: list[dict[str, Any]] = []
         quotes: dict[str, float | None] = {}
         quotes_meta: dict[str, dict[str, Any]] = {}
@@ -276,6 +332,16 @@ class DecisionPipeline:
         result["factor_scorecards"] = scorecards
 
         holdings_enriched = enrich_holdings(self.config.holdings, quotes)
+        holdings_basis = {
+            "source": "config.holdings",
+            "is_empty": len(holdings_enriched) == 0,
+            "codes": [h.get("code") for h in holdings_enriched],
+            "note": (
+                "用户声明真实持仓为空：按空仓给出 buy/watch，禁止写「当前持有」。"
+                if not holdings_enriched
+                else "以下为用户声明的真实持仓；hold/add/sell 仅针对这些代码。"
+            ),
+        }
         trading_constraints = {
             "max_single_position_pct": self.config.trading.max_single_position_pct,
             "max_total_position_pct": self.config.trading.max_total_position_pct,
@@ -293,6 +359,13 @@ class DecisionPipeline:
             "hard_gates": {s["code"]: s.get("hard_gates") or {} for s in stock_analyses},
             "cross_checks": {s["code"]: s.get("cross_check") or {} for s in stock_analyses},
             "holdings": holdings_enriched,
+            "holdings_basis": holdings_basis,
+            "screen_summary": {
+                "note": screen_result.get("note"),
+                "deep_codes": stock_codes,
+                "must_codes": must_codes,
+                "top_candidates": (screen_result.get("top_candidates") or [])[:12],
+            },
             "trading_constraints": trading_constraints,
             "investment_horizon": self.config.analysis.investment_horizon,
             "default_time_horizon": self.config.analysis.default_time_horizon,
@@ -307,30 +380,53 @@ class DecisionPipeline:
             and self.config.agents.enabled
             and self.config.agents.decision_multi
         )
-        if use_multi:
-            log.info(
-                "decision via multi-agent primary=%s secondary=%s synth=%s",
-                self._orchestrator.primary.name,
-                self._orchestrator.secondary.name if self._orchestrator.secondary else None,
-                self._orchestrator.synthesizer.name if self._orchestrator.synthesizer else None,
+        try:
+            if use_multi:
+                log.info(
+                    "decision via multi-agent primary=%s secondary=%s synth=%s",
+                    self._orchestrator.primary.name,
+                    self._orchestrator.secondary.name if self._orchestrator.secondary else None,
+                    self._orchestrator.synthesizer.name if self._orchestrator.synthesizer else None,
+                )
+                decision = self._orchestrator.analyze_json(
+                    DECISION_SYSTEM,
+                    decision_payload,
+                    required_keys=["recommendations", "portfolio_summary"],
+                    multi=True,
+                )
+            else:
+                decision = self.llm.analyze_json(
+                    DECISION_SYSTEM,
+                    decision_payload,
+                    required_keys=["recommendations", "portfolio_summary"],
+                )
+        except Exception as exc:
+            log.error("decision LLM/agent failed after retries: %s", exc)
+            decision = self._degraded_decision(holdings_enriched, str(exc))
+
+        # 两侧都失败时 orchestrator 返回 all_failed；补持仓 hold，便于报告可读
+        if decision.get("_multi_agent_fallback") == "all_failed" and not (
+            decision.get("recommendations") or []
+        ):
+            decision = self._degraded_decision(
+                holdings_enriched,
+                "; ".join(decision.get("_multi_agent_errors") or [])
+                or str(decision.get("portfolio_summary") or "all_failed"),
+                base=decision,
             )
-            decision = self._orchestrator.analyze_json(
-                DECISION_SYSTEM,
-                decision_payload,
-                required_keys=["recommendations", "portfolio_summary"],
-                multi=True,
-            )
-        else:
-            decision = self.llm.analyze_json(
-                DECISION_SYSTEM,
-                decision_payload,
-                required_keys=["recommendations", "portfolio_summary"],
-            )
+
         result["multi_agent"] = {
             "enabled": use_multi,
             "meta": decision.get("_multi_agent") or decision.get("_multi_agent_fallback"),
             "errors": decision.get("_multi_agent_errors") or [],
         }
+        if decision.get("_multi_agent_fallback"):
+            result.setdefault("data_quality", {})
+            result["data_quality"]["llm_degraded"] = True
+            result["data_quality"]["llm_note"] = (
+                f"决策降级: {decision.get('_multi_agent_fallback')}; "
+                + "; ".join(decision.get("_multi_agent_errors") or [])
+            )
         # 草稿较大，只保留摘要键，避免报告爆炸
         drafts = decision.pop("_analyst_drafts", None)
         if drafts:
@@ -358,7 +454,18 @@ class DecisionPipeline:
             code = normalize_code(str(rec.get("code", "")))
             # 从个股分析/板块上下文推断 sector_tag，供集中度约束
             if not rec.get("sector_tag"):
-                rec["sector_tag"] = infer_sector(code, self.config.watch_sectors)
+                hint = None
+                for s in stock_analyses:
+                    if s.get("code") == code:
+                        snap = s.get("snapshot") or {}
+                        ts = ((s.get("intelligence") or {}).get("tushare") or {})
+                        hint = industry_hint_from_sources(
+                            quote=snap.get("quote") or {},
+                            company=ts.get("company") or {},
+                            analysis=s.get("analysis") or {},
+                        )
+                        break
+                rec["sector_tag"] = infer_sector(code, self.config.watch_sectors, hint)
                 if not rec.get("sector_tag"):
                     for s in stock_analyses:
                         if s.get("code") == code:
@@ -398,6 +505,7 @@ class DecisionPipeline:
             market_risk_level=str(market_analysis.get("risk_level") or ""),
             hard_gates=gate_map,
             quotes_meta=quotes_meta,
+            allowed_codes=set(stock_codes),
         )
         overrides = debate_overrides + overrides
         result["validation_overrides"] = overrides
@@ -470,7 +578,16 @@ class DecisionPipeline:
             "contradictions_handled": decision.get("contradictions_handled"),
             "validation_overrides": overrides,
             "holdings_enriched": holdings_enriched,
+            "holdings_basis": holdings_basis,
         }
+
+        # 模拟组合：按本轮报告动作调仓（与真实 holdings 分离）
+        result["sim_portfolio"] = self._apply_sim_portfolio(
+            run_id=run_id,
+            run_date=run_date,
+            recommendations=recommendations,
+            quotes=quotes,
+        )
 
         review_result = self.run_review(
             run_id,
@@ -487,6 +604,9 @@ class DecisionPipeline:
         result["history_patterns"] = review_result.get("history_patterns", [])
         result["meta_lessons"] = review_result.get("meta_lessons", [])
         result["sentiment_lessons"] = review_result.get("sentiment_lessons", [])
+        result["review_window"] = review_result.get("review_window")
+        result["review_window_note"] = review_result.get("review_window_note")
+        result["action_lifecycles"] = review_result.get("action_lifecycles")
 
         # 更新纸面持仓盯市
         self._mark_paper_trades(run_date)
@@ -510,7 +630,7 @@ class DecisionPipeline:
             before_date=run_date,
             lookback_days=self.config.review_lookback_days,
         )
-        # 至少持有/观察 N 个自然日再评判（中长线默认 14）
+        # 至少持有/观察 N 个自然日再评判（中长线默认 14）；轨迹跟踪可复盘
         min_hold = int(getattr(self.config.analysis, "review_min_hold_days", 14))
         filtered = []
         for item in pending:
@@ -524,11 +644,17 @@ class DecisionPipeline:
         pending = filtered
 
         lookback = int(self.config.review_lookback_days)
+        from money_more.analysis.invalidation import evaluate_invalidation
         from money_more.analysis.review_history import (
+            build_action_lifecycles,
             build_prior_dimension_forecasts,
             compact_current_view,
             load_db_market_history,
             load_historical_reports_corpus,
+        )
+        from money_more.analysis.review_normalize import (
+            normalize_dimension_review,
+            normalize_stock_review,
         )
 
         reports_dir = self.config.resolve(self.config.paths.reports)
@@ -537,17 +663,36 @@ class DecisionPipeline:
             as_of=run_date,
             lookback_days=lookback,
             min_age_days=min_hold,
-            max_items=8,
+            max_items=24,
         )
         current_compact = compact_current_view(current_view)
 
-        if not pending and not prior_dims:
+        historical_reports = load_historical_reports_corpus(
+            reports_dir,
+            as_of=run_date,
+            lookback_days=lookback,
+            max_reports=40,
+        )
+        historical_reports["db_market_spine"] = load_db_market_history(
+            self.db, lookback_days=lookback, limit=40
+        )
+        action_lifecycles = build_action_lifecycles(
+            historical_reports.get("decision_digests") or []
+        )
+        review_window = historical_reports.get("window") or {
+            "as_of": run_date.isoformat(),
+            "lookback_days": lookback,
+        }
+
+        if not pending and not prior_dims and not (historical_reports.get("decision_digests") or []):
             return {
                 "reviews": [],
                 "dimension_reviews": [],
                 "history_patterns": [],
                 "meta_lessons": [],
                 "sentiment_lessons": [],
+                "review_window": review_window,
+                "action_lifecycles": [],
             }
 
         enriched: list[dict[str, Any]] = []
@@ -571,6 +716,17 @@ class DecisionPipeline:
             elif not isinstance(extra, dict):
                 extra = {}
 
+            inv_raw = extra.get("invalidation")
+            snap = {"price": current_price, "entry_price": entry_price}
+            inv_check = evaluate_invalidation(inv_raw, snap)
+            if "invalidated" not in inv_check:
+                inv_check["invalidated"] = bool(inv_check.get("fired"))
+
+            lifecycle = next(
+                (x for x in action_lifecycles if x.get("code") == normalize_code(str(code))),
+                None,
+            )
+
             enriched.append(
                 {
                     "id": item["id"],
@@ -585,6 +741,8 @@ class DecisionPipeline:
                     "entry_price": entry_price,
                     "current_price": current_price,
                     "return_pct": return_pct,
+                    "invalidation_check": inv_check,
+                    "action_lifecycle": lifecycle,
                     "original_context": {
                         "db_analysis": original,
                         "recommendation_extra": {
@@ -603,31 +761,23 @@ class DecisionPipeline:
         if existing_trend:
             existing_trend.pop("_meta", None)
 
-        historical_reports = load_historical_reports_corpus(
-            reports_dir,
-            as_of=run_date,
-            lookback_days=lookback,
-            max_reports=24,
-        )
-        historical_reports["db_market_spine"] = load_db_market_history(
-            self.db, lookback_days=lookback, limit=30
-        )
-
         review_payload = self.llm.analyze_json(
             REVIEW_SYSTEM,
             {
                 "date": run_date.isoformat(),
+                "review_window": review_window,
                 "pending_recommendations": enriched,
                 "prior_dimension_forecasts": prior_dims,
+                "action_lifecycles": action_lifecycles,
                 "current_view": current_compact,
                 "past_lessons": self.db.get_active_lessons(limit=30),
-                "prior_context": self.db.get_prior_context(limit=min(20, max(5, lookback // 7))),
+                "prior_context": self.db.get_prior_context(limit=min(24, max(5, lookback // 5))),
                 "historical_reports": historical_reports,
                 "trend_report_summary": self._trend_summary_for_llm(existing_trend),
                 "instruction": (
-                    "1) 用 prior_dimension_forecasts 对照 current_view，复盘市场阶段/板块优先级/主叙事/维度联动；"
-                    "2) 若有 pending_recommendations，用 original_context 对照个股 thesis；"
-                    "3) 正确则写清有效信号，错误则归因；不要只根据 return_pct 下结论。"
+                    "1) 用窗口内 prior_dimension_forecasts 对照 current_view，复盘 market/sector/narrative/linkage；"
+                    "2) 个股用 status（tracking/thesis_intact/invalidation_fired/...），禁止仅凭 return_pct 打 wrong/correct；"
+                    "3) 对错都要写清有效信号或归因；动作链看 action_lifecycles。"
                 ),
             },
             required_keys=["dimension_reviews"],
@@ -639,24 +789,29 @@ class DecisionPipeline:
             for r in review_payload.get("reviews") or []
             if r.get("recommendation_id")
         }
-
         for item in enriched:
             rid = int(item["id"])
             rv = review_map.get(rid)
             if not rv:
-                # 无匹配 recommendation_id：不写假复盘，保持 pending
                 continue
+            rv = normalize_stock_review(rv, item=item)
             diagnosis = str(rv.get("diagnosis") or "待进一步观察")
             lesson = str(rv.get("lesson") or "")
-            outcome = str(rv.get("outcome") or "pending")
-            # 收益以代码计算为准，不信任 LLM 覆盖
+            outcome = str(rv.get("outcome") or "tracking")
+            status = str(rv.get("status") or outcome)
             return_pct = item.get("return_pct")
             extra = {
+                "status": status,
+                "process_quality": rv.get("process_quality"),
+                "linkage_quality": rv.get("linkage_quality"),
+                "discipline": rv.get("discipline"),
                 "what_worked": rv.get("what_worked"),
                 "what_failed": rv.get("what_failed"),
                 "prompt_adjustment": rv.get("prompt_adjustment"),
                 "entry_price": item.get("entry_price"),
                 "current_price": item.get("current_price"),
+                "invalidation_check": item.get("invalidation_check"),
+                "tracking_metrics": rv.get("tracking_metrics"),
             }
 
             review_id = self.db.save_review(
@@ -671,24 +826,32 @@ class DecisionPipeline:
                 diagnosis_category=str(rv.get("diagnosis_category") or "") or None,
                 extra=extra,
             )
+            if lesson.strip():
+                self.db.insert_lesson_if_new(category="review", content=lesson.strip(), lookback_days=14)
             saved_reviews.append(
                 {
                     "review_id": review_id,
                     "recommendation_id": rid,
                     "stock_code": item["stock_code"],
+                    "status": status,
                     "outcome": outcome,
                     "return_pct": return_pct,
+                    "process_quality": rv.get("process_quality"),
+                    "linkage_quality": rv.get("linkage_quality"),
+                    "discipline": rv.get("discipline"),
                     "diagnosis": diagnosis,
                     "diagnosis_category": rv.get("diagnosis_category"),
                     "lesson": lesson,
                     "prompt_adjustment": rv.get("prompt_adjustment"),
+                    "invalidation_check": item.get("invalidation_check"),
                 }
             )
 
         dimension_reviews = [
-            r for r in (review_payload.get("dimension_reviews") or []) if isinstance(r, dict)
+            normalize_dimension_review(r)
+            for r in (review_payload.get("dimension_reviews") or [])
+            if isinstance(r, dict)
         ]
-        # 维度教训入库（按 dimension 分类）
         for dr in dimension_reviews:
             lesson = str(dr.get("lesson") or "").strip()
             if not lesson:
@@ -706,6 +869,10 @@ class DecisionPipeline:
             "history_patterns": review_payload.get("history_patterns") or [],
             "meta_lessons": review_payload.get("meta_lessons") or [],
             "sentiment_lessons": review_payload.get("sentiment_lessons") or [],
+            "review_window": review_window,
+            "review_window_note": review_payload.get("review_window_note")
+            or (review_window.get("note") if isinstance(review_window, dict) else ""),
+            "action_lifecycles": action_lifecycles,
         }
 
     def _insert_unique_lessons(self, lessons: list[Any], category: str) -> None:
@@ -758,6 +925,41 @@ class DecisionPipeline:
         out["matched_sections"] = len(chunks)
         return out
 
+    def _apply_sim_portfolio(
+        self,
+        *,
+        run_id: int,
+        run_date: date,
+        recommendations: list[dict[str, Any]],
+        quotes: dict[str, float | None],
+    ) -> dict[str, Any]:
+        sim_cfg = getattr(self.config, "sim", None)
+        if sim_cfg is None or not getattr(sim_cfg, "enabled", True):
+            return {"skipped": True, "reason": "sim.enabled=false"}
+        try:
+            from money_more.sim import SimConfig, SimPortfolioEngine
+
+            engine = SimPortfolioEngine(
+                self.db,
+                SimConfig(
+                    enabled=True,
+                    initial_cash=float(sim_cfg.initial_cash),
+                    lot_size=int(sim_cfg.lot_size),
+                    default_buy_pct=float(sim_cfg.default_buy_pct),
+                ),
+            )
+            return engine.apply_recommendations(
+                run_id=run_id,
+                run_date=run_date.isoformat(),
+                recommendations=recommendations,
+                quotes=quotes,
+                max_single_pct=float(self.config.trading.max_single_position_pct),
+                max_total_pct=float(self.config.trading.max_total_position_pct),
+            )
+        except Exception as exc:
+            log.warning("sim portfolio failed: %s", exc)
+            return {"skipped": True, "error": str(exc)}
+
     def _mark_paper_trades(self, run_date: date) -> None:
         open_trades = self.db.get_open_paper_trades()
         for trade in open_trades:
@@ -807,6 +1009,88 @@ class DecisionPipeline:
             return float(prev) if prev is not None else None
         prev_f = float(prev) if prev is not None else 0.0
         return min(prev_f, ret) if ret < 0 else prev_f
+
+    @staticmethod
+    def _auto_sectors_from_flow(
+        macro_intel: dict[str, Any],
+        watch_sectors: list[str],
+        *,
+        limit: int = 3,
+    ) -> list[str]:
+        """从板块资金流入/涨幅前列自动扩 LLM 板块覆盖。"""
+        if limit <= 0:
+            return []
+        flow = macro_intel.get("sector_money_flow") or {}
+        seen = {str(s).strip() for s in watch_sectors if s}
+        skip_keys = ("沪深", "上证", "深证", "创业板指", "科创50", "中证", "北证")
+        out: list[str] = []
+        rows: list[Any] = []
+        rows.extend(flow.get("top_inflow") or [])
+        rows.extend(flow.get("top_gainers") or [])
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(
+                row.get("板块") or row.get("行业") or row.get("名称") or row.get("name") or ""
+            ).strip()
+            if not name or name in seen:
+                continue
+            if any(k in name for k in skip_keys):
+                continue
+            out.append(name)
+            seen.add(name)
+            if len(out) >= limit:
+                break
+        return out
+
+    @staticmethod
+    def _merge_screen_into_dq(
+        dq: dict[str, Any],
+        screen: dict[str, Any],
+    ) -> dict[str, Any]:
+        """遴选/行情失败必须进入数据质量，避免「漏斗开了其实只剩必跟」。"""
+        out = dict(dq or {})
+        checks = dict(out.get("checks") or {})
+        missing = list(out.get("missing") or [])
+        screen_ok = bool(screen.get("ok", True)) and not screen.get("degraded")
+        # enabled=false 不算行情失败，但标记窄池
+        if screen.get("enabled") is False:
+            checks["stock_screen"] = True
+            checks["screen_coverage"] = False
+            if "screen_coverage" not in missing:
+                missing.append("screen_coverage")
+        else:
+            checks["stock_screen"] = screen_ok
+            coverage = str(screen.get("coverage_mode") or "")
+            checks["screen_coverage"] = coverage == "funnel" and int(screen.get("screened_added") or 0) > 0
+            if not checks["stock_screen"] and "stock_screen" not in missing:
+                missing.append("stock_screen")
+            if not checks["screen_coverage"] and "screen_coverage" not in missing:
+                missing.append("screen_coverage")
+        out["checks"] = checks
+        out["missing"] = missing
+        n = max(len(checks), 1)
+        score = round(sum(1 for ok in checks.values() if ok) / n, 2)
+        if not screen_ok:
+            score = round(max(0.0, score - 0.2), 2)
+            out["screen_degraded"] = True
+            out["screen_note"] = screen.get("plain_note") or screen.get("note") or "遴选失败"
+        out["score"] = score
+        out["degraded"] = bool(score < 0.6 or out.get("screen_degraded"))
+        if out["degraded"]:
+            note = "DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓"
+            if out.get("screen_degraded"):
+                note += "；个股遴选/行情覆盖不足"
+            out["note"] = note
+        else:
+            out["note"] = out.get("note") or "数据完整度尚可"
+        errs = list(out.get("errors_sample") or [])
+        for e in screen.get("errors") or []:
+            if e not in errs:
+                errs.append(str(e))
+        out["errors_sample"] = errs[:10]
+        out["error_count"] = int(out.get("error_count") or 0) + len(screen.get("errors") or [])
+        return out
 
     @staticmethod
     def _assess_data_quality(macro_intel: dict[str, Any]) -> dict[str, Any]:
@@ -876,3 +1160,50 @@ class DecisionPipeline:
             "recent_narrative": (trend.get("narrative_log") or [])[-5:],
             "open_questions": (trend.get("open_questions") or [])[:5],
         }
+
+    @staticmethod
+    def _degraded_decision(
+        holdings: list[dict[str, Any]] | None,
+        error: str,
+        *,
+        base: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """LLM/Cursor 多次失败后的降级决策：持仓一律 hold，空仓则空建议。"""
+        out: dict[str, Any] = dict(base or {})
+        recs: list[dict[str, Any]] = []
+        for h in holdings or []:
+            code = normalize_code(str(h.get("code") or h.get("stock_code") or ""))
+            if not code:
+                continue
+            pos = h.get("position_pct")
+            if pos is None:
+                pos = h.get("weight_pct")
+            try:
+                pos_f = float(pos) if pos is not None else 0.0
+            except (TypeError, ValueError):
+                pos_f = 0.0
+            recs.append(
+                {
+                    "code": code,
+                    "action": "hold",
+                    "confidence": 0.2,
+                    "position_pct": pos_f,
+                    "time_horizon": "medium",
+                    "rationale": f"LLM/Agent 请求失败降级，暂维持持仓。错误: {error[:200]}",
+                    "evidence_chain": ["degraded_hold"],
+                    "key_risk": "本轮决策模型不可用，需人工复核",
+                }
+            )
+        out["recommendations"] = recs
+        out["portfolio_summary"] = (
+            "LLM/Cursor 超时或重试耗尽，本轮已降级：持仓维持 hold，禁止新开仓。"
+            f" 错误: {error[:500]}"
+        )
+        out.setdefault("market_context", "决策模型不可用")
+        out.setdefault("contradictions_handled", [])
+        out["_multi_agent_fallback"] = out.get("_multi_agent_fallback") or "all_failed"
+        errs = list(out.get("_multi_agent_errors") or [])
+        if error and error not in errs:
+            errs.append(error)
+        out["_multi_agent_errors"] = errs
+        return out

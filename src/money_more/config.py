@@ -65,7 +65,7 @@ class TrendConfig:
 @dataclass
 class AnalysisConfig:
     prompt_version: str = "v3-midlong-5d"
-    debate_top_k: int = 1  # 周期省 token：默认只辩 Top1
+    debate_top_k: int = 3  # 买卖建议默认辩 Top3，减少未对抗决策
     debate_min_score: float = 55.0
     investment_horizon: str = "medium_long"  # medium_long | short
     review_min_hold_days: int = 14
@@ -124,14 +124,50 @@ class AgentsConfig:
     synthesizer_provider: str = "deepseek"
     synthesizer_model: str = ""
     cursor_model: str = "composer-2.5"
+    # LLM / Cursor 超时与重试（秒）
+    llm_timeout_seconds: float = 90.0
+    llm_max_retries: int = 2
+    cursor_timeout_seconds: float = 180.0
+    cursor_max_retries: int = 2
+    # 编排层等待单个分析师的上限（应略大于单次 timeout × (retries+1)）
+    agent_wait_seconds: float = 420.0
+
+
+@dataclass
+class SimTradingConfig:
+    """模拟组合：按报告动作评估分析效果（与真实 holdings 分离）。"""
+
+    enabled: bool = True
+    initial_cash: float = 50_000.0
+    lot_size: int = 100
+    default_buy_pct: float = 10.0
+
+
+@dataclass
+class ScreenConfig:
+    """个股遴选漏斗：板块/全市场 → 量化 → 深度分析。"""
+
+    enabled: bool = True
+    universe_mode: str = "spot_all"  # spot_all=全 A 现货；sector_spot=关注板块成分
+    max_universe: int = 400
+    max_quant: int = 50
+    max_deep: int = 15  # 量化新票上限；必跟不占此名额
+    sector_cons_limit: int = 60
+    min_amount: float = 5.0e7
+    pe_max: float = 0.0  # <=0 不硬截断；高 PE 由打分降权
+    exclude_negative_pe: bool = False  # 亏损扩张期票默认可进池
+    exclude_st: bool = True
+    sector_priority_boost: float = 8.0
+    auto_sector_from_flow: int = 3  # 资金流入前列自动扩板块 LLM（0=关闭）
 
 
 @dataclass
 class AppConfig:
     watch_sectors: list[str] = field(default_factory=list)
-    watch_stocks: list[str] = field(default_factory=list)
+    watch_stocks: list[str] = field(default_factory=list)  # 必跟名单，非唯一宇宙
     holdings: list[Holding] = field(default_factory=list)
     trading: TradingConfig = field(default_factory=TradingConfig)
+    screen: ScreenConfig = field(default_factory=ScreenConfig)
     intelligence: IntelligenceConfig = field(default_factory=IntelligenceConfig)
     tushare: TushareConfig = field(default_factory=TushareConfig)
     rss: RssConfig = field(default_factory=RssConfig)
@@ -142,7 +178,8 @@ class AppConfig:
     optimize: OptimizeConfig = field(default_factory=OptimizeConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
-    review_lookback_days: int = 120
+    sim: SimTradingConfig = field(default_factory=SimTradingConfig)
+    review_lookback_days: int = 60  # 复盘取材窗口：近 2 个月
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com/v1"
@@ -222,6 +259,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     optimize_raw = raw.get("optimize") or {}
     email_raw = raw.get("email") or {}
     agents_raw = raw.get("agents") or {}
+    sim_raw = raw.get("sim") or {}
+    screen_raw = raw.get("screen") or {}
     paths_raw = raw.get("paths") or {}
     holdings = [
         Holding(
@@ -277,7 +316,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         trend=TrendConfig(enabled=bool(trend_raw.get("enabled", True))),
         analysis=AnalysisConfig(
             prompt_version=str(analysis_raw.get("prompt_version", "v3-midlong-5d")),
-            debate_top_k=int(analysis_raw.get("debate_top_k", 1)),
+            debate_top_k=int(analysis_raw.get("debate_top_k", 3)),
             debate_min_score=float(analysis_raw.get("debate_min_score", 55)),
             investment_horizon=str(analysis_raw.get("investment_horizon", "medium_long")),
             review_min_hold_days=int(analysis_raw.get("review_min_hold_days", 14)),
@@ -328,8 +367,33 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             synthesizer_provider=str(agents_raw.get("synthesizer_provider", "deepseek")),
             synthesizer_model=str(agents_raw.get("synthesizer_model") or ""),
             cursor_model=str(agents_raw.get("cursor_model") or "composer-2.5"),
+            llm_timeout_seconds=float(agents_raw.get("llm_timeout_seconds", 90)),
+            llm_max_retries=int(agents_raw.get("llm_max_retries", 2)),
+            cursor_timeout_seconds=float(agents_raw.get("cursor_timeout_seconds", 180)),
+            cursor_max_retries=int(agents_raw.get("cursor_max_retries", 2)),
+            agent_wait_seconds=float(agents_raw.get("agent_wait_seconds", 420)),
         ),
-        review_lookback_days=int(raw.get("review_lookback_days", 120)),
+        sim=SimTradingConfig(
+            enabled=bool(sim_raw.get("enabled", True)),
+            initial_cash=float(sim_raw.get("initial_cash", 50_000)),
+            lot_size=int(sim_raw.get("lot_size", 100)),
+            default_buy_pct=float(sim_raw.get("default_buy_pct", 10)),
+        ),
+        screen=ScreenConfig(
+            enabled=bool(screen_raw.get("enabled", True)),
+            universe_mode=str(screen_raw.get("universe_mode") or "spot_all"),
+            max_universe=int(screen_raw.get("max_universe", 400)),
+            max_quant=int(screen_raw.get("max_quant", 50)),
+            max_deep=int(screen_raw.get("max_deep", 15)),
+            sector_cons_limit=int(screen_raw.get("sector_cons_limit", 60)),
+            min_amount=float(screen_raw.get("min_amount", 5.0e7)),
+            pe_max=float(screen_raw.get("pe_max", 0)),
+            exclude_negative_pe=bool(screen_raw.get("exclude_negative_pe", False)),
+            exclude_st=bool(screen_raw.get("exclude_st", True)),
+            sector_priority_boost=float(screen_raw.get("sector_priority_boost", 8)),
+            auto_sector_from_flow=int(screen_raw.get("auto_sector_from_flow", 3)),
+        ),
+        review_lookback_days=int(raw.get("review_lookback_days", 60)),
         paths=PathsConfig(
             db=str(paths_raw.get("db", "data/money_more.db")),
             reports=str(paths_raw.get("reports", "reports")),

@@ -31,23 +31,32 @@ class LLMClient:
     def __init__(
         self,
         config: AppConfig,
-        timeout: float = 120.0,
+        timeout: float | None = None,
         provider: LLMProvider | None = None,
     ) -> None:
         if not provider and not (config.llm_api_key or "").strip():
             raise ValueError("未设置 LLM_API_KEY，请在 .env 中配置")
         self.config = config
+        agents = getattr(config, "agents", None)
+        resolved_timeout = float(
+            timeout
+            if timeout is not None
+            else (getattr(agents, "llm_timeout_seconds", 90) or 90)
+        )
+        resolved_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
         self.provider = provider or OpenAICompatProvider(
             name="deepseek",
             api_key=config.llm_api_key,
             base_url=config.llm_base_url,
             model=config.llm_model,
-            timeout=timeout,
+            timeout=resolved_timeout,
+            max_retries=resolved_retries,
         )
         ok, reason = self.provider.available()
         if not ok:
             raise ValueError(reason)
         self.model = getattr(self.provider, "model", config.llm_model)
+        self._default_max_retries = resolved_retries
 
     def analyze_json(
         self,
@@ -55,12 +64,13 @@ class LLMClient:
         user_payload: dict[str, Any],
         temperature: float = 0.3,
         required_keys: list[str] | None = None,
-        max_retries: int = 2,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
+        retries = self._default_max_retries if max_retries is None else int(max_retries)
         return self.provider.complete_json(
             system_prompt,
             user_payload,
             temperature=temperature,
             required_keys=required_keys,
-            max_retries=max_retries,
+            max_retries=retries,
         )

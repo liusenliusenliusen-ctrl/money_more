@@ -19,7 +19,8 @@ class AnthropicProvider(LLMProvider):
         api_key: str,
         model: str = "claude-sonnet-4-20250514",
         base_url: str | None = None,
-        timeout: float = 120.0,
+        timeout: float = 90.0,
+        max_retries: int = 2,
         name: str = "claude",
     ) -> None:
         self.name = name
@@ -27,6 +28,7 @@ class AnthropicProvider(LLMProvider):
         self.model = model
         self.base_url = (base_url or "").strip() or None
         self._timeout = timeout
+        self._default_max_retries = int(max_retries)
         self._compat: OpenAICompatProvider | None = None
 
     def available(self) -> tuple[bool, str]:
@@ -41,11 +43,13 @@ class AnthropicProvider(LLMProvider):
         *,
         temperature: float = 0.3,
         required_keys: list[str] | None = None,
-        max_retries: int = 2,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         ok, reason = self.available()
         if not ok:
             raise ValueError(reason)
+
+        retries = self._default_max_retries if max_retries is None else int(max_retries)
 
         # OpenAI 兼容网关（如某些代理）
         if self.base_url:
@@ -56,13 +60,14 @@ class AnthropicProvider(LLMProvider):
                     base_url=self.base_url,
                     model=self.model,
                     timeout=self._timeout,
+                    max_retries=retries,
                 )
             return self._compat.complete_json(
                 system_prompt,
                 user_payload,
                 temperature=temperature,
                 required_keys=required_keys,
-                max_retries=max_retries,
+                max_retries=retries,
             )
 
         try:
@@ -78,7 +83,7 @@ class AnthropicProvider(LLMProvider):
         )
         last_error: Exception | None = None
         payload_text = user_content
-        for attempt in range(max_retries + 1):
+        for attempt in range(retries + 1):
             try:
                 msg = client.messages.create(
                     model=self.model,
@@ -101,7 +106,7 @@ class AnthropicProvider(LLMProvider):
                 return data
             except Exception as exc:
                 last_error = exc
-                if attempt >= max_retries:
+                if attempt >= retries:
                     break
                 time.sleep(min(8.0, 2**attempt))
                 payload_text = dumps_json(
@@ -112,4 +117,6 @@ class AnthropicProvider(LLMProvider):
                     },
                     indent=2,
                 )
-        raise RuntimeError(f"{self.name} 分析失败: {last_error}")
+        raise RuntimeError(
+            f"{self.name} 分析失败（已重试 {retries} 次，timeout={self._timeout:.0f}s）: {last_error}"
+        )

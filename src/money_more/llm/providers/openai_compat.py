@@ -21,7 +21,8 @@ class OpenAICompatProvider(LLMProvider):
         api_key: str,
         base_url: str,
         model: str,
-        timeout: float = 120.0,
+        timeout: float = 90.0,
+        max_retries: int = 2,
     ) -> None:
         self.name = name
         self.api_key = (api_key or "").strip()
@@ -29,7 +30,7 @@ class OpenAICompatProvider(LLMProvider):
         self.model = model
         self._client: OpenAI | None = None
         self._timeout = timeout
-
+        self._default_max_retries = int(max_retries)
     def available(self) -> tuple[bool, str]:
         if not self.api_key or self.api_key.startswith("your_"):
             return False, f"{self.name}: 未配置 API Key"
@@ -55,15 +56,16 @@ class OpenAICompatProvider(LLMProvider):
         *,
         temperature: float = 0.3,
         required_keys: list[str] | None = None,
-        max_retries: int = 2,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         client = self._client_or_raise()
+        retries = self._default_max_retries if max_retries is None else int(max_retries)
         user_content = (
             user_payload if isinstance(user_payload, str) else dumps_json(user_payload, indent=2)
         )
         last_error: Exception | None = None
         payload_text = user_content
-        for attempt in range(max_retries + 1):
+        for attempt in range(retries + 1):
             try:
                 response = client.chat.completions.create(
                     model=self.model,
@@ -83,7 +85,7 @@ class OpenAICompatProvider(LLMProvider):
                 return data
             except Exception as exc:
                 last_error = exc
-                if attempt >= max_retries:
+                if attempt >= retries:
                     break
                 time.sleep(min(8.0, 2**attempt))
                 payload_text = dumps_json(
@@ -94,7 +96,9 @@ class OpenAICompatProvider(LLMProvider):
                     },
                     indent=2,
                 )
-        raise RuntimeError(f"{self.name} 分析失败（已重试 {max_retries} 次）: {last_error}")
+        raise RuntimeError(
+            f"{self.name} 分析失败（已重试 {retries} 次，timeout={self._timeout:.0f}s）: {last_error}"
+        )
 
 
 def parse_json_object(text: str) -> dict[str, Any]:

@@ -190,6 +190,9 @@ def run_cursor_optimize(config: AppConfig, run_date: str | None = None) -> dict[
     log.info("Starting Cursor optimize model=%s cwd=%s", model, cwd)
 
     try:
+        from money_more.llm.timeout_util import LLMTimeoutError, run_with_timeout
+
+        wait_s = max(60.0, float(config.optimize.max_minutes) * 60.0)
         with Agent.create(
             model=model,
             api_key=api_key,
@@ -212,7 +215,7 @@ def run_cursor_optimize(config: AppConfig, run_date: str | None = None) -> dict[
             except Exception as stream_exc:
                 log.warning("stream read partial: %s", stream_exc)
 
-            result = run.wait()
+            result = run_with_timeout(run.wait, wait_s)
             status = getattr(result, "status", None) or str(result)
             out: dict[str, Any] = {
                 "skipped": False,
@@ -229,6 +232,15 @@ def run_cursor_optimize(config: AppConfig, run_date: str | None = None) -> dict[
             )
             out["report_path"] = str(_write_optimize_report(config, d, out))
             return out
+    except LLMTimeoutError as err:
+        out = {
+            "skipped": False,
+            "status": "timeout",
+            "error": str(err),
+            "retryable": True,
+        }
+        out["report_path"] = str(_write_optimize_report(config, d, out))
+        return out
     except CursorAgentError as err:
         out = {
             "skipped": False,

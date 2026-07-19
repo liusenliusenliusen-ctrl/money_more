@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from money_more.config import AppConfig
@@ -23,6 +22,11 @@ def build_provider(
 ) -> LLMProvider:
     kind = (kind or "openai").strip().lower()
     label = name or kind
+    agents = getattr(config, "agents", None)
+    llm_timeout = float(getattr(agents, "llm_timeout_seconds", 90) or 90)
+    llm_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
+    cursor_timeout = float(getattr(agents, "cursor_timeout_seconds", 180) or 180)
+    cursor_retries = int(getattr(agents, "cursor_max_retries", 2) or 2)
 
     if kind in ("openai", "openai_compat", "deepseek", "llm"):
         return OpenAICompatProvider(
@@ -30,6 +34,8 @@ def build_provider(
             api_key=api_key or config.llm_api_key,
             base_url=base_url or config.llm_base_url,
             model=model or config.llm_model,
+            timeout=llm_timeout,
+            max_retries=llm_retries,
         )
 
     if kind in ("cursor", "cursor_agent"):
@@ -38,6 +44,8 @@ def build_provider(
             api_key=api_key or config.cursor_api_key,
             model=model or config.agents.cursor_model,
             cwd=config.project_root,
+            timeout_seconds=cursor_timeout,
+            max_retries=cursor_retries,
         )
 
     if kind in ("claude", "anthropic"):
@@ -46,6 +54,8 @@ def build_provider(
             api_key=api_key or config.claude_api_key,
             model=model or config.claude_model,
             base_url=base_url or (config.claude_base_url or None),
+            timeout=llm_timeout,
+            max_retries=llm_retries,
         )
 
     raise ValueError(f"未知 provider 类型: {kind}")

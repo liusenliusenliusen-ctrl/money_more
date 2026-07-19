@@ -126,6 +126,36 @@ def apply_hard_gates(
     forecasts = (tushare_bundle or {}).get("forecast") or []
     if forecasts:
         reasons.append(f"存在业绩预告 {len(forecasts)} 条")
+        # 中长线硬降级：业绩预告暴雷类关键词
+        bomb_keys = (
+            "预减",
+            "首亏",
+            "续亏",
+            "增亏",
+            "大幅下降",
+            "由盈转亏",
+            "亏损",
+            "下滑",
+            "不及预期",
+            "预警",
+        )
+        bomb_hits: list[str] = []
+        for item in forecasts[:6]:
+            if not isinstance(item, dict):
+                text = str(item)
+            else:
+                text = " ".join(
+                    str(item.get(k) or "")
+                    for k in ("type", "type_name", "p_change_min", "p_change_max", "summary", "title", "content")
+                )
+            for k in bomb_keys:
+                if k in text:
+                    bomb_hits.append(k)
+                    break
+        if bomb_hits:
+            block_buy = True
+            force_watch = True
+            reasons.append("业绩预告偏空硬门禁: " + "、".join(dict.fromkeys(bomb_hits)))
 
     return {
         "block_buy": block_buy,

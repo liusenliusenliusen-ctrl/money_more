@@ -87,6 +87,48 @@ def test_degraded_forbids_new_buys():
     assert any("禁止新买" in o or "0.4" in o for o in overs)
 
 
+def test_empty_holdings_blocks_hold_sell_add():
+    recs, overs = validate_recommendations(
+        [
+            {"code": "600519", "action": "hold", "confidence": 0.8, "position_pct": 10},
+            {"code": "300750", "action": "sell", "confidence": 0.7, "position_pct": 0},
+            {"code": "601318", "action": "add", "confidence": 0.8, "position_pct": 10},
+        ],
+        holdings=[],
+        constraints={
+            "max_single_position_pct": 20,
+            "max_total_position_pct": 80,
+            "stop_loss_pct": 15,
+            "take_profit_pct": 40,
+        },
+        quotes={"600519": 1700.0, "300750": 200.0, "601318": 50.0},
+        data_quality={"score": 0.9},
+    )
+    by = {r["code"]: r["action"] for r in recs}
+    assert by["600519"] == "watch"
+    assert by["300750"] == "watch"
+    assert by["601318"] == "buy"
+    assert any("空仓禁止" in o for o in overs)
+
+
+def test_allowed_codes_whitelist():
+    recs, overs = validate_recommendations(
+        [{"code": "999999", "action": "buy", "confidence": 0.9, "position_pct": 10}],
+        holdings=[],
+        constraints={
+            "max_single_position_pct": 20,
+            "max_total_position_pct": 80,
+            "stop_loss_pct": 15,
+            "take_profit_pct": 40,
+        },
+        quotes={"999999": 10.0},
+        data_quality={"score": 0.9},
+        allowed_codes={"600519", "300750"},
+    )
+    assert recs[0]["action"] == "watch"
+    assert any("深度池" in o for o in overs)
+
+
 def test_enrich_holdings():
     class H:
         code = "600519"
@@ -756,7 +798,7 @@ def test_render_conclusion_card_and_cross_links():
     result["history_patterns"] = ["左侧须等资金确认"]
     md2 = render_daily_report(result)
     assert "### 维度复盘" in md2
-    assert "[market]" in md2
+    assert "市场阶段" in md2 or "震荡偏强" in md2
     assert "🔁 [pattern]" in md2
 
 
@@ -787,10 +829,14 @@ def test_build_prior_dimension_forecasts(tmp_path: Path):
         tmp_path, as_of=date(2026, 7, 12), lookback_days=120, min_age_days=14, max_items=8
     )
     assert any(i.get("date") == "2026-06-01" for i in items)
-    assert not any(i.get("date") == "2026-07-10" for i in items)
     hit = next(i for i in items if i["date"] == "2026-06-01")
     assert hit["market"]["phase"] == "range"
     assert hit["sectors"][0]["sector"] == "新能源"
+    assert hit.get("matured") is True
+    # 较新材料可纳入窗口但标 matured=False
+    young = [i for i in items if i.get("date") == "2026-07-10"]
+    if young:
+        assert young[0].get("matured") is False
 
 
 def test_decision_digest_includes_dimensions():

@@ -125,6 +125,48 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     updated_at TEXT,
     FOREIGN KEY (recommendation_id) REFERENCES recommendations(id)
 );
+
+CREATE TABLE IF NOT EXISTS sim_account (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    initial_cash REAL NOT NULL,
+    cash REAL NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sim_positions (
+    stock_code TEXT PRIMARY KEY,
+    shares REAL NOT NULL,
+    avg_cost REAL NOT NULL,
+    opened_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sim_fills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    run_date TEXT NOT NULL,
+    stock_code TEXT NOT NULL,
+    side TEXT NOT NULL,
+    shares REAL NOT NULL,
+    price REAL NOT NULL,
+    amount REAL NOT NULL,
+    cost_fee REAL NOT NULL,
+    action_src TEXT,
+    note TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sim_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    run_date TEXT NOT NULL UNIQUE,
+    cash REAL NOT NULL,
+    equity REAL NOT NULL,
+    nav_return_pct REAL,
+    positions_json TEXT NOT NULL,
+    fills_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 MIGRATIONS = [
@@ -381,29 +423,59 @@ class Database:
     ) -> int:
         now = datetime.now().isoformat(timespec="seconds")
         with self.session() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO reviews
-                (run_id, recommendation_id, stock_code, original_action, outcome,
-                 return_pct, diagnosis, diagnosis_category, lesson, extra_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    recommendation_id,
-                    stock_code,
-                    original_action,
-                    outcome,
-                    return_pct,
-                    diagnosis,
-                    diagnosis_category,
-                    lesson,
-                    dumps_json(extra or {}),
-                    now,
-                ),
-            )
-            review_id = int(cur.lastrowid)
-            if lesson.strip():
+            existing = conn.execute(
+                "SELECT id FROM reviews WHERE recommendation_id = ?",
+                (recommendation_id,),
+            ).fetchone()
+            if existing:
+                review_id = int(existing["id"])
+                conn.execute(
+                    """
+                    UPDATE reviews
+                    SET run_id=?, stock_code=?, original_action=?, outcome=?,
+                        return_pct=?, diagnosis=?, diagnosis_category=?, lesson=?,
+                        extra_json=?, created_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        run_id,
+                        stock_code,
+                        original_action,
+                        outcome,
+                        return_pct,
+                        diagnosis,
+                        diagnosis_category,
+                        lesson,
+                        dumps_json(extra or {}),
+                        now,
+                        review_id,
+                    ),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO reviews
+                    (run_id, recommendation_id, stock_code, original_action, outcome,
+                     return_pct, diagnosis, diagnosis_category, lesson, extra_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        recommendation_id,
+                        stock_code,
+                        original_action,
+                        outcome,
+                        return_pct,
+                        diagnosis,
+                        diagnosis_category,
+                        lesson,
+                        dumps_json(extra or {}),
+                        now,
+                    ),
+                )
+                review_id = int(cur.lastrowid)
+            # 经验去重入库放在 pipeline.insert_lesson_if_new；此处仅新插入时写一条
+            if not existing and lesson.strip():
                 conn.execute(
                     """
                     INSERT INTO lessons (category, content, source_review_id, created_at)
@@ -428,6 +500,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_recommendations_for_review(self, before_date: date, lookback_days: int) -> list[dict[str, Any]]:
+        """待复盘建议：无复盘，或仅有 tracking/pending/thesis_intact（可再跟踪）。"""
         with self.session() as conn:
             rows = conn.execute(
                 """
@@ -437,8 +510,17 @@ class Database:
                 JOIN daily_runs d ON d.id = r.run_id
                 WHERE d.run_date <= ?
                   AND d.run_date >= date(?, '-' || ? || ' days')
-                  AND NOT EXISTS (
-                      SELECT 1 FROM reviews rv WHERE rv.recommendation_id = r.id
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1 FROM reviews rv WHERE rv.recommendation_id = r.id
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM reviews rv
+                          WHERE rv.recommendation_id = r.id
+                            AND lower(COALESCE(rv.outcome, '')) IN (
+                                'tracking', 'pending', 'thesis_intact'
+                            )
+                      )
                   )
                 ORDER BY r.created_at ASC
                 """,
@@ -775,4 +857,228 @@ class Database:
                 }
                 for t in open_t
             ],
+        }
+
+    # ----- 模拟组合（初始资金评估） -----
+
+    def sim_ensure_account(self, initial_cash: float) -> dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            row = conn.execute("SELECT * FROM sim_account WHERE id = 1").fetchone()
+            if row:
+                return dict(row)
+            conn.execute(
+                """
+                INSERT INTO sim_account (id, initial_cash, cash, updated_at)
+                VALUES (1, ?, ?, ?)
+                """,
+                (float(initial_cash), float(initial_cash), now),
+            )
+        return {
+            "id": 1,
+            "initial_cash": float(initial_cash),
+            "cash": float(initial_cash),
+            "updated_at": now,
+        }
+
+    def sim_get_account(self) -> dict[str, Any] | None:
+        with self.session() as conn:
+            row = conn.execute("SELECT * FROM sim_account WHERE id = 1").fetchone()
+        return dict(row) if row else None
+
+    def sim_save_account(self, cash: float) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            conn.execute(
+                "UPDATE sim_account SET cash=?, updated_at=? WHERE id=1",
+                (float(cash), now),
+            )
+
+    def sim_reset(self, initial_cash: float) -> dict[str, Any]:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            conn.execute("DELETE FROM sim_fills")
+            conn.execute("DELETE FROM sim_snapshots")
+            conn.execute("DELETE FROM sim_positions")
+            conn.execute("DELETE FROM sim_account")
+            conn.execute(
+                """
+                INSERT INTO sim_account (id, initial_cash, cash, updated_at)
+                VALUES (1, ?, ?, ?)
+                """,
+                (float(initial_cash), float(initial_cash), now),
+            )
+        return {
+            "id": 1,
+            "initial_cash": float(initial_cash),
+            "cash": float(initial_cash),
+            "updated_at": now,
+        }
+
+    def sim_get_positions(self) -> list[dict[str, Any]]:
+        with self.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM sim_positions ORDER BY stock_code"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def sim_replace_positions(self, positions: list[dict[str, Any]]) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            conn.execute("DELETE FROM sim_positions")
+            for p in positions:
+                conn.execute(
+                    """
+                    INSERT INTO sim_positions
+                    (stock_code, shares, avg_cost, opened_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(p["stock_code"]),
+                        float(p["shares"]),
+                        float(p["avg_cost"]),
+                        str(p.get("opened_at") or now[:10]),
+                        str(p.get("updated_at") or now),
+                    ),
+                )
+
+    def sim_insert_fill(self, fill: dict[str, Any]) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO sim_fills
+                (run_id, run_date, stock_code, side, shares, price, amount,
+                 cost_fee, action_src, note, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fill.get("run_id"),
+                    str(fill.get("run_date")),
+                    str(fill.get("stock_code")),
+                    str(fill.get("side")),
+                    float(fill.get("shares") or 0),
+                    float(fill.get("price") or 0),
+                    float(fill.get("amount") or 0),
+                    float(fill.get("cost_fee") or 0),
+                    fill.get("action_src"),
+                    fill.get("note") or "",
+                    now,
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def sim_upsert_snapshot(self, snap: dict[str, Any]) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.session() as conn:
+            conn.execute("DELETE FROM sim_snapshots WHERE run_date = ?", (snap["run_date"],))
+            conn.execute(
+                """
+                INSERT INTO sim_snapshots
+                (run_id, run_date, cash, equity, nav_return_pct,
+                 positions_json, fills_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snap.get("run_id"),
+                    snap["run_date"],
+                    float(snap["cash"]),
+                    float(snap["equity"]),
+                    snap.get("nav_return_pct"),
+                    dumps_json(snap.get("positions") or []),
+                    dumps_json(snap.get("fills") or []),
+                    now,
+                ),
+            )
+
+    def sim_get_snapshot(self, run_date: str) -> dict[str, Any] | None:
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM sim_snapshots WHERE run_date = ?", (run_date,)
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["positions"] = json.loads(d.get("positions_json") or "[]")
+        d["fills"] = json.loads(d.get("fills_json") or "[]")
+        return d
+
+    def sim_get_snapshot_before(self, run_date: str) -> dict[str, Any] | None:
+        with self.session() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM sim_snapshots
+                WHERE run_date < ?
+                ORDER BY run_date DESC
+                LIMIT 1
+                """,
+                (run_date,),
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["positions"] = json.loads(d.get("positions_json") or "[]")
+        d["fills"] = json.loads(d.get("fills_json") or "[]")
+        return d
+
+    def sim_list_snapshots(self, limit: int = 30) -> list[dict[str, Any]]:
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT run_date, cash, equity, nav_return_pct, created_at
+                FROM sim_snapshots
+                ORDER BY run_date DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def sim_delete_snapshot_and_fills(self, run_date: str) -> None:
+        with self.session() as conn:
+            conn.execute("DELETE FROM sim_snapshots WHERE run_date = ?", (run_date,))
+            conn.execute("DELETE FROM sim_fills WHERE run_date = ?", (run_date,))
+
+    def sim_restore_snapshot(self, snap: dict[str, Any]) -> None:
+        """用某日快照恢复现金与持仓（不含当日 fills）。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        positions = snap.get("positions") or []
+        with self.session() as conn:
+            conn.execute(
+                "UPDATE sim_account SET cash=?, updated_at=? WHERE id=1",
+                (float(snap["cash"]), now),
+            )
+            conn.execute("DELETE FROM sim_positions")
+            for p in positions:
+                code = str(p.get("code") or p.get("stock_code") or "")
+                if not code:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO sim_positions
+                    (stock_code, shares, avg_cost, opened_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        code,
+                        float(p.get("shares") or 0),
+                        float(p.get("avg_cost") or p.get("mark") or 0),
+                        str(p.get("opened_at") or snap.get("run_date") or now[:10]),
+                        now,
+                    ),
+                )
+
+    def sim_summary(self) -> dict[str, Any]:
+        account = self.sim_get_account()
+        snaps = self.sim_list_snapshots(limit=1)
+        latest = snaps[0] if snaps else None
+        with self.session() as conn:
+            n_fills = conn.execute("SELECT COUNT(*) AS c FROM sim_fills").fetchone()["c"]
+            n_snaps = conn.execute("SELECT COUNT(*) AS c FROM sim_snapshots").fetchone()["c"]
+        return {
+            "account": account,
+            "latest_snapshot": latest,
+            "fill_count": int(n_fills),
+            "snapshot_count": int(n_snaps),
+            "positions": self.sim_get_positions(),
         }

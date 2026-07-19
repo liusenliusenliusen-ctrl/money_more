@@ -1,0 +1,35 @@
+---
+description: 跑分析任务前同步 holdings 到 config.yaml（有持仓写入，未说明则空仓）
+alwaysApply: true
+---
+
+# 跑任务时的持仓同步
+
+每次用户要求「跑一轮 / scheduled / 发邮件分析」时，**先更新 `config.yaml` 的 `holdings`，再执行命令**。
+
+## 规则
+
+1. **用户说明了当前持仓**（代码、数量、成本等）  
+   - 写入 `config.yaml` 的 `holdings`，格式示例：
+     ```yaml
+     holdings:
+       - code: "600519"
+         quantity: 100
+         cost: 1680.0
+     ```
+   - `code` 用 6 位 A 股代码；缺数量/成本时先问清，或按用户给出的字段尽量完整写入。
+
+2. **用户只说跑业务、未提持仓**  
+   - **默认空仓**，把配置改成：
+     ```yaml
+     holdings: []
+     ```
+   - 即使文件里原来有旧持仓，也要清掉，再跑。
+
+3. 同步完成后再跑（通常）：
+   ```bash
+   .venv/bin/python -m money_more scheduled --force --skip-optimize
+   ```
+   （若用户明确要求带自优化，再去掉 `--skip-optimize`。）
+
+4. 不要把 `watch_stocks` 当成持仓；关注列表与持仓是两回事。

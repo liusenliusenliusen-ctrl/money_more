@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 from typing import Any
 
 from money_more.llm.providers.base import LLMProvider
@@ -85,7 +85,11 @@ class SynthesisAgent:
 
 
 class MultiAgentOrchestrator:
-    """双分析师并行 + 综合。任一副分析失败时回退到主分析。"""
+    """双分析师并行 + 综合。
+
+    - 任一分析师失败 → 退化成单 agent（保留成功一侧）
+    - 两侧都失败 → 返回降级结果（不抛），由上层写报告/发邮件
+    """
 
     def __init__(
         self,
@@ -94,11 +98,28 @@ class MultiAgentOrchestrator:
         synthesizer: SynthesisAgent | None = None,
         *,
         parallel: bool = True,
+        agent_wait_seconds: float = 420.0,
     ) -> None:
         self.primary = primary
         self.secondary = secondary
         self.synthesizer = synthesizer
         self.parallel = parallel
+        self.agent_wait_seconds = float(agent_wait_seconds)
+
+    @staticmethod
+    def _all_failed(errors: list[str]) -> dict[str, Any]:
+        msg = "; ".join(errors) if errors else "unknown"
+        return {
+            "recommendations": [],
+            "portfolio_summary": (
+                "多 Agent 全部失败（已超时/重试），报告已降级为空建议，请人工复核。"
+                f" 错误: {msg}"
+            ),
+            "market_context": "LLM/Cursor 请求失败，本轮决策不可用。",
+            "contradictions_handled": [],
+            "_multi_agent_fallback": "all_failed",
+            "_multi_agent_errors": errors,
+        }
 
     def analyze_json(
         self,
@@ -110,16 +131,21 @@ class MultiAgentOrchestrator:
         multi: bool = True,
     ) -> dict[str, Any]:
         if not multi or self.secondary is None or self.synthesizer is None:
-            return self.primary.analyze(
-                system_prompt,
-                user_payload,
-                required_keys=required_keys,
-                temperature=temperature,
-            )
+            try:
+                return self.primary.analyze(
+                    system_prompt,
+                    user_payload,
+                    required_keys=required_keys,
+                    temperature=temperature,
+                )
+            except Exception as exc:
+                log.error("single-agent primary failed: %s", exc)
+                return self._all_failed([f"primary: {exc}"])
 
         a_out: dict[str, Any] | None = None
         b_out: dict[str, Any] | None = None
         errors: list[str] = []
+        wait = self.agent_wait_seconds
 
         if self.parallel:
             with ThreadPoolExecutor(max_workers=2) as pool:
@@ -142,11 +168,15 @@ class MultiAgentOrchestrator:
                 for fut in as_completed(futs):
                     role = futs[fut]
                     try:
-                        out = fut.result()
+                        out = fut.result(timeout=wait)
                         if role == "primary":
                             a_out = out
                         else:
                             b_out = out
+                    except FuturesTimeout:
+                        errors.append(f"{role}: 编排等待超时（>{wait:.0f}s）")
+                        log.warning("multi-agent %s wait timeout >%.0fs", role, wait)
+                        fut.cancel()
                     except Exception as exc:
                         errors.append(f"{role}: {exc}")
                         log.warning("multi-agent %s failed: %s", role, exc)
@@ -168,15 +198,18 @@ class MultiAgentOrchestrator:
                 errors.append(f"secondary: {exc}")
 
         if a_out is None and b_out is None:
-            raise RuntimeError("多 Agent 分析全部失败: " + "; ".join(errors))
+            log.error("multi-agent all failed: %s", errors)
+            return self._all_failed(errors)
         if a_out is None:
             b_out = b_out or {}
             b_out["_multi_agent_fallback"] = "secondary_only"
             b_out["_multi_agent_errors"] = errors
+            log.warning("multi-agent degraded to secondary_only: %s", errors)
             return b_out
         if b_out is None:
             a_out["_multi_agent_fallback"] = "primary_only"
             a_out["_multi_agent_errors"] = errors
+            log.warning("multi-agent degraded to primary_only: %s", errors)
             return a_out
 
         try:
@@ -217,9 +250,12 @@ def build_orchestrator(config: Any) -> MultiAgentOrchestrator | None:
         return None
     secondary_p = providers.get("secondary")
     synth_p = providers.get("synthesizer") or primary_p
+    agents_cfg = getattr(config, "agents", None)
+    wait = float(getattr(agents_cfg, "agent_wait_seconds", 420) or 420)
     return MultiAgentOrchestrator(
         primary=AnalystAgent(primary_p, role="primary"),
         secondary=AnalystAgent(secondary_p, role="secondary") if secondary_p else None,
         synthesizer=SynthesisAgent(synth_p) if secondary_p else None,
-        parallel=bool(getattr(config.agents, "parallel", True)),
+        parallel=bool(getattr(agents_cfg, "parallel", True)),
+        agent_wait_seconds=wait,
     )

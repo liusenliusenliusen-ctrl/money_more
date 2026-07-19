@@ -1,23 +1,44 @@
 # 复制为 config.yaml 后修改
+#
+# 关键语义（新手必读）：
+# - holdings = 你声明的真实持仓；未声明或 [] = 空仓
+# - watch_stocks = 必跟研究名单（强制进深度池），不是持仓
+# - screen = 个股遴选漏斗（默认全 A 现货 → 量化 → 深度分析）
 
-# 关注板块
+# 关注板块（§2 LLM 深度写叙事；另可从资金流自动扩 auto_sector_from_flow 只）
 watch_sectors:
   - 半导体
   - 新能源
   - 白酒
   - 银行
 
-# 关注个股
-watch_stocks:
-  - "600519"   # 贵州茅台
-  - "300750"   # 宁德时代
-  - "601318"   # 中国平安
+# 必跟个股：可留空，让深度池全部来自量化遴选；填了也不占 max_deep 名额
+watch_stocks: []
 
-# 持仓
-holdings:
-  - code: "600519"
-    quantity: 100
-    cost: 1680.0
+# 个股遴选：全 A / 板块成分 → 量化初筛 → 深度分析（LLM）
+screen:
+  enabled: true
+  universe_mode: spot_all      # spot_all=全 A 现货（推荐）；sector_spot=仅关注板块成分（窄池教学）
+  max_universe: 400
+  max_quant: 50                # 量化入围
+  max_deep: 15                 # 量化新票上限；必跟额外加入、不占此名额
+  sector_cons_limit: 60
+  min_amount: 50000000         # 成交额下限（元）
+  pe_max: 0                    # <=0 不硬截断高 PE；打分会降权
+  exclude_negative_pe: false   # 亏损扩张期票默认可进池
+  exclude_st: true
+  auto_sector_from_flow: 3     # 资金流入前列自动扩 §2 板块（0=关闭）
+
+# 持仓（空仓示例；有仓再填 code / quantity / cost）
+# 跑任务时：未说明持仓 → 必须保持 []；说明了再写入
+holdings: []
+
+# 模拟组合：文末折叠附录，评估「若完全按建议执行」；与真实 holdings 分离
+sim:
+  enabled: true
+  initial_cash: 50000
+  lot_size: 100
+  default_buy_pct: 10        # 仅作配置保留；报告缺 position_pct 时模拟盘不再静默开仓
 
 # 交易约束（中长线：止损更宽、止盈更高）
 trading:
@@ -27,58 +48,56 @@ trading:
   take_profit_pct: 40
 
 # 复盘回看窗口（天）
-review_lookback_days: 120
+review_lookback_days: 60
 
-# 调度：每 5 天凌晨 1 点（cron 每天触发，脚本按 interval_days 门禁）
+# 调度：手动触发为主；interval_days 仅作「距上次成功跑」门禁（--force 可跳过）
+# 本地/服务器 cron 已默认关闭，不要依赖定时
 schedule:
   cadence: every_5_days
   interval_days: 5
   run_hour: 1
-  optimize_after_run: true   # scheduled 命令默认会调 Cursor 优化
+  optimize_after_run: true
 
 # 分析取向：中长线周期
 analysis:
   prompt_version: v3-midlong-5d
   investment_horizon: medium_long
   default_time_horizon: medium
-  review_min_hold_days: 14    # 建议发出后至少观察 14 天再复盘打分
-  paper_horizon_days: 60      # 纸面持仓最长观察天数
-  debate_top_k: 1             # 省 token：只辩最高分 1 只
+  review_min_hold_days: 14
+  paper_horizon_days: 60
+  debate_top_k: 3             # 买卖建议默认辩 Top3
   debate_min_score: 55
 
 # Cursor Agent 自优化（需 CURSOR_API_KEY）
-# 人工用 Cursor CLI 改代码时：touch logs/OPTIMIZE_PAUSE ；改完删掉
 optimize:
   enabled: true
   model: composer-2.5
   max_minutes: 45
-  skip_if_dirty: true          # 有未提交代码改动则跳过，防冲突
-  respect_human_lock: true     # 存在 logs/OPTIMIZE_PAUSE 则跳过
+  skip_if_dirty: true
+  respect_human_lock: true
 
-# 邮件通知（密钥放 .env；这里只开关。默认只发分析报告）
+# 邮件通知（密钥放 .env）
 email:
   enabled: false
   send_analysis: true
   send_optimize: false
-  # 收件人也可写列表（与 EMAIL_TO 合并去重）
-  # to:
-  #   - a@qq.com
-  #   - b@example.com
-  # smtp_host / to 也可写在这里，但推荐用 .env
 
-# 多 Agent 决策（主分析 + 副分析 + 综合）
-# 综合默认 deepseek：JSON 稳、成本低；cursor 更适合当独立分析师
+# 多 Agent 决策
 agents:
   enabled: true
-  decision_multi: true       # 仅决策环节双分析（省 token）
+  decision_multi: true
   parallel: true
-  primary_provider: deepseek # deepseek | openai
-  secondary_provider: cursor # cursor | claude | none
+  primary_provider: deepseek
+  secondary_provider: cursor
   secondary_model: composer-2.5
   synthesizer_provider: deepseek
   cursor_model: composer-2.5
+  llm_timeout_seconds: 90
+  llm_max_retries: 2
+  cursor_timeout_seconds: 180
+  cursor_max_retries: 2
+  agent_wait_seconds: 420
 
-# 情报
 intelligence:
   enabled: true
   max_news_per_source: 8

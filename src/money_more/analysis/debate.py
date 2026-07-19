@@ -73,14 +73,21 @@ def apply_debate_to_recommendations(
     recommendations: list[dict[str, Any]],
     debates: dict[str, Any],
 ) -> list[str]:
-    """按辩论结果下调置信度 / 提示动作；返回 overrides。"""
+    """按辩论结果下调置信度 / 提示动作；返回 overrides。未辩论的买卖会打标。"""
     overrides: list[str] = []
     for rec in recommendations:
         code = str(rec.get("code") or "")
+        action = str(rec.get("action") or "").lower()
         d = debates.get(code)
         if not d or d.get("error"):
+            if action in ("buy", "add"):
+                rec["debate_status"] = "undebated"
+                overrides.append(f"{code}: 买卖建议未经多空辩论（undebated）")
+            else:
+                rec["debate_status"] = "n/a"
             continue
         rec["debate"] = d
+        rec["debate_status"] = "debated"
         try:
             haircut = float(d.get("confidence_haircut") or 0)
         except (TypeError, ValueError):
@@ -94,7 +101,6 @@ def apply_debate_to_recommendations(
                 pass
         hint = str(d.get("decision_hint") or "").lower()
         referee = str(d.get("referee") or "").lower()
-        action = str(rec.get("action") or "").lower()
         if referee == "bear" and action in ("buy", "add"):
             rec["action"] = "watch"
             rec["position_pct"] = 0

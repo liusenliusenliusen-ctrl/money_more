@@ -1,6 +1,6 @@
 # money_more
 
-A 股 **中长线** AI 研究助手：默认 **每 5 天**、凌晨 **1 点** 跑一轮——分析 / 荐股 / 复盘 → Cursor 自优化 →（可选）邮件送达报告。
+A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析 / 荐股 / 复盘 →（可选）Cursor 自优化 →（可选）邮件送达报告。
 
 仓库：https://github.com/liusenliusenliusen-ctrl/money_more
 
@@ -9,29 +9,30 @@ A 股 **中长线** AI 研究助手：默认 **每 5 天**、凌晨 **1 点** �
 | | 本项目 |
 |---|---|
 | 投资取向 | 中长线（数周–数季），非短线 |
-| 调度 | 每 5 天一次；cron 每天 01:00 触发，脚本按间隔门禁 |
-| 产出 | 分析报告、优化报告、趋势报告、纸面统计 |
-| 通知 | SMTP 邮件（分析 + 自优化报告） |
-| 自进化 | 周期结束后 Cursor 优化代码；优先补数据源（宏观/基本面/交易/舆情），再改分析 |
-| 多Agent | 决策：DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
+| 调度 | **手动触发**（本地/服务器 cron 已关闭） |
+| 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池；`watch_stocks` 为必跟（可空） |
+| 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；必跟 ≠ 持仓 |
+| 产出 | 周期决策报告、优化报告、趋势报告、模拟账本（附录） |
+| 通知 | SMTP 邮件（分析 + 可选自优化） |
+| 自进化 | 周期结束后 Cursor 优化代码；优先补数据源，再改分析 |
+| 多Agent | DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
 
 ## 周期流程
 
 ```
 money-more scheduled
-  ├─ 间隔门禁（未满 5 天则跳过；--force 可强制）
-  ├─ 情报（14 日窗口，过滤日内噪声）
-  ├─ 市场 / 板块 / 个股（中长线 prompt）
-  ├─ 建议（默认 medium/long；质量+估值加权更高）
-  ├─ 复盘（建议发出 ≥14 天再打分）
-  ├─ 纸面盯市（最长约 60 天）
-  ├─ 分析报告 → reports/YYYY-MM-DD.md + 趋势 reports/trend.md
+  ├─ 间隔门禁（距上次成功未满 interval_days 则跳过；--force 可强制）
+  ├─ 情报（14 日窗口）
+  ├─ 市场 / 板块（关注板块 + 资金流自动扩）/ 个股漏斗
+  ├─ 建议（空仓硬校验；深度池白名单；Top-K 辩论）
+  ├─ 复盘（近 60 日；浮盈亏 ≠ 结案）
+  ├─ 报告 → reports/YYYY-MM-DD.md + 趋势 reports/trend.md
   ├─ （可选）邮件发送分析报告
-  ├─ Cursor 自优化 → reports/optimize-YYYY-MM-DD.md
+  ├─ （可选）Cursor 自优化
   └─ （可选）邮件发送优化报告
 ```
 
-严谨性：as_of 贯通、决策硬约束、因子评分卡、双源/硬门禁、纸面统计、周期 digest 对比。
+严谨性：as_of 贯通、空仓/深度池硬约束、遴选失败进数据质量、因子评分卡、双源/硬门禁、模拟账本与真实持仓分离。
 
 ## 快速开始
 
@@ -41,15 +42,16 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-cp config.yaml.example config.yaml   # 改关注板块、个股、持仓
+cp config.yaml.example config.yaml   # 先读清 holdings / watch_stocks / screen
 cp .env.example .env                 # 填 LLM / Cursor / 邮件等密钥
 
-money-more doctor                    # 环境自检（不调 LLM）
-money-more scheduled --force         # 立刻跑一轮（忽略 5 天门禁）
+money-more doctor                    # 环境自检（会提示空仓/必跟语义）
+money-more scheduled --force --skip-optimize   # 立刻跑一轮分析
 money-more email-test                # 验证邮件（需先配好 SMTP）
 ```
 
-推荐日常入口：`money-more scheduled`（或 cron 调用 `scripts/periodic_run.sh`）。
+推荐入口：需要时手动 `money-more scheduled --force`（或告诉 Cursor 跑一轮）。  
+**跑任务时**：说明了持仓就写入 `holdings`；未提持仓 → 清空为 `holdings: []` 再跑。
 
 ## 环境变量（`.env`）
 
@@ -70,126 +72,82 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 | 项 | 默认含义 |
 |----|----------|
-| `schedule.cadence` / `interval_days` | `every_5_days` / `5` |
-| `schedule.run_hour` | 文档约定凌晨 1 点（真正几点由 crontab 决定） |
-| `schedule.optimize_after_run` | 周期流程默认跑完后自优化 |
-| `analysis.investment_horizon` | `medium_long` |
+| `holdings` | 真实持仓；`[]` = 空仓 |
+| `watch_stocks` | 必跟研究名单（可 `[]`），**不是持仓** |
+| `screen.universe_mode` | 默认 `spot_all`（全 A 现货）；`sector_spot` 为窄池 |
+| `screen.max_quant` / `max_deep` | `50` / `15`（必跟**不占** `max_deep`） |
+| `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |
+| `screen.auto_sector_from_flow` | 资金流入前列自动扩 §2 板块（默认 3） |
+| `analysis.debate_top_k` | 默认 `3`；未辩论的买卖会标 undebated |
+| `schedule.interval_days` | 距上次成功跑的门禁天数；**不是**已启用的 cron |
+| `schedule.optimize_after_run` | `scheduled` 默认跑完后自优化 |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
-| `optimize.skip_if_dirty` | 有未提交代码改动则跳过自优化 |
-| `optimize.respect_human_lock` | 存在 `logs/OPTIMIZE_PAUSE` 则跳过 |
-| `email.send_analysis` / `send_optimize` | 默认只发分析报告；自优化邮件默认关闭 |
-| `agents.decision_multi` | 决策环节双分析 + 综合（默认 true） |
-| `agents.secondary_provider` | `cursor` / `claude` / `none` |
-| `agents.synthesizer_provider` | 默认 `deepseek`（推荐） |
+| `sim.*` | 文末折叠模拟账本；缺 `position_pct` 不静默开仓 |
+
+读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。
+
+## 术语（勿混用）
+
+| 术语 | 含义 |
+|------|------|
+| 声明持仓 | `holdings` |
+| 必跟名单 | `watch_stocks` + 声明持仓代码（强制进深度池） |
+| 量化池 | 漏斗打分入围（`max_quant`） |
+| 深度池 | 本轮 LLM 细读名单（必跟 ∪ 量化前列） |
+| 模拟账本 | 决策后回放，评估「若完全按建议执行」 |
 
 ## 多 Agent 决策
 
 | 角色 | 默认 | 为什么 |
 |------|------|--------|
 | 主分析师 | DeepSeek | 日常链路；结构化 JSON 稳 |
-| 副分析师 | Cursor | 独立二意见，可读 reports/ 上下文 |
-| 综合委员 | **DeepSeek** | 便宜、schema 稳；Cursor 更适合当分析师 |
-
-```yaml
-agents:
-  enabled: true
-  decision_multi: true
-  primary_provider: deepseek
-  secondary_provider: cursor   # 或 claude / none
-  synthesizer_provider: deepseek
-```
+| 副分析师 | Cursor | 独立二意见；**持仓只认本轮 payload，不从历史报告继承** |
+| 综合委员 | **DeepSeek** | 便宜、schema 稳 |
 
 副分析不可用时自动回退单 DeepSeek。
 
 ## 邮件通知
 
-默认**只发送分析报告**（`email.send_optimize: false`）。自优化仍会跑并写 `reports/optimize-*.md`，但不发邮件，除非在 `config.yaml` 打开 `send_optimize`。
+默认**只发送分析报告**（`email.send_optimize: false`）。  
+**首次发送**：每个收件人第一次收到邮件时，会额外附带 `docs/how-to-read-report.md`。
 
-正文为 Markdown 预览，完整文件作附件。`EMAIL_TO` 支持多个收件人。
+## 运行方式（手动）
 
-**首次发送**：每个收件人第一次收到系统邮件时，会额外附带 `docs/how-to-read-report.md`（如何解读报告）；之后同一邮箱不再附送。发送记录在 `logs/email_ledger.json`。
-
-```bash
-EMAIL_ENABLED=true
-SMTP_HOST=smtp.qq.com
-SMTP_PORT=465
-SMTP_USER=你的QQ邮箱
-SMTP_PASSWORD=授权码
-EMAIL_FROM=你的QQ邮箱
-EMAIL_TO=a@qq.com, b@example.com
-
-money-more email-test
-```
-
-QQ 授权码获取（新版界面）：网页版 mail.qq.com → 右上角头像 → **设置** → **账号与安全** → **安全设置** → 开启服务 → **生成授权码**。  
-说明：https://help.mail.qq.com/detail/0/985
-
-## 定时运行
-
-每天 **01:00** 触发；脚本内按 `interval_days=5` 门禁，未到间隔则跳过。
-
-### macOS 必读（`Operation not permitted`）
-
-项目在 `~/Documents` 下时，系统会拦截 **cron / 后台 bash** 访问该目录，于是：
-
-- `logs/cron.log` 出现：`./scripts/periodic_run.sh: Operation not permitted`
-- **不会**生成报告，也 **不会**发邮件
-
-处理步骤：
-
-1. **完整磁盘访问权限**（必需）  
-   系统设置 → 隐私与安全性 → **完整磁盘访问权限** → `+` → `⌘⇧G` → 添加并勾选：
-   - `/bin/bash`
-   - `/usr/sbin/cron`（若继续用 crontab）
-2. **改用 LaunchAgent**（推荐）  
-   ```bash
-   chmod +x scripts/install_launchd.sh
-   ./scripts/install_launchd.sh
-   ```
-
-也可把仓库挪出 `Documents`（例如 `~/code/money_more`），减少拦截。
-
-### 安装定时任务
+本地与服务器上的 **cron / LaunchAgent 定时任务已取消**。  
+`schedule.interval_days` 只约束「手动连跑太勤」时的跳过逻辑；需要立刻跑请加 `--force`。
 
 ```bash
-# 推荐（macOS）
-./scripts/install_launchd.sh
+# 本地
+.venv/bin/python -m money_more scheduled --force --skip-optimize   # 只要分析+邮件
+.venv/bin/python -m money_more scheduled --force                   # 分析后顺带自优化
 
-# 或 crontab
-./scripts/install_cron.sh
-# 0 1 * * * /bin/bash /path/to/money_more/scripts/periodic_run.sh >> .../logs/cron.log 2>&1
-```
-
-清空 `logs/last_full_run.txt` 后，下一次 01:00 会当作首次完整运行。手动补跑：
-
-```bash
+# 或
 ./scripts/periodic_run.sh --force
 ```
 
-## 人工改动 vs 自优化
+服务器（`/opt/money_more`）同样手动触发。`scripts/install_cron.sh` / `install_launchd.sh` 仍保留，但默认不要安装。
 
-可用 Cursor CLI / IDE 手工改代码；为防与周期自优化冲突：
+## 人工改动 vs 自优化
 
 1. 动手前：`touch logs/OPTIMIZE_PAUSE`
 2. 改完后：`rm logs/OPTIMIZE_PAUSE`
-3. 默认工作区有未提交代码改动时也会跳过自优化
-4. 自优化只追加 `logs/optimization_progress.txt`，禁止 reset / 覆盖人工改动
+3. 默认工作区有未提交改动时也会跳过自优化
 
 ## 信息源
 
 | 层级 | 来源 | 内容 |
 |------|------|------|
 | 宏观 | 新闻联播、全球财经、经济日历、财联社、RSS、Tushare | 政策与事件 |
-| 资金 | 北向、两融、板块净流入 | 资金面 |
+| 资金 | 北向、两融、板块净流入 | 资金面；可扩 §2 板块 |
 | 情绪 | 东财人气、雪球热度、舆情打分 | 拥挤度 |
-| 板块 | 同花顺排名、板块新闻 | 轮动与叙事 |
-| 个股 | 新闻/研报/龙虎榜、Tushare 公告财报估值 | 基本面与预期差 |
-
-Tushare 部分接口需 Pro 权限；未配置 Token 时自动跳过。
+| 板块 | 同花顺/东财排名、板块新闻 | 轮动与叙事 |
+| 个股 | 全 A 现货漏斗 + 新闻/研报/龙虎榜、Tushare 公告财报估值 | 基本面与预期差 |
 
 ## 分析框架
 
 LLM 按九层综合：宏观政策 → 资金面 → 基本面 → 技术面 → 舆情情绪 → 叙事预期 → 交叉验证 → 主要矛盾 → 失效条件。
+
+硬约束补充：空仓禁止 hold/sell/add；深度池外禁止 buy/add；遴选/行情失败写入数据质量；业绩预告偏空可硬降级为 watch。
 
 ## 命令
 
@@ -205,8 +163,9 @@ LLM 按九层综合：宏观政策 → 资金面 → 基本面 → 技术面 →
 | `money-more review` | 仅复盘 |
 | `money-more lessons` / `history` | 经验库 / 历史建议 |
 | `money-more trend` | 滚动趋势报告 |
-| `money-more stats` | 纸面交易统计 |
-| `money-more doctor` | 环境与数据源自检 |
+| `money-more stats` | 旧纸面台账 + 模拟组合统计 |
+| `money-more sim` | 查看模拟组合；`--reset` 清空重来 |
+| `money-more doctor` | 环境与数据源自检（含持仓/必跟提示） |
 | `money-more risk-check` | 仓位/板块集中度 |
 | `money-more compare` | 近日 digest 稳定性对比 |
 
@@ -215,12 +174,12 @@ LLM 按九层综合：宏观政策 → 资金面 → 基本面 → 技术面 →
 | 路径 | 说明 |
 |------|------|
 | `data/money_more.db` | SQLite |
-| `reports/YYYY-MM-DD.md` | 分析报告 |
+| `reports/YYYY-MM-DD.md` | 中长线周期决策报告 |
 | `reports/optimize-YYYY-MM-DD.md` | 自优化报告 |
 | `reports/trend.md` | 趋势报告 |
 | `logs/last_full_run.txt` | 上次成功周期日期（门禁用） |
 | `logs/OPTIMIZE_PAUSE` | 人工改码暂停自优化 |
-| `logs/cron.log` | cron 输出 |
+| `docs/how-to-read-report.md` | 读报指南（首次邮件附件） |
 
 ## 免责声明
 

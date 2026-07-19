@@ -101,6 +101,39 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 0
     except Exception as exc:
         console.print(Panel(str(exc), title="运行失败", style="red"))
+        # 硬失败仍尽量落盘并邮件通知，避免「跑了很久却无声」
+        try:
+            fail_result = {
+                "run_date": run_date.isoformat(),
+                "error": str(exc),
+                "recommendations": [],
+                "portfolio_summary": f"运行失败: {exc}",
+                "market": {},
+                "sectors": [],
+                "stocks": [],
+                "reviews": [],
+                "trend": {},
+                "data_quality": {
+                    "degraded": True,
+                    "llm_degraded": True,
+                    "note": f"运行异常中断，仍尝试发邮件通知。错误: {exc}",
+                },
+                "multi_agent": {"enabled": False, "meta": "hard_fail", "errors": [str(exc)]},
+            }
+            report_path = save_report(fail_result, config.resolve(config.paths.reports))
+            console.print(Panel(f"失败报告已保存: {report_path}", style="yellow"))
+            if config.email.enabled and config.email.send_analysis:
+                from money_more.notify import notify_analysis_report
+
+                mail = notify_analysis_report(config, report_path, run_date.isoformat())
+                if mail.get("ok"):
+                    console.print(Panel(f"失败通知已发邮件 → {mail.get('to')}", style="yellow"))
+                elif mail.get("skipped"):
+                    console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
+                else:
+                    console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
+        except Exception as mail_exc:
+            console.print(Panel(f"失败通知也未发出: {mail_exc}", style="red"))
         return 1
 
 
@@ -289,7 +322,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     db = Database(config.resolve(config.paths.db))
     stats = db.get_paper_trade_stats()
-    table = Table(title="纸面交易统计（含粗略交易成本）")
+    table = Table(title="旧纸面台账（单笔标记，兼容）")
     table.add_column("指标")
     table.add_column("值")
     table.add_row("总笔数", str(stats.get("total")))
@@ -311,10 +344,76 @@ def cmd_stats(args: argparse.Namespace) -> int:
             f"  open {m.get('code')} entry={m.get('entry')} now={m.get('current')} ret={m.get('return_pct')}%"
         )
 
+    # 模拟组合摘要
+    _print_sim_status(config, db)
+
     from money_more.analysis.factor_ic import compute_factor_ic_from_db
 
     ic = compute_factor_ic_from_db(db)
     console.print(Panel(f"因子 IC 诊断: {ic}", title="factor IC", style="cyan"))
+    return 0
+
+
+def _print_sim_status(config, db) -> None:
+    from money_more.sim import SimConfig, SimPortfolioEngine
+
+    sim_cfg = getattr(config, "sim", None)
+    engine = SimPortfolioEngine(
+        db,
+        SimConfig(
+            enabled=bool(getattr(sim_cfg, "enabled", True)),
+            initial_cash=float(getattr(sim_cfg, "initial_cash", 50_000)),
+            lot_size=int(getattr(sim_cfg, "lot_size", 100)),
+            default_buy_pct=float(getattr(sim_cfg, "default_buy_pct", 10)),
+        ),
+    )
+    engine.ensure_account()
+    summary = db.sim_summary()
+    account = summary.get("account")
+    latest = summary.get("latest_snapshot")
+    table = Table(title="模拟组合（初始资金评估）")
+    table.add_column("指标")
+    table.add_column("值")
+    if account:
+        table.add_row("初始资金", f"{float(account['initial_cash']):,.0f}")
+        table.add_row("现金", f"{float(account['cash']):,.2f}")
+    if latest:
+        table.add_row("最近结算日", str(latest.get("run_date")))
+        table.add_row("总权益", f"{float(latest['equity']):,.2f}")
+        table.add_row("相对初始盈亏%", str(latest.get("nav_return_pct")))
+    table.add_row("成交笔数", str(summary.get("fill_count")))
+    table.add_row("快照数", str(summary.get("snapshot_count")))
+    console.print(table)
+    for p in summary.get("positions") or []:
+        console.print(
+            f"  pos {p.get('stock_code')} shares={p.get('shares')} cost={p.get('avg_cost')}"
+        )
+    for s in db.sim_list_snapshots(limit=8):
+        console.print(
+            f"  snap {s.get('run_date')} equity={s.get('equity')} ret={s.get('nav_return_pct')}%"
+        )
+
+
+def cmd_sim(args: argparse.Namespace) -> int:
+    """查看 / 重置模拟组合。"""
+    config = load_config(args.config)
+    db = Database(config.resolve(config.paths.db))
+    from money_more.sim import SimConfig, SimPortfolioEngine
+
+    sim_cfg = getattr(config, "sim", None)
+    engine = SimPortfolioEngine(
+        db,
+        SimConfig(
+            enabled=bool(getattr(sim_cfg, "enabled", True)),
+            initial_cash=float(getattr(sim_cfg, "initial_cash", 50_000)),
+            lot_size=int(getattr(sim_cfg, "lot_size", 100)),
+            default_buy_pct=float(getattr(sim_cfg, "default_buy_pct", 10)),
+        ),
+    )
+    if getattr(args, "reset", False):
+        engine.reset()
+        console.print(Panel("模拟组合已重置为初始资金（持仓与成交已清空）", style="yellow"))
+    _print_sim_status(config, db)
     return 0
 
 
@@ -418,6 +517,32 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         console.print(f"[red]Intelligence failed[/red] {exc}")
         ok = False
 
+    # 持仓 / 必跟语义（新手易混）
+    holdings = list(config.holdings or [])
+    watch = list(config.watch_stocks or [])
+    if not holdings:
+        console.print(
+            "[green]holdings[/green] 空 → 按**空仓**决策（未声明=空仓）。"
+            " watch_stocks 是必跟研究名单，不是持仓。"
+        )
+    else:
+        codes = "、".join(h.code for h in holdings[:8])
+        console.print(f"[green]holdings[/green] 声明持仓 {len(holdings)} 只: {codes}")
+    if watch:
+        console.print(
+            f"[yellow]watch_stocks[/yellow] 必跟 {len(watch)} 只（强制进深度池，≠持仓）: "
+            + "、".join(watch[:8])
+        )
+    else:
+        console.print("[green]watch_stocks[/green] 空 → 深度池全部来自量化遴选")
+    screen = getattr(config, "screen", None)
+    if screen:
+        console.print(
+            f"screen: enabled={screen.enabled} mode={screen.universe_mode} "
+            f"max_quant={screen.max_quant} max_deep={screen.max_deep} "
+            f"pe_max={screen.pe_max} exclude_neg_pe={screen.exclude_negative_pe}"
+        )
+
     db = Database(config.resolve(config.paths.db))
     n = db.fail_stuck_runs(max_hours=6)
     console.print(f"DB stuck runs repaired: {n}")
@@ -477,8 +602,12 @@ def main() -> int:
     p_trend = sub.add_parser("trend", help="查看滚动趋势报告")
     p_trend.set_defaults(func=cmd_trend)
 
-    p_stats = sub.add_parser("stats", help="纸面交易胜率/收益统计")
+    p_stats = sub.add_parser("stats", help="纸面台账 + 模拟组合统计")
     p_stats.set_defaults(func=cmd_stats)
+
+    p_sim = sub.add_parser("sim", help="查看模拟组合（--reset 清空重来）")
+    p_sim.add_argument("--reset", action="store_true", help="重置为初始资金并清空持仓/成交")
+    p_sim.set_defaults(func=cmd_sim)
 
     p_doctor = sub.add_parser("doctor", help="环境与数据源自检（不调用 LLM）")
     p_doctor.add_argument("--date", default=None)

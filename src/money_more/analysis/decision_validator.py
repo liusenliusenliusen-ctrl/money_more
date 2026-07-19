@@ -15,6 +15,7 @@ def validate_recommendations(
     market_risk_level: str | None = None,
     hard_gates: dict[str, dict[str, Any]] | None = None,
     quotes_meta: dict[str, dict[str, Any]] | None = None,
+    allowed_codes: set[str] | list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -48,12 +49,26 @@ def validate_recommendations(
     effective_max_total = max_total * regime_mult
     forbid_new_buys = score < 0.4
 
-    holding_by_code = {str(h.get("code")): h for h in holdings}
+    holding_by_code = {
+        "".join(ch for ch in str(h.get("code") or "") if ch.isdigit())[-6:].zfill(6): h
+        for h in holdings
+        if h.get("code")
+    }
+    is_empty_book = len(holding_by_code) == 0
+    allow: set[str] | None = None
+    if allowed_codes is not None:
+        allow = {
+            "".join(ch for ch in str(c) if ch.isdigit())[-6:].zfill(6)
+            for c in allowed_codes
+            if c
+        }
+        allow |= set(holding_by_code.keys())
     out: list[dict[str, Any]] = []
 
     for raw in recommendations:
         rec = dict(raw)
         code = str(rec.get("code") or "").zfill(6)[-6:]
+        code = "".join(ch for ch in code if ch.isdigit())[-6:].zfill(6)
         rec["code"] = code
         action = str(rec.get("action") or "watch").lower().strip()
         if action in ("买入", "增持"):
@@ -65,6 +80,22 @@ def validate_recommendations(
         elif action in ("观望", "观察"):
             action = "watch"
         rec["action"] = action
+
+        # 空仓硬校验：禁止 hold/sell/add（无真实持仓可操作）
+        if is_empty_book and action in ("hold", "sell", "add"):
+            new_act = "buy" if action == "add" else "watch"
+            overrides.append(f"{code}: 空仓禁止 {action}→{new_act}")
+            action = new_act
+            rec["action"] = new_act
+            if new_act == "watch":
+                rec["position_pct"] = 0.0
+
+        # 深度池白名单：池外代码不得 buy/add
+        if allow is not None and code not in allow and action in ("buy", "add"):
+            overrides.append(f"{code}: 不在深度池/声明持仓 → watch")
+            action = "watch"
+            rec["action"] = "watch"
+            rec["position_pct"] = 0.0
 
         gate = hard_gates.get(code) or {}
         if (gate.get("block_buy") or gate.get("force_watch")) and action in ("buy", "add"):
