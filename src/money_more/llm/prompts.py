@@ -239,7 +239,7 @@ DECISION_SYSTEM = f"""你是 A 股 **中长线** 投资组合经理（PM），�
       "invalidation": "中期失效条件"
     }}
   ],
-  "portfolio_summary": "基于用户声明持仓（或空仓）的配置建议摘要；勿写成模拟盘状态",
+  "portfolio_summary": "【仅组合草案】基于声明持仓的配置意图摘要；勿写成模拟盘状态。系统会在辩论+风控终局后用规则重写最终摘要，此字段只作对照",
   "market_context": "本周决策依赖的核心中期判断",
   "contradictions_handled": ["如何处理矛盾"]
 }}"""

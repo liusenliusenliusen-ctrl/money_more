@@ -559,7 +559,7 @@ def main() -> int:
 
     p_run = sub.add_parser("run", help="执行完整分析流程（建议+复盘+趋势）")
     p_run.add_argument("--date", default=None, help="指定日期 YYYY-MM-DD")
-    p_run.add_argument("--skip-debate", action="store_true", help="跳过 Top-K 多空辩论（更快）")
+    p_run.add_argument("--skip-debate", action="store_true", help="跳过 buy/add 多空辩论（更快）")
     p_run.add_argument("--optimize", action="store_true", help="分析结束后调用 Cursor Agent 优化代码")
     p_run.set_defaults(func=cmd_run)
 

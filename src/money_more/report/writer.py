@@ -133,6 +133,89 @@ def _render_contested_block(
     return lines
 
 
+def _fmt_stage_action(rec: dict[str, Any] | None) -> str:
+    if not rec:
+        return "-"
+    action = str(rec.get("action") or "watch")
+    label = _ACTION_LABEL.get(action, action)
+    try:
+        pct = rec.get("position_pct")
+        pct_s = f"{float(pct):.0f}%" if pct is not None and float(pct) != 0 else ""
+    except (TypeError, ValueError):
+        pct_s = ""
+    conf = rec.get("confidence")
+    conf_s = f" conf={conf}" if conf is not None else ""
+    extra = ""
+    if rec.get("referee"):
+        extra = f" 裁判={rec.get('referee')}"
+    elif rec.get("debate_status") == "undebated":
+        extra = " 未辩论"
+    return f"{label}{(' ' + pct_s) if pct_s else ''}{conf_s}{extra}"
+
+
+def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
+    """展示 研究→草案→辩论→风控 分阶段结论。"""
+    stages = result.get("decision_stages") or {}
+    if not stages:
+        return []
+    lines: list[str] = []
+    lines.append("## 决策流程（分阶段结论）")
+    lines.append("")
+    lines.append(
+        "_流程固定为：**①个股研究 → ②组合草案 → ③多空辩论 → ④风控终局**。"
+        "只有④的 buy/add（仓位>0）可执行并进入模拟盘；①的研究评级 buy ≠ 开仓指令。_"
+    )
+    lines.append("")
+    flow = stages.get("flow") or []
+    if flow:
+        lines.append("**本轮步骤**: " + " → ".join(str(x) for x in flow))
+        lines.append("")
+
+    summary = result.get("decision_summary") or {}
+    final_sum = stages.get("final_portfolio_summary") or summary.get("portfolio_summary") or ""
+    if final_sum:
+        lines.append(f"**④终局组合摘要**: {final_sum}")
+        lines.append("")
+    draft_sum = stages.get("draft_portfolio_summary") or summary.get("portfolio_summary_draft") or ""
+    if draft_sum and draft_sum.strip() and draft_sum.strip() != str(final_sum).strip():
+        lines.append(f"**②草案摘要（已被终局覆盖，仅供对照）**: {_one_line(draft_sum, 160)}")
+        lines.append("")
+
+    research = {str(r.get("code")): r for r in (stages.get("research") or [])}
+    draft = {str(r.get("code")): r for r in (stages.get("portfolio_draft") or [])}
+    debated = {str(r.get("code")): r for r in (stages.get("after_debate") or [])}
+    final = {str(r.get("code")): r for r in (stages.get("after_risk") or [])}
+    codes: list[str] = []
+    for src in (final, debated, draft, research):
+        for c in src:
+            if c and c not in codes:
+                codes.append(c)
+
+    if codes:
+        lines.append("| 代码 | ①研究评级 | ②组合草案 | ③辩论后 | ④风控终局 |")
+        lines.append("|------|-----------|-----------|---------|-----------|")
+        names = _stock_name_map(result)
+        for code in codes[:20]:
+            r0 = research.get(code) or {}
+            rating = str(r0.get("research_rating") or "-")
+            conf0 = r0.get("confidence")
+            rating_s = rating + (f" ({conf0})" if conf0 is not None else "")
+            name = names.get(code) or r0.get("name") or ""
+            code_s = f"{code}" + (f" {name}" if name else "")
+            lines.append(
+                f"| {code_s} | {rating_s} | {_fmt_stage_action(draft.get(code))} | "
+                f"{_fmt_stage_action(debated.get(code))} | {_fmt_stage_action(final.get(code))} |"
+            )
+        if len(codes) > 20:
+            lines.append(f"| … | 另有 {len(codes) - 20} 只略 | | | |")
+        lines.append("")
+
+    if stages.get("plain_note"):
+        lines.append(f"_{stages['plain_note']}_")
+        lines.append("")
+    return lines
+
+
 def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     """结论卡：从已有结果派生，便于外行速读验证。"""
     lines: list[str] = []
@@ -169,6 +252,19 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             "> **持仓说明**: 本轮按**空仓**决策（`holdings` 未声明或为空）。"
             "`watch_stocks`/必跟名单**不是**持仓。"
         )
+        lines.append("")
+
+    stage_block = render_decision_stages_section(result)
+    if stage_block:
+        for ln in stage_block:
+            if ln.startswith("## "):
+                lines.append("### " + ln[3:])
+            else:
+                lines.append(ln)
+    else:
+        lines.append("### 决策流程（分阶段结论）")
+        lines.append("")
+        lines.append("_本轮未写入 decision_stages（旧报告）；以 §4 终局动作为准。_")
         lines.append("")
 
     lines.append("### 【主结论】分析：现在怎么看")
@@ -243,16 +339,16 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         _render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景", limit=3)
     )
 
-    lines.append("### 【主结论】动作：怎么做")
+    lines.append("### 【主结论】动作：怎么做（④风控终局）")
     lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
-        lines.append("_以下动作基于你声明的**真实持仓：空仓**（与模拟盘无关）。_")
+        lines.append("_以下动作基于你声明的**真实持仓：空仓**（与模拟盘无关）；以④终局为准。_")
     elif basis.get("codes"):
         codes = "、".join(str(c) for c in basis["codes"][:8])
-        lines.append(f"_以下动作基于你声明的**真实持仓**：{codes}（与模拟盘无关）。_")
+        lines.append(f"_以下动作基于你声明的**真实持仓**：{codes}（与模拟盘无关）；以④终局为准。_")
     else:
-        lines.append("_以下为面向你声明持仓的操作建议；模拟盘见后文独立章节。_")
+        lines.append("_以下为面向你声明持仓的操作建议（④终局）；模拟盘见后文独立章节。_")
     lines.append("")
     recs = result.get("recommendations") or []
     if not recs:
@@ -310,7 +406,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("### 逻辑链：维度如何串起来")
     lines.append("")
     lines.append(
-        "_情报主题 → 市场阶段/风格 → 板块态度 → 个股研究 → 组合动作。"
+        "_情报主题 → 市场阶段/风格 → 板块态度 → ①个股研究 → ②④组合终局动作。"
         "下面每条是本轮可核对的因果链（不是另起一套结论）。_"
     )
     lines.append("")
@@ -342,11 +438,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
                     if str(sa.get("code") or st.get("code")) == code:
                         rating = str(sa.get("research_rating") or "")
                         break
-                rate_s = f"研究评级:{rating} → " if rating else ""
+                rate_s = f"①研究:{rating} → " if rating else ""
                 lines.append(
                     f"{chain_i}. 板块「{name}」[{a.get('priority','-')}/"
                     f"{a.get('prosperity','-')}/{a.get('valuation','-')}] "
-                    f"— {stance} → {rate_s}**{act}** {code}{(' '+nm) if nm else ''}"
+                    f"— {stance} → {rate_s}**④{act}** {code}{(' '+nm) if nm else ''}"
                 )
                 chain_i += 1
         else:
@@ -811,7 +907,15 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append(f"**尾部/争议侧栏对仓位**: {summary['tail_risk_note']}")
         lines.append("")
     if summary.get("portfolio_summary"):
-        lines.append(summary["portfolio_summary"])
+        lines.append(f"**④终局组合摘要**: {summary['portfolio_summary']}")
+        lines.append("")
+    draft_ps = summary.get("portfolio_summary_draft") or (
+        (result.get("decision_stages") or {}).get("draft_portfolio_summary") or ""
+    )
+    if draft_ps and str(draft_ps).strip() and str(draft_ps).strip() != str(
+        summary.get("portfolio_summary") or ""
+    ).strip():
+        lines.append(f"**②草案摘要（对照）**: {_one_line(draft_ps, 200)}")
         lines.append("")
     overrides = result.get("validation_overrides") or summary.get("validation_overrides") or []
     if overrides:
@@ -869,7 +973,9 @@ def render_daily_report(result: dict[str, Any]) -> str:
                 f"矛盾={debate.get('bull_case', '')[:40]} / 空={debate.get('bear_case', '')[:40]}"
             )
         elif rec.get("debate_status") == "undebated":
-            lines.append("- 辩论: **未辩论**（未进入 Top-K 多空对抗，置信度宜更保守）")
+            lines.append(
+                "- 辩论: **未辩论**（buy/add 本应全量辩论；缺失时置信度宜更保守，且通常被风控降为观察）"
+            )
         lines.append(f"- 理由: {rec.get('rationale', '')}")
         if rec.get("evidence_chain"):
             lines.append("- 证据链:")

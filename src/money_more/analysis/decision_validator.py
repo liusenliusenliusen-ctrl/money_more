@@ -176,7 +176,12 @@ def validate_recommendations(
 
         if action in ("buy", "hold", "add"):
             if forbid_new_buys and action == "buy" and code not in holding_by_code:
-                overrides.append(f"{code}: 数据降级禁止新买 → watch")
+                if micro_regime == "liquidity_stress":
+                    overrides.append(f"{code}: 微观结构liquidity_stress禁止新买 → watch")
+                elif score < 0.4:
+                    overrides.append(f"{code}: 数据质量过低禁止新买 → watch")
+                else:
+                    overrides.append(f"{code}: 风控禁止新买 → watch")
                 action = "watch"
                 rec["action"] = "watch"
                 pos_f = 0.0

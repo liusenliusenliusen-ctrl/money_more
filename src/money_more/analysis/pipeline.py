@@ -508,6 +508,18 @@ class DecisionPipeline:
             result["multi_agent_drafts"] = drafts
 
         raw_recs = decision.get("recommendations") or []
+        from money_more.analysis.decision_stages import (
+            build_decision_stages,
+            build_final_portfolio_summary,
+            build_research_stage,
+            deep_copy_recs,
+            snapshot_recommendations,
+        )
+
+        research_stage = build_research_stage(stock_analyses)
+        draft_recs_snap = snapshot_recommendations(deep_copy_recs(raw_recs))
+        draft_portfolio_summary = str(decision.get("portfolio_summary") or "")
+
         # 凡 buy/add 必须多空辩论（debate_top_k>0 表示开启；=0 为 --skip-debate）
         debates: dict[str, Any] = {}
         debate_overrides: list[str] = []
@@ -515,6 +527,7 @@ class DecisionPipeline:
             debates = run_buy_add_debates(self.llm, stock_analyses, raw_recs)
             debate_overrides = apply_debate_to_recommendations(raw_recs, debates)
         result["debates"] = debates
+        after_debate_snap = snapshot_recommendations(deep_copy_recs(raw_recs))
 
         # 硬门禁：ST/涨跌停等强制 watch
         gate_map = {s["code"]: s.get("hard_gates") or {} for s in stock_analyses}
@@ -582,6 +595,22 @@ class DecisionPipeline:
         )
         overrides = debate_overrides + overrides
         result["validation_overrides"] = overrides
+        after_risk_snap = snapshot_recommendations(validated)
+        final_portfolio_summary = build_final_portfolio_summary(
+            validated,
+            holdings_basis=holdings_basis,
+            overrides=overrides,
+            microstructure=market_micro,
+            data_quality=result.get("data_quality") or {},
+        )
+        result["decision_stages"] = build_decision_stages(
+            research=research_stage,
+            portfolio_draft=draft_recs_snap,
+            after_debate=after_debate_snap,
+            after_risk=after_risk_snap,
+            overrides=overrides,
+            draft_portfolio_summary=draft_portfolio_summary,
+        )
         from money_more.analysis.risk_check import risk_check_book
 
         result["risk_check"] = risk_check_book(
@@ -643,8 +672,20 @@ class DecisionPipeline:
             recommendations.append(rec)
         result["validation_overrides"] = overrides
         result["recommendations"] = recommendations
+        # 刷新终局摘要（含 short→medium 等后置覆写）
+        final_portfolio_summary = build_final_portfolio_summary(
+            recommendations,
+            holdings_basis=holdings_basis,
+            overrides=overrides,
+            microstructure=market_micro,
+            data_quality=result.get("data_quality") or {},
+        )
+        if result.get("decision_stages"):
+            result["decision_stages"]["after_risk"] = snapshot_recommendations(recommendations)
+            result["decision_stages"]["final_portfolio_summary"] = final_portfolio_summary
         result["decision_summary"] = {
-            "portfolio_summary": decision.get("portfolio_summary"),
+            "portfolio_summary": final_portfolio_summary,
+            "portfolio_summary_draft": draft_portfolio_summary,
             "market_context": decision.get("market_context"),
             "sentiment_regime_note": decision.get("sentiment_regime_note"),
             "tail_risk_note": decision.get("tail_risk_note"),

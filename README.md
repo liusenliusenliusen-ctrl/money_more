@@ -24,7 +24,7 @@ money-more scheduled
   ├─ 间隔门禁（距上次成功未满 interval_days 则跳过；--force 可强制）
   ├─ 情报（14 日窗口）
   ├─ 市场 / 板块（关注板块 + 资金流自动扩）/ 个股漏斗
-  ├─ 建议（空仓硬校验；深度池白名单；Top-K 辩论）
+  ├─ 建议（空仓硬校验；深度池白名单；buy/add 全量辩论 → 风控终局摘要）
   ├─ 复盘（近 60 日；浮盈亏 ≠ 结案）
   ├─ 报告 → reports/YYYY-MM-DD.md + 趋势 reports/trend.md
   ├─ （可选）邮件发送分析报告
