@@ -134,3 +134,120 @@ def test_decision_stages_payload_and_report_render():
     assert "分批建仓茅台" in card
     # 动作区应体现终局 watch，而非把草案当主指令标题
     assert "动作：怎么做（④风控终局）" in card
+
+
+def test_stock_decision_chain_and_slim_recommendations():
+    from money_more.report.writer import render_daily_report
+
+    stages = build_decision_stages(
+        research=[
+            {
+                "code": "300750",
+                "name": "宁德时代",
+                "research_rating": "buy",
+                "confidence": 0.7,
+                "summary": "质地好",
+            }
+        ],
+        portfolio_draft=[
+            {
+                "code": "300750",
+                "action": "buy",
+                "position_pct": 5,
+                "confidence": 0.6,
+                "rationale": "分批建仓",
+            }
+        ],
+        after_debate=[
+            {
+                "code": "300750",
+                "action": "buy",
+                "position_pct": 5,
+                "confidence": 0.55,
+                "referee": "bull",
+            }
+        ],
+        after_risk=[
+            {"code": "300750", "action": "watch", "position_pct": 0, "confidence": 0.55}
+        ],
+        overrides=["300750: 微观结构liquidity_stress禁止新买 → watch"],
+        draft_portfolio_summary="分批建仓宁德",
+    )
+    result = {
+        "run_date": "2026-07-23",
+        "decision_stages": stages,
+        "decision_summary": {
+            "portfolio_summary": "终局无可执行新开仓",
+            "portfolio_summary_draft": "分批建仓宁德",
+            "holdings_basis": {"is_empty": True, "codes": []},
+            "market_context": "流动性压力",
+        },
+        "validation_overrides": ["300750: 微观结构liquidity_stress禁止新买 → watch"],
+        "debates": {
+            "300750": {
+                "referee": "bull",
+                "confidence_haircut": 0.05,
+                "decision_hint": "buy",
+                "bull_case": "龙头份额稳",
+                "bear_case": "估值不便宜",
+            }
+        },
+        "stocks": [
+            {
+                "code": "300750",
+                "analysis": {
+                    "code": "300750",
+                    "name": "宁德时代",
+                    "research_rating": "buy",
+                    "quality": "high",
+                    "valuation": "fair",
+                    "investment_thesis": "动力电池龙头",
+                    "summary": "中长线可跟踪",
+                    "confidence": 0.7,
+                },
+                "factor_scorecard": {"total_score": 0.72, "signal": "lean_buy", "scores": {"quality": 0.8}},
+            }
+        ],
+        "recommendations": [
+            {
+                "code": "300750",
+                "action": "watch",
+                "confidence": 0.55,
+                "position_pct": 0,
+                "rationale": "微观结构压力下禁止新买",
+                "sector_tag": "新能源",
+                "debate_status": "debated",
+                "debate": {
+                    "referee": "bull",
+                    "confidence_haircut": 0.05,
+                    "bull_case": "龙头份额稳",
+                    "bear_case": "估值不便宜",
+                },
+                "invalidation": "装机份额显著下滑",
+                "key_risk": "价格战",
+            }
+        ],
+        "market": {"analysis": {}},
+        "intelligence": {"digest": {}},
+        "sectors": [],
+    }
+    md = render_daily_report(result)
+    assert "## 3. 个股决策链" in md
+    assert "#### ① 研究（基本面 / 赔率 / 叙事）" in md
+    assert "#### ② 组合草案" in md
+    assert "#### ③ 多空辩论" in md
+    assert "#### ④ 风控终局" in md
+    assert "动力电池龙头" in md
+    assert "分批建仓" in md
+    assert "裁判" in md and "bull" in md
+    assert "微观结构liquidity_stress禁止新买" in md
+    assert "## 4. 买卖建议" in md
+    assert "**承接 §3**" in md
+    assert "①买入" in md and "④观察" in md
+    # §4 不应再堆因子总分 / 长辩论摘要
+    idx4 = md.index("## 4. 买卖建议")
+    section4 = md[idx4 : md.index("## 5.", idx4)]
+    assert "因子总分" not in section4
+    assert "多头" not in section4
+    assert "指令要点" in section4
+    assert "失效条件: 装机份额显著下滑" in section4

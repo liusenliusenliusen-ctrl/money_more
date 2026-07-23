@@ -163,6 +163,7 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append(
         "_流程固定为：**①个股研究 → ②组合草案 → ③多空辩论 → ④风控终局**。"
+        "下表为全市场一览；**按票完整推理见 §3**；§4 只列④终局指令。"
         "只有④的 buy/add（仓位>0）可执行并进入模拟盘；①的研究评级 buy ≠ 开仓指令。_"
     )
     lines.append("")
@@ -213,6 +214,379 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     if stages.get("plain_note"):
         lines.append(f"_{stages['plain_note']}_")
         lines.append("")
+    return lines
+
+
+def _index_stage_by_code(rows: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows or []:
+        code = str(r.get("code") or "")
+        if code:
+            out[code] = r
+    return out
+
+
+def _fmt_chain_step(label: str, action_or_rating: str, *, pct: Any = None, conf: Any = None, extra: str = "") -> str:
+    if action_or_rating in _ACTION_LABEL:
+        act = _ACTION_LABEL[action_or_rating]
+    else:
+        act = action_or_rating or "-"
+    bits = [f"{label}{act}"]
+    try:
+        if pct is not None and float(pct) != 0:
+            bits.append(f"{float(pct):.0f}%")
+    except (TypeError, ValueError):
+        pass
+    if conf is not None:
+        bits.append(f"conf={conf}")
+    if extra:
+        bits.append(extra)
+    return " ".join(bits)
+
+
+def build_stock_chain_bridge(
+    code: str,
+    result: dict[str, Any],
+    *,
+    final_rec: dict[str, Any] | None = None,
+) -> str:
+    """一行：①研究 → ②草案 → ③辩论 → ④终局。"""
+    stages = result.get("decision_stages") or {}
+    research = _index_stage_by_code(stages.get("research")).get(code) or {}
+    draft = _index_stage_by_code(stages.get("portfolio_draft")).get(code) or {}
+    debated = _index_stage_by_code(stages.get("after_debate")).get(code) or {}
+    risked = _index_stage_by_code(stages.get("after_risk")).get(code) or {}
+    final = final_rec or risked or {}
+
+    # fallback research from stocks
+    if not research:
+        for st in result.get("stocks") or []:
+            a = st.get("analysis") or {}
+            if str(a.get("code") or st.get("code") or "") == code:
+                research = {
+                    "research_rating": a.get("research_rating"),
+                    "confidence": a.get("confidence"),
+                }
+                break
+
+    s1 = _fmt_chain_step(
+        "①",
+        str(research.get("research_rating") or "-"),
+        conf=research.get("confidence"),
+    )
+    s2 = _fmt_chain_step(
+        "②",
+        str(draft.get("action") or "-"),
+        pct=draft.get("position_pct"),
+        conf=draft.get("confidence"),
+    )
+    ref = debated.get("referee")
+    s3 = _fmt_chain_step(
+        "③",
+        str(debated.get("action") or "-"),
+        pct=debated.get("position_pct"),
+        conf=debated.get("confidence"),
+        extra=f"裁判={ref}" if ref else ("未辩论" if debated.get("debate_status") == "undebated" else ""),
+    )
+    s4 = _fmt_chain_step(
+        "④",
+        str(final.get("action") or risked.get("action") or "-"),
+        pct=final.get("position_pct") if final.get("position_pct") is not None else risked.get("position_pct"),
+        conf=final.get("confidence") if final.get("confidence") is not None else risked.get("confidence"),
+    )
+    return f"{s1} → {s2} → {s3} → {s4}"
+
+
+def _overrides_for_code(overrides: list[str], code: str) -> list[str]:
+    prefix = f"{code}:"
+    return [o for o in overrides if str(o).startswith(prefix) or f" {code}:" in str(o)]
+
+
+def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
+    """§3：每只票完整决策链（研究→草案→辩论→风控）。"""
+    lines: list[str] = []
+    lines.append("## 3. 个股决策链（①研究→②草案→③辩论→④风控）【主结论层】")
+    lines.append("")
+    lines.append(
+        "_每只票写完整推理链；**①研究评级 ≠ 可开仓指令**。"
+        "§4 只承接各票的 **④风控终局** 动作。_"
+    )
+    lines.append("")
+
+    stages = result.get("decision_stages") or {}
+    draft_by = _index_stage_by_code(stages.get("portfolio_draft"))
+    debate_stage_by = _index_stage_by_code(stages.get("after_debate"))
+    risk_by = _index_stage_by_code(stages.get("after_risk"))
+    rec_by = {str(r.get("code") or ""): r for r in (result.get("recommendations") or [])}
+    debates = result.get("debates") or {}
+    overrides = list(result.get("validation_overrides") or (result.get("decision_summary") or {}).get("validation_overrides") or [])
+
+    # 顺序：建议列表优先，再补深度池其余票
+    codes: list[str] = []
+    for rec in result.get("recommendations") or []:
+        c = str(rec.get("code") or "")
+        if c and c not in codes:
+            codes.append(c)
+    for st in result.get("stocks") or []:
+        a = st.get("analysis") or {}
+        c = str(a.get("code") or st.get("code") or "")
+        if c and c not in codes:
+            codes.append(c)
+
+    stock_by: dict[str, dict[str, Any]] = {}
+    for st in result.get("stocks") or []:
+        a = st.get("analysis") or {}
+        c = str(a.get("code") or st.get("code") or "")
+        if c:
+            stock_by[c] = st
+
+    names = _stock_name_map(result)
+    if not codes:
+        lines.append("_（本轮无深度个股）_")
+        lines.append("")
+        return lines
+
+    for code in codes:
+        st = stock_by.get(code) or {}
+        a = st.get("analysis") or {}
+        name = names.get(code) or a.get("name") or ""
+        rec = rec_by.get(code) or {}
+        bridge = build_stock_chain_bridge(code, result, final_rec=rec or risk_by.get(code))
+
+        lines.append(f"### {code}{(' ' + name) if name else ''}")
+        lines.append("")
+        lines.append(f"**决策链**: {bridge}")
+        lines.append("")
+
+        # ① 研究
+        lines.append("#### ① 研究（基本面 / 赔率 / 叙事）")
+        lines.append("")
+        lines.append(
+            f"- **研究评级**: `{a.get('research_rating', '-')}` · "
+            f"质量:{a.get('quality', '-')} · 估值:{a.get('valuation', '-')}"
+            + (f" · 置信度 {a.get('confidence')}" if a.get("confidence") is not None else "")
+        )
+        if a.get("investment_thesis"):
+            lines.append(f"- **投资逻辑**: {a['investment_thesis']}")
+        sent = _fmt_sentiment(a.get("sentiment"))
+        quant = a.get("sentiment") or {}
+        if quant.get("quant_score_100") is not None:
+            lines.append(
+                f"- **量化舆情**: {quant.get('quant_score_100')}/100 ({quant.get('quant_label', '-')})"
+            )
+        if sent:
+            lines.append(f"- **舆情**: {sent}")
+        if a.get("expectation_gap"):
+            lines.append(f"- **预期差**: {a['expectation_gap']}")
+        info = st.get("info_completeness") or a.get("info_completeness") or {}
+        if info.get("status"):
+            lines.append(
+                f"- **信息完备性**: `{info.get('status')}`"
+                f"（{info.get('severity', '-')}）— {_one_line(info.get('note'), 80)}"
+            )
+            if info.get("unexplained"):
+                lines.append(
+                    "- 缺口线索: "
+                    + "；".join(_one_line(x, 40) for x in info["unexplained"][:2])
+                )
+            if a.get("info_gap_note"):
+                lines.append(f"- {_one_line(a.get('info_gap_note'), 100)}")
+        earn = st.get("earnings_revision") or a.get("earnings_revision") or {}
+        if earn.get("signal"):
+            lines.append(
+                f"- **盈利预期修正**: `{earn.get('signal')}` / bias={earn.get('revision_bias')} "
+                f"— {_one_line(earn.get('note'), 80)}"
+            )
+            if earn.get("evidence"):
+                lines.append(
+                    "- 修正证据: "
+                    + "；".join(_one_line(x, 40) for x in earn["evidence"][:2])
+                )
+            if a.get("earnings_revision_note"):
+                lines.append(f"- {_one_line(a.get('earnings_revision_note'), 100)}")
+            if a.get("earnings_revision_override"):
+                lines.append(f"- ⚠ {a['earnings_revision_override']}")
+        sc = st.get("factor_scorecard") or a.get("factor_scorecard") or rec.get("factor_scorecard") or {}
+        if sc.get("total_score") is not None:
+            scores = sc.get("scores") or {}
+            parts = " · ".join(f"{k}={v}" for k, v in scores.items())
+            lines.append(
+                f"- **因子分**: **{sc.get('total_score')}** ({sc.get('signal')}) | {parts}"
+            )
+        if a.get("summary"):
+            lines.append(f"- **研究小结**: {a.get('summary')}")
+        if not a and not sc:
+            lines.append("- _（本轮无独立研究产出，仅有组合/风控层记录）_")
+        lines.append("")
+
+        # ② 草案
+        lines.append("#### ② 组合草案")
+        lines.append("")
+        d = draft_by.get(code)
+        if d:
+            lines.append(
+                f"- **草案动作**: {_ACTION_LABEL.get(str(d.get('action')), d.get('action'))}"
+                + (f" · 仓位 {d.get('position_pct')}%" if d.get("position_pct") is not None else "")
+                + (f" · 置信度 {d.get('confidence')}" if d.get("confidence") is not None else "")
+            )
+            if d.get("rationale"):
+                lines.append(f"- **草案理由**: {d['rationale']}")
+        else:
+            lines.append("- _本轮组合草案未覆盖该代码（或未写入 decision_stages）_")
+        # 证据链更贴近草案/研究交接
+        if rec.get("evidence_chain"):
+            lines.append("- **证据链**:")
+            for ev in rec["evidence_chain"][:5]:
+                lines.append(f"  - {ev}")
+        lines.append("")
+
+        # ③ 辩论
+        lines.append("#### ③ 多空辩论")
+        lines.append("")
+        debate = rec.get("debate") or debates.get(code) or {}
+        ds = debate_stage_by.get(code) or {}
+        status = rec.get("debate_status") or ds.get("debate_status")
+        if debate and not debate.get("error"):
+            lines.append(
+                f"- **裁判**: `{debate.get('referee', '-')}` · "
+                f"haircut={debate.get('confidence_haircut', '-')} · "
+                f"hint={debate.get('decision_hint', '-')}"
+            )
+            if debate.get("bull_case"):
+                lines.append(f"- **多头**: {_one_line(debate.get('bull_case'), 160)}")
+            if debate.get("bear_case"):
+                lines.append(f"- **空头**: {_one_line(debate.get('bear_case'), 160)}")
+            if ds.get("action"):
+                lines.append(
+                    f"- **辩论后动作**: {_ACTION_LABEL.get(str(ds.get('action')), ds.get('action'))}"
+                    + (f" · 仓位 {ds.get('position_pct')}%" if ds.get("position_pct") is not None else "")
+                    + (f" · conf={ds.get('confidence')}" if ds.get("confidence") is not None else "")
+                )
+        elif status == "undebated":
+            lines.append(
+                "- **未辩论**（buy/add 本应全量辩论；缺失时宜更保守，且通常被风控降为观察）"
+            )
+        elif status == "n/a" or (
+            str(ds.get("action") or rec.get("action") or "watch") == "watch" and not debate
+        ):
+            lines.append("- _非 buy/add 草案，未进入多空对抗（或无需辩论）_")
+        else:
+            lines.append("- _无辩论记录_")
+        lines.append("")
+
+        # ④ 风控
+        lines.append("#### ④ 风控终局")
+        lines.append("")
+        final = rec or risk_by.get(code) or {}
+        faction = str(final.get("action") or "watch")
+        lines.append(
+            f"- **终局动作**: **{_ACTION_LABEL.get(faction, faction)}**"
+            + (f" · 仓位 {final.get('position_pct')}%" if final.get("position_pct") is not None else "")
+            + (f" · 置信度 {final.get('confidence')}" if final.get("confidence") is not None else "")
+        )
+        code_ov = _overrides_for_code(overrides, code)
+        if code_ov:
+            lines.append("- **相关覆写**:")
+            for o in code_ov[:6]:
+                lines.append(f"  - {o}")
+        if final.get("rationale"):
+            lines.append(f"- **终局理由**: {_one_line(final.get('rationale'), 160)}")
+        if final.get("key_risk") or rec.get("key_risk"):
+            lines.append(f"- **主要风险**: {final.get('key_risk') or rec.get('key_risk')}")
+        if final.get("invalidation") or rec.get("invalidation"):
+            lines.append(f"- **失效条件**: {final.get('invalidation') or rec.get('invalidation')}")
+        inv = final.get("invalidation_check") or rec.get("invalidation_check")
+        if isinstance(inv, dict) and inv.get("invalidated"):
+            lines.append(
+                "- ⚠ 失效已触发: " + "；".join(str(x) for x in (inv.get("fired") or [])[:3])
+            )
+        lines.append("")
+
+    return lines
+
+
+def render_recommendations_section(result: dict[str, Any]) -> list[str]:
+    """§4：承接 §3 ④终局，只列可执行指令。"""
+    lines: list[str] = []
+    summary = result.get("decision_summary") or {}
+    lines.append("## 4. 买卖建议【主结论层】")
+    lines.append("")
+    lines.append(
+        "> 本节**承接 §3 各票的④风控终局**，只列可执行指令；"
+        "完整推理链（研究/草案/辩论/风控）见 §3。争议叙事见结论卡/§1【侧栏】；模拟账本见文末附录。"
+    )
+    lines.append("")
+    basis = summary.get("holdings_basis") or {}
+    if basis.get("is_empty"):
+        lines.append(
+            "> **持仓基准**：你声明的真实持仓为空（空仓）。"
+            "下列 buy/watch 是「若按本轮终局结论配置」的建议，**不是**模拟盘状态，也不是假设你已持有某票。"
+        )
+    elif basis.get("codes"):
+        codes = "、".join(str(c) for c in basis["codes"])
+        lines.append(
+            f"> **持仓基准**：你声明的真实持仓 {codes}。"
+            "hold/add/sell 针对上述持仓；buy/watch 针对尚未持有的标的。"
+            "**与后文「模拟组合」无关**。"
+        )
+    else:
+        lines.append("> **持仓基准**：以你声明的真实持仓为准；与后文模拟组合分离。")
+    lines.append("")
+    if summary.get("market_context"):
+        lines.append(f"> {summary['market_context']}")
+        lines.append("")
+    if summary.get("sentiment_regime_note"):
+        lines.append(f"**舆情环境**: {summary['sentiment_regime_note']}")
+        lines.append("")
+    if summary.get("tail_risk_note"):
+        lines.append(f"**尾部/争议侧栏对仓位**: {summary['tail_risk_note']}")
+        lines.append("")
+    if summary.get("portfolio_summary"):
+        lines.append(f"**④终局组合摘要**: {summary['portfolio_summary']}")
+        lines.append("")
+
+    action_emoji = {
+        "buy": "🟢买入",
+        "add": "🟢加仓",
+        "sell": "🔴卖出",
+        "hold": "🟡持有",
+        "watch": "👀观察",
+    }
+    names = _stock_name_map(result)
+    recs = result.get("recommendations") or []
+    if not recs:
+        lines.append("_（本轮无结构化建议）_")
+        lines.append("")
+        return lines
+
+    for rec in recs:
+        action = str(rec.get("action", "watch"))
+        label = action_emoji.get(action, action)
+        code = str(rec.get("code") or "")
+        name = names.get(code, "")
+        lines.append(f"### {label} {code}{(' ' + name) if name else ''}")
+        lines.append("")
+        lines.append(f"- **承接 §3**: {build_stock_chain_bridge(code, result, final_rec=rec)}")
+        lines.append(f"- 置信度: {rec.get('confidence', '-')}")
+        if rec.get("time_horizon"):
+            lines.append(f"- 周期: {rec.get('time_horizon')}")
+        if rec.get("position_pct") is not None:
+            lines.append(f"- 建议仓位: {rec.get('position_pct')}%")
+        if rec.get("target_price") is not None:
+            lines.append(f"- 目标价: {rec.get('target_price')}")
+        if rec.get("stop_loss") is not None:
+            lines.append(f"- 止损: {rec.get('stop_loss')}")
+        sector = str(rec.get("sector_tag") or infer_sector(code) or "")
+        if sector:
+            lines.append(f"- 板块: {sector}")
+        if rec.get("rationale"):
+            lines.append(f"- 指令要点: {_one_line(rec.get('rationale'), 120)}")
+        if rec.get("key_risk"):
+            lines.append(f"- ⚠️ 主要风险: {rec['key_risk']}")
+        if rec.get("invalidation"):
+            lines.append(f"- 失效条件: {rec['invalidation']}")
+        lines.append("")
+
     return lines
 
 
@@ -815,177 +1189,8 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- ⚠️ **遴选降级**: {screen.get('note')}")
         lines.append("")
 
-    lines.append("## 3. 个股研究【主结论层】")
-    lines.append("")
-    for st in result.get("stocks") or []:
-        a = st.get("analysis") or {}
-        sent = _fmt_sentiment(a.get("sentiment"))
-        quant = a.get("sentiment") or {}
-        lines.append(
-            f"- **{a.get('code', st.get('code'))}** {a.get('name', '')} | "
-            f"评级:{a.get('research_rating', '-')} | "
-            f"质量:{a.get('quality')} 估值:{a.get('valuation')}"
-        )
-        if quant.get("quant_score_100") is not None:
-            lines.append(f"  - 量化舆情: {quant.get('quant_score_100')}/100 ({quant.get('quant_label', '-')})")
-        if a.get("investment_thesis"):
-            lines.append(f"  - 逻辑: {a['investment_thesis']}")
-        if sent:
-            lines.append(f"  - 舆情: {sent}")
-        if a.get("expectation_gap"):
-            lines.append(f"  - 预期差: {a['expectation_gap']}")
-        info = st.get("info_completeness") or a.get("info_completeness") or {}
-        if info.get("status"):
-            lines.append(
-                f"  - **信息完备性**: `{info.get('status')}`"
-                f"（{info.get('severity', '-')}）— {_one_line(info.get('note'), 80)}"
-            )
-            if info.get("unexplained"):
-                lines.append(
-                    "  - 缺口线索: "
-                    + "；".join(_one_line(x, 40) for x in info["unexplained"][:2])
-                )
-            if a.get("info_gap_note"):
-                lines.append(f"  - {_one_line(a.get('info_gap_note'), 100)}")
-        earn = st.get("earnings_revision") or a.get("earnings_revision") or {}
-        if earn.get("signal"):
-            lines.append(
-                f"  - **盈利预期修正**: `{earn.get('signal')}` / bias={earn.get('revision_bias')} "
-                f"— {_one_line(earn.get('note'), 80)}"
-            )
-            if earn.get("evidence"):
-                lines.append(
-                    "  - 修正证据: "
-                    + "；".join(_one_line(x, 40) for x in earn["evidence"][:2])
-                )
-            if a.get("earnings_revision_note"):
-                lines.append(f"  - {_one_line(a.get('earnings_revision_note'), 100)}")
-            if a.get("earnings_revision_override"):
-                lines.append(f"  - ⚠ {a['earnings_revision_override']}")
-        sc = st.get("factor_scorecard") or a.get("factor_scorecard") or {}
-        if sc.get("total_score") is not None:
-            scores = sc.get("scores") or {}
-            parts = " · ".join(f"{k}={v}" for k, v in scores.items())
-            lines.append(
-                f"  - 因子分: **{sc.get('total_score')}** ({sc.get('signal')}) | {parts}"
-            )
-        lines.append(f"  - {a.get('summary', '')}")
-    lines.append("")
-
-    summary = result.get("decision_summary") or {}
-    lines.append("## 4. 买卖建议【主结论层】")
-    lines.append("")
-    lines.append(
-        "> 本节仅写**可执行主结论**；争议叙事见结论卡/§1【侧栏】，模拟账本见文末附录。"
-    )
-    lines.append("")
-    basis = summary.get("holdings_basis") or {}
-    if basis.get("is_empty"):
-        lines.append(
-            "> **持仓基准**：你声明的真实持仓为空（空仓）。"
-            "下列 buy/watch 是「若按本轮研究结论配置」的建议，**不是**模拟盘状态，也不是假设你已持有某票。"
-        )
-    elif basis.get("codes"):
-        codes = "、".join(str(c) for c in basis["codes"])
-        lines.append(
-            f"> **持仓基准**：你声明的真实持仓 {codes}。"
-            "hold/add/sell 针对上述持仓；buy/watch 针对尚未持有的标的。"
-            "**与后文「模拟组合」无关**——模拟盘只用于评估「若完全按建议执行」的效果。"
-        )
-    else:
-        lines.append(
-            "> **持仓基准**：以你声明的真实持仓为准；与后文模拟组合分离。"
-        )
-    lines.append("")
-    if summary.get("market_context"):
-        lines.append(f"> {summary['market_context']}")
-        lines.append("")
-    if summary.get("sentiment_regime_note"):
-        lines.append(f"**舆情环境**: {summary['sentiment_regime_note']}")
-        lines.append("")
-    if summary.get("tail_risk_note"):
-        lines.append(f"**尾部/争议侧栏对仓位**: {summary['tail_risk_note']}")
-        lines.append("")
-    if summary.get("portfolio_summary"):
-        lines.append(f"**④终局组合摘要**: {summary['portfolio_summary']}")
-        lines.append("")
-    draft_ps = summary.get("portfolio_summary_draft") or (
-        (result.get("decision_stages") or {}).get("draft_portfolio_summary") or ""
-    )
-    if draft_ps and str(draft_ps).strip() and str(draft_ps).strip() != str(
-        summary.get("portfolio_summary") or ""
-    ).strip():
-        lines.append(f"**②草案摘要（对照）**: {_one_line(draft_ps, 200)}")
-        lines.append("")
-    overrides = result.get("validation_overrides") or summary.get("validation_overrides") or []
-    if overrides:
-        lines.append("**风控覆写**:")
-        for o in overrides[:12]:
-            lines.append(f"- {o}")
-        lines.append("")
-
-    action_emoji = {
-        "buy": "🟢买入",
-        "add": "🟢加仓",
-        "sell": "🔴卖出",
-        "hold": "🟡持有",
-        "watch": "👀观察",
-    }
-    sector_analysis = {
-        str((sec.get("analysis") or {}).get("sector") or sec.get("sector") or ""): (sec.get("analysis") or {})
-        for sec in (result.get("sectors") or [])
-    }
-    for rec in result.get("recommendations") or []:
-        action = str(rec.get("action", "watch"))
-        label = action_emoji.get(action, action)
-        code = str(rec.get("code") or "")
-        lines.append(f"### {label} {code}")
-        lines.append("")
-        lines.append(f"- 置信度: {rec.get('confidence', '-')}")
-        if rec.get("time_horizon"):
-            lines.append(f"- 周期: {rec.get('time_horizon')}")
-        if rec.get("position_pct") is not None:
-            lines.append(f"- 建议仓位: {rec.get('position_pct')}%")
-        if rec.get("target_price") is not None:
-            lines.append(f"- 目标价: {rec.get('target_price')}")
-        if rec.get("stop_loss") is not None:
-            lines.append(f"- 止损: {rec.get('stop_loss')}")
-        sector = str(rec.get("sector_tag") or infer_sector(code) or "")
-        if sector:
-            sa = sector_analysis.get(sector) or {}
-            if sa:
-                lines.append(
-                    f"- **承接板块**: {sector} "
-                    f"[优先级 {sa.get('priority', '-')}, 景气 {sa.get('prosperity', '-')}, "
-                    f"估值 {sa.get('valuation', '-')}, "
-                    f"拥挤 {(sa.get('sentiment') or {}).get('crowding_risk', '-')}] "
-                    f"— {_sector_stance(sa, [rec])}"
-                )
-            else:
-                lines.append(f"- **承接板块**: {sector}")
-        sc = rec.get("factor_scorecard") or {}
-        if sc.get("total_score") is not None:
-            lines.append(f"- 因子总分: {sc.get('total_score')} ({sc.get('signal')})")
-        debate = rec.get("debate") or (result.get("debates") or {}).get(code)
-        if debate and not debate.get("error"):
-            lines.append(
-                f"- 辩论: {debate.get('referee')} | haircut={debate.get('confidence_haircut')} | "
-                f"矛盾={debate.get('bull_case', '')[:40]} / 空={debate.get('bear_case', '')[:40]}"
-            )
-        elif rec.get("debate_status") == "undebated":
-            lines.append(
-                "- 辩论: **未辩论**（buy/add 本应全量辩论；缺失时置信度宜更保守，且通常被风控降为观察）"
-            )
-        lines.append(f"- 理由: {rec.get('rationale', '')}")
-        if rec.get("evidence_chain"):
-            lines.append("- 证据链:")
-            for ev in rec["evidence_chain"]:
-                lines.append(f"  - {ev}")
-        if rec.get("key_risk"):
-            lines.append(f"- ⚠️ 主要风险: {rec['key_risk']}")
-        if rec.get("invalidation"):
-            lines.append(f"- 失效条件: {rec['invalidation']}")
-        lines.append("")
+    lines.extend(render_stock_decision_chains(result))
+    lines.extend(render_recommendations_section(result))
 
     lines.append("## 5. 复盘与经验")
     lines.append("")

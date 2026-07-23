@@ -770,7 +770,7 @@ def test_render_conclusion_card_and_cross_links():
     assert "## 结论卡（速读）" in card
     assert "### 【主结论】分析：现在怎么看" in card
     assert "### 【主结论】预测：接下来怎么预期" in card
-    assert "### 【主结论】动作：怎么做" in card
+    assert "### 【主结论】动作：怎么做（④风控终局）" in card
     assert "### 板块：赛道态度" in card
     assert "阅读分层" in card
     assert "观察" in card and "300750" in card
@@ -781,7 +781,11 @@ def test_render_conclusion_card_and_cross_links():
     assert "## 结论卡（速读）" in md
     assert "## 详细论证" in md
     assert "**落到动作**" in md
-    assert "**承接板块**: 新能源" in md
+    assert "## 3. 个股决策链" in md
+    assert "#### ① 研究" in md
+    assert "#### ④ 风控终局" in md
+    assert "**承接 §3**" in md
+    assert "板块: 新能源" in md
     assert "### 逻辑链：维度如何串起来" in md
     assert "板块「新能源」" in md
 

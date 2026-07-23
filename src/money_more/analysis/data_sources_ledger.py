@@ -77,7 +77,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 fetches="全市场价格、涨跌幅、成交额（新浪备源通常无 PE/PB）",
                 status="fallback",
                 detail=f"已获取约 {raw_n} 只；过滤后 {uni_n} → 量化 {quant_n} → 深度 {deep_n}",
-                used_in="§筛股漏斗 → 深度池 → §3 个股 / §4 动作；备源时估值因子中性处理",
+                used_in="§筛股漏斗 → 深度池 → §3 决策链 / §4 动作；备源时估值因子中性处理",
             )
         else:
             add(
@@ -86,7 +86,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 fetches="全市场价格、涨跌幅、成交额、估值等",
                 status="ok",
                 detail=f"已获取约 {raw_n} 只；过滤后 {uni_n} → 量化 {quant_n} → 深度 {deep_n}",
-                used_in="§筛股漏斗 → 深度池 → §3 个股 / §4 动作",
+                used_in="§筛股漏斗 → 深度池 → §3 决策链 / §4 动作",
             )
     else:
         add(
@@ -400,7 +400,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="K 线、报价、个股新闻与另类数据",
             status="ok",
             detail=f"深度分析 {len(stocks)} 只（来自筛股/必跟）",
-            used_in="§3 个股研究 → §4 组合动作；盈利修正/硬门禁",
+            used_in="§3 个股决策链 → §4 终局动作；盈利修正/硬门禁",
         )
     else:
         add(
