@@ -237,6 +237,34 @@ def _hot_rank_from_xueqiu_follow(follow_df: pd.DataFrame, limit: int = 100) -> p
     return pd.DataFrame(rows)
 
 
+def build_xueqiu_hot_snapshot(
+    follow_df: pd.DataFrame,
+    deal_df: pd.DataFrame,
+    code: str,
+) -> dict[str, Any]:
+    """从已缓存的雪球关注/成交榜提取单股快照（含榜内排名）。"""
+    code = normalize_code(code)
+    out: dict[str, Any] = {"follow": {}, "deal": {}}
+
+    def _rank_row(df: pd.DataFrame, label: str) -> None:
+        if df is None or df.empty or "股票代码" not in df.columns:
+            return
+        sorted_df = df.sort_values("关注", ascending=False).reset_index(drop=True)
+        for idx, row in sorted_df.iterrows():
+            raw = str(row.get("股票代码") or "")
+            if normalize_code(raw) != code:
+                continue
+            snap = _df_row_to_dict(row)
+            snap["排名"] = int(idx) + 1
+            snap["榜单"] = label
+            out[label] = snap
+            break
+
+    _rank_row(follow_df, "follow")
+    _rank_row(deal_df, "deal")
+    return out
+
+
 def fetch_hot_rank_with_fallback(*, limit: int = 100) -> tuple[pd.DataFrame, str, list[str]]:
     """市场人气榜：东财 push2 → 雪球关注榜（push2 失败时备源）。"""
     errors: list[str] = []

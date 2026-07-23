@@ -26,10 +26,21 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "tushare_macro_news": (macro.get("tushare_macro_news") or [])[:max_news],
         "tushare_macro_backfill": macro.get("tushare_macro_backfill"),
         "market_hot_rank": (macro.get("market_hot_rank") or [])[:10],
+        "macro_event_signals": _compact_macro_events(macro.get("macro_event_signals") or {}),
         "narrative_radar": _compact_narrative_radar(macro.get("narrative_radar") or {}),
         "errors": (macro.get("errors") or [])[:8],
     }
     return out
+
+
+def _compact_macro_events(signals: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(signals, dict) or not signals:
+        return {}
+    return {
+        "extreme": signals.get("extreme"),
+        "dominant_tags": (signals.get("dominant_tags") or [])[:5],
+        "watchlist": (signals.get("watchlist") or [])[:6],
+    }
 
 
 def _compact_narrative_radar(radar: dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +101,8 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             "sentiment_analysis": intel.get("sentiment_analysis"),
             "crowding_signal": intel.get("crowding_signal"),
             "market_comment": intel.get("market_comment"),
+            "xueqiu_hot": intel.get("xueqiu_hot"),
+            "participation_desire": (intel.get("participation_desire") or [])[-2:],
             "research_reports": (intel.get("research_reports") or [])[:3],
             "rss_matches": (intel.get("rss_matches") or [])[:4],
             "tushare": {

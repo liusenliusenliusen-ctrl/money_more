@@ -60,6 +60,13 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
         "headline_themes": list(digest.get("headline_themes") or [])[:5],
         "market_narratives": list(digest.get("market_narratives") or [])[:4],
         "risk_flags": list(digest.get("risk_flags") or [])[:4],
+        "macro_events_watchlist": list(
+            ((result.get("intelligence") or {}).get("macro_raw") or {})
+            .get("macro_event_signals", {})
+            .get("watchlist")
+            or digest.get("macro_events_watchlist")
+            or []
+        )[:6],
         "sectors": sectors,
         "data_quality_score": dq.get("score"),
         "degraded": dq.get("degraded"),

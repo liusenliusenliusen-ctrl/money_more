@@ -174,6 +174,16 @@ def build_stock_scorecard(
         evidence["sentiment"].append("量化拥挤度中")
     elif cr == "low":
         evidence["sentiment"].append("量化拥挤度低")
+    pd_list = intel.get("participation_desire") or []
+    if pd_list and isinstance(pd_list[-1], dict):
+        desire = _f(pd_list[-1].get("参与意愿"))
+        if desire is not None:
+            sent = (sent + desire) / 2
+            evidence["sentiment"].append(f"参与意愿{desire:.0f}")
+    xq = intel.get("xueqiu_hot") or {}
+    deal_rank = _f((xq.get("deal") or {}).get("排名"))
+    if deal_rank is not None and deal_rank <= 20:
+        evidence["sentiment"].append(f"雪球成交Top{int(deal_rank)}")
     scores["sentiment"] = _clamp(sent)
 
     # --- quality: 财务粗指标 ---

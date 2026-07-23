@@ -10,6 +10,7 @@ from money_more.analysis.sentiment import (
     FinancialSentimentScorer,
     assess_sector_crowding,
     assess_stock_crowding,
+    build_macro_event_signals,
 )
 from money_more.config import AppConfig
 from money_more.data.as_of import (
@@ -26,6 +27,7 @@ from money_more.data.fetcher import (
     _match_board_name,
     _safe_float,
     build_sector_money_flow,
+    build_xueqiu_hot_snapshot,
     fetch_hot_rank_with_fallback,
     fetch_sector_board_summary,
     normalize_code,
@@ -78,6 +80,8 @@ class IntelligenceFetcher:
         self._hot_rank_error: str | None = None
         self._hot_rank_source: str | None = None
         self._hot_rank_warnings: list[str] = []
+        self._xueqiu_follow_df: pd.DataFrame | None = None
+        self._xueqiu_deal_df: pd.DataFrame | None = None
         self._sector_summary_cache: tuple[pd.DataFrame, str, list[str]] | None = None
 
     def set_as_of(self, as_of: date | str | None) -> None:
@@ -93,6 +97,8 @@ class IntelligenceFetcher:
         self._hot_rank_error = None
         self._hot_rank_source = None
         self._hot_rank_warnings = []
+        self._xueqiu_follow_df = None
+        self._xueqiu_deal_df = None
         self._sector_summary_cache = None
 
     def _get_comment_df(self) -> pd.DataFrame:
@@ -119,6 +125,28 @@ class IntelligenceFetcher:
             self._hot_rank_df = pd.DataFrame()
             self._hot_rank_error = "; ".join(warnings) if warnings else "hot_rank_empty"
         return self._hot_rank_df
+
+    def _get_xueqiu_dfs(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """雪球关注/成交榜：单次拉取、多股复用（避免每只股票重复请求）。"""
+        if self._xueqiu_follow_df is not None:
+            return self._xueqiu_follow_df, self._xueqiu_deal_df or pd.DataFrame()
+        follow = pd.DataFrame()
+        deal = pd.DataFrame()
+        try:
+            raw = ak.stock_hot_follow_xq()
+            if raw is not None and not raw.empty:
+                follow = raw
+        except Exception:
+            pass
+        try:
+            raw = ak.stock_hot_deal_xq()
+            if raw is not None and not raw.empty:
+                deal = raw
+        except Exception:
+            pass
+        self._xueqiu_follow_df = follow
+        self._xueqiu_deal_df = deal
+        return follow, deal
 
     def _get_sector_summary(self) -> tuple[pd.DataFrame, str, list[str]]:
         if self._sector_summary_cache is not None:
@@ -373,6 +401,8 @@ class IntelligenceFetcher:
             macro_news_pool.extend(result["tushare_macro_news"])
             result["sentiment_overview"] = self.scorer.score_news_items(macro_news_pool)
 
+        result["macro_event_signals"] = build_macro_event_signals(result)
+
         return result
 
     def fetch_sector_intelligence(self, sector_name: str) -> dict[str, Any]:
@@ -439,6 +469,13 @@ class IntelligenceFetcher:
         if self.config.sentiment.enabled:
             pool = result["related_news"] + result["rss_matches"] + result["tushare_news"]
             result["sentiment_analysis"] = self.scorer.score_for_entity(pool, [sector_name], self.max_items * 2)
+            sa_agg = (result["sentiment_analysis"] or {}).get("aggregate") or {}
+            if sa_agg.get("event_distribution"):
+                result["sector_event_signals"] = {
+                    "event_distribution": sa_agg.get("event_distribution"),
+                    "extreme": sa_agg.get("extreme"),
+                    "dominant_tags": list((sa_agg.get("event_distribution") or {}).keys())[:5],
+                }
 
         hot_records = result.get("hot_rank_mentions") or _records(hot, 30) if not hot.empty else []
         result["crowding_hint"] = assess_sector_crowding(sector_name, hot_rank_records=hot_records)
@@ -511,14 +548,10 @@ class IntelligenceFetcher:
             result["errors"].append(f"参与意愿: {exc}")
 
         try:
-            follow = ak.stock_hot_follow_xq()
-            deal = ak.stock_hot_deal_xq()
-            f_row = _filter_df(follow, code, ("股票代码",))
-            d_row = _filter_df(deal, code, ("股票代码",))
-            result["xueqiu_hot"] = {
-                "follow": _df_row_to_dict(f_row.iloc[0]) if not f_row.empty else {},
-                "deal": _df_row_to_dict(d_row.iloc[0]) if not d_row.empty else {},
-            }
+            follow_df, deal_df = self._get_xueqiu_dfs()
+            result["xueqiu_hot"] = build_xueqiu_hot_snapshot(follow_df, deal_df, code)
+            if follow_df.empty and deal_df.empty:
+                result["errors"].append("xueqiu_hot_empty")
         except Exception as exc:
             result["errors"].append(f"雪球热度: {exc}")
 
@@ -575,6 +608,8 @@ class IntelligenceFetcher:
             code,
             hot_rank_records=hot_records,
             market_comment=result.get("market_comment") or {},
+            xueqiu_hot=result.get("xueqiu_hot") or {},
+            participation_desire=result.get("participation_desire") or [],
         )
 
         return result

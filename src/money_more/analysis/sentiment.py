@@ -41,6 +41,17 @@ NEGATIONS: set[str] = {
 
 INTENSIFIERS: dict[str, float] = {"大幅": 1.3, "显著": 1.2, "明显": 1.15, "持续": 1.1, "小幅": 0.7, "略有": 0.75}
 
+EVENT_TAG_LABELS: dict[str, str] = {
+    "macro_positive": "宏观宽松/降准降息",
+    "macro_negative": "宏观收紧/加息",
+    "holder_positive": "回购增持/股东利好",
+    "holder_negative": "减持质押/股东利空",
+    "business_positive": "订单中标/业务扩张",
+    "regulatory_negative": "监管立案/处罚",
+    "earnings_positive": "业绩预增/扭亏",
+    "earnings_negative": "业绩预减/低于预期",
+}
+
 EVENT_PATTERNS: list[tuple[str, float, str]] = [
     (r"降准|降息|下调LPR", 1.2, "macro_positive"),
     (r"加息|加准|收紧", -1.0, "macro_negative"),
@@ -267,13 +278,61 @@ class FinancialSentimentScorer:
         return mult
 
 
+def build_macro_event_signals(macro_intel: dict[str, Any]) -> dict[str, Any]:
+    """从宏观舆情 event_distribution 与经济日历提炼事件观察清单（供 LLM/摘要）。"""
+    sent = macro_intel.get("sentiment_overview") or {}
+    agg = sent.get("aggregate") or {}
+    event_dist = agg.get("event_distribution") or {}
+    watchlist: list[dict[str, Any]] = []
+
+    for tag, count in sorted(event_dist.items(), key=lambda x: (-x[1], str(x[0])))[:8]:
+        watchlist.append(
+            {
+                "event": EVENT_TAG_LABELS.get(str(tag), str(tag)),
+                "tag": str(tag),
+                "count": int(count),
+                "importance": "high" if count >= 3 else "medium" if count >= 2 else "low",
+                "source": "news_sentiment",
+            }
+        )
+
+    seen_events: set[str] = {w["event"] for w in watchlist}
+    for item in macro_intel.get("economic_calendar") or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("event") or item.get("事件") or item.get("title") or "").strip()
+        if not title or title in seen_events:
+            continue
+        date_str = str(item.get("日期") or item.get("date") or item.get("时间") or "")
+        watchlist.append(
+            {
+                "event": title,
+                "date": date_str or None,
+                "importance": "medium",
+                "source": "economic_calendar",
+            }
+        )
+        seen_events.add(title)
+        if len(watchlist) >= 10:
+            break
+
+    return {
+        "watchlist": watchlist[:10],
+        "dominant_tags": list(event_dist.keys())[:5],
+        "extreme": agg.get("extreme"),
+        "event_distribution": dict(event_dist),
+    }
+
+
 def assess_stock_crowding(
     code: str,
     *,
     hot_rank_records: list[dict[str, Any]] | None = None,
     market_comment: dict[str, Any] | None = None,
+    xueqiu_hot: dict[str, Any] | None = None,
+    participation_desire: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """个股拥挤度：人气榜排名 + 千股千评关注指数（中长线参考，非短线信号）。"""
+    """个股拥挤度：人气榜 + 千股千评 + 雪球社交热度 + 参与意愿（中长线参考）。"""
     code = normalize_code(code)
     score = 0
     signals: list[str] = []
@@ -306,6 +365,38 @@ def assess_stock_crowding(
         elif focus_idx >= 85:
             score += 1
             signals.append(f"关注指数{focus_idx:.1f}")
+
+    xq = xueqiu_hot or {}
+    for key, label in (("deal", "雪球成交"), ("follow", "雪球关注")):
+        row = xq.get(key) or {}
+        if not row:
+            continue
+        try:
+            rank = int(row.get("排名") or 999)
+        except (TypeError, ValueError):
+            rank = 999
+        if rank <= 10:
+            score += 2
+            signals.append(f"{label}Top{rank}")
+        elif rank <= 30:
+            score += 1
+            signals.append(f"{label}Top{rank}")
+
+    pd_list = participation_desire or []
+    if pd_list and isinstance(pd_list[-1], dict):
+        latest = pd_list[-1]
+        desire = _safe_float(latest.get("参与意愿"))
+        chg = _safe_float(latest.get("参与意愿变化"))
+        if desire is not None:
+            if desire >= 75:
+                score += 2
+                signals.append(f"参与意愿{desire:.0f}")
+            elif desire >= 65:
+                score += 1
+                signals.append(f"参与意愿{desire:.0f}")
+        if chg is not None and chg >= 12:
+            score += 1
+            signals.append(f"参与意愿升{chg:.1f}%")
 
     if score >= 4:
         level = "high"
