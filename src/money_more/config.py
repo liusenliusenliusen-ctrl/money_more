@@ -65,8 +65,8 @@ class TrendConfig:
 @dataclass
 class AnalysisConfig:
     prompt_version: str = "v3-midlong-5d"
-    debate_top_k: int = 3  # 买卖建议默认辩 Top3，减少未对抗决策
-    debate_min_score: float = 55.0
+    debate_top_k: int = 3  # >0 开启辩论（对所有 buy/add）；0=关闭（如 --skip-debate）
+    debate_min_score: float = 55.0  # 历史字段，选股辩论已改为「凡 buy/add 必辩」，不再作门槛
     investment_horizon: str = "medium_long"  # medium_long | short
     review_min_hold_days: int = 14
     paper_horizon_days: int = 60

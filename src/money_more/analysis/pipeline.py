@@ -7,7 +7,7 @@ from typing import Any
 
 from money_more.analysis.context_builder import compact_macro_intel, compact_stock_snap
 from money_more.analysis.cross_check import apply_hard_gates, cross_check_stock
-from money_more.analysis.debate import apply_debate_to_recommendations, run_top_k_debates
+from money_more.analysis.debate import apply_debate_to_recommendations, run_buy_add_debates
 from money_more.analysis.decision_validator import enrich_holdings, validate_recommendations
 from money_more.analysis.factor_ic import compute_factor_ic_from_db
 from money_more.analysis.factor_scorecard import build_stock_scorecard
@@ -508,16 +508,11 @@ class DecisionPipeline:
             result["multi_agent_drafts"] = drafts
 
         raw_recs = decision.get("recommendations") or []
-        # Top-K 多空辩论（TradingAgents 轻量版）
+        # 凡 buy/add 必须多空辩论（debate_top_k>0 表示开启；=0 为 --skip-debate）
         debates: dict[str, Any] = {}
         debate_overrides: list[str] = []
         if self.config.analysis.debate_top_k > 0:
-            debates = run_top_k_debates(
-                self.llm,
-                stock_analyses,
-                top_k=self.config.analysis.debate_top_k,
-                min_score=self.config.analysis.debate_min_score,
-            )
+            debates = run_buy_add_debates(self.llm, stock_analyses, raw_recs)
             debate_overrides = apply_debate_to_recommendations(raw_recs, debates)
         result["debates"] = debates
 

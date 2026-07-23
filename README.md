@@ -79,7 +79,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `screen.max_quant` / `max_deep` | `50` / `15`（必跟**不占** `max_deep`） |
 | `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |
 | `screen.auto_sector_from_flow` | 资金流入前列自动扩 §2 板块（默认 3） |
-| `analysis.debate_top_k` | 默认 `3`；未辩论的买卖会标 undebated |
+| `analysis.debate_top_k` | `>0` 开启：所有 `buy`/`add` 必辩；`0` 关闭（如 `--skip-debate`） |
 | `schedule.interval_days` | 距上次成功跑的门禁天数；**不是**已启用的 cron |
 | `schedule.optimize_after_run` | `scheduled` 默认跑完后自优化 |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |

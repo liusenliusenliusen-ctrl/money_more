@@ -65,8 +65,8 @@ analysis:
   default_time_horizon: medium
   review_min_hold_days: 14
   paper_horizon_days: 60
-  debate_top_k: 3             # 买卖建议默认辩 Top3
-  debate_min_score: 55
+  debate_top_k: 3             # >0 开启：所有 buy/add 必辩；0=关闭
+  debate_min_score: 55        # 保留兼容；不再作为是否辩论的门槛
 
 # Cursor Agent 自优化（需 CURSOR_API_KEY）
 optimize:
