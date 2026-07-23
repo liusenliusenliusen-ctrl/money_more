@@ -121,3 +121,83 @@ def test_render_sim_section() -> None:
     assert "不是你的账户" in text
     assert "<details>" in text
     assert "601318" in text
+    assert "本轮模拟操作说明" in text
+
+
+def test_sim_explains_no_trade_when_all_watch() -> None:
+    from money_more.sim.engine import build_sim_round_explanation, render_sim_section
+
+    result = {
+        "recommendations": [
+            {
+                "code": "300750",
+                "action": "watch",
+                "position_pct": 0,
+                "rationale": "微观结构liquidity_stress禁止新买",
+            },
+            {
+                "code": "601899",
+                "action": "watch",
+                "position_pct": 0,
+                "rationale": "风控后观察",
+            },
+        ],
+        "decision_summary": {
+            "portfolio_summary": "终局无可执行新开仓。主因：微观结构 liquidity_stress。",
+        },
+        "validation_overrides": [
+            "microstructure=liquidity_stress → 抑制新开仓",
+            "300750: 微观结构liquidity_stress禁止新买 → watch",
+        ],
+    }
+    sim = {
+        "initial_cash": 50000,
+        "cash": 50000,
+        "equity": 50000,
+        "market_value": 0,
+        "nav_return_pct": 0.0,
+        "positions": [],
+        "fills": [
+            {
+                "stock_code": "300750",
+                "action_src": "watch",
+                "note": "终局为观察且模拟盘无该仓：不开仓",
+                "why": "微观结构liquidity_stress禁止新买",
+                "skipped": True,
+            }
+        ],
+        "fill_count": 0,
+    }
+    expl = build_sim_round_explanation(sim, result)
+    assert "无成交" in expl["headline"]
+    assert any("无可执行开仓" in b for b in expl["bullets"])
+    assert any("liquidity_stress" in b for b in expl["bullets"])
+
+    text = "\n".join(render_sim_section(sim, result=result))
+    assert "本轮模拟操作说明" in text
+    assert "无可执行开仓" in text
+    assert "未成交 / 不调仓明细" in text
+    assert "300750" in text
+
+
+def test_sim_fill_carries_why(tmp_path: Path) -> None:
+    db = Database(tmp_path / "sim_why.db")
+    engine = SimPortfolioEngine(db, SimConfig(initial_cash=50_000))
+    snap = engine.apply_recommendations(
+        run_id=1,
+        run_date="2026-07-01",
+        recommendations=[
+            {
+                "code": "601318",
+                "action": "buy",
+                "position_pct": 10,
+                "rationale": "低估值保险龙头，分批建仓",
+            }
+        ],
+        quotes={"601318": 50.0},
+    )
+    real = [f for f in snap["fills"] if not f.get("skipped")]
+    assert len(real) == 1
+    assert "why" in real[0]
+    assert "10%" in real[0]["why"] or "buy" in real[0]["why"]
+    assert "低估值" in real[0]["why"]

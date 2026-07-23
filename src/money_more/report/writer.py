@@ -1372,7 +1372,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     # 模拟账本放文末折叠，避免紧挨 §4 被当成真实持仓
     from money_more.sim.engine import render_sim_section
 
-    lines.extend(render_sim_section(result.get("sim_portfolio")))
+    lines.extend(render_sim_section(result.get("sim_portfolio"), result=result))
 
     lines.append("---")
     lines.append("*本报告由 AI 生成，仅供参考，不构成投资建议。*")

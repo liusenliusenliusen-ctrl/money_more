@@ -705,6 +705,9 @@ class DecisionPipeline:
             recommendations=recommendations,
             quotes=quotes,
         )
+        from money_more.sim.engine import attach_sim_round_explanation
+
+        attach_sim_round_explanation(result)
 
         review_result = self.run_review(
             run_id,

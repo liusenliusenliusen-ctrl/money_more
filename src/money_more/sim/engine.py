@@ -104,11 +104,30 @@ class SimPortfolioEngine:
             code = item["code"]
             px = quotes.get(code)
             if px is None or float(px) <= 0:
-                fills.append(_skip_fill(run_id, run_date, code, item["action"], "无行情，跳过"))
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        "无行情，跳过",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
+                )
                 continue
             px = float(px)
             pos = positions.get(code)
             if not pos or float(pos["shares"]) <= 0:
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        "模拟盘无该持仓，无需卖出",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
+                )
                 continue
             if item["action"] == "sell":
                 sell_shares = float(pos["shares"])
@@ -122,11 +141,22 @@ class SimPortfolioEngine:
                 else:
                     sell_shares = float(_floor_lot(float(pos["shares"]) / 2.0, self.config.lot_size))
             if sell_shares <= 0:
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        "已接近目标仓位或无可减仓位，本轮不卖出",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
+                )
                 continue
             fill = self._execute_sell(
                 run_id, run_date, code, sell_shares, px, item["action"], account, positions
             )
             if fill:
+                fill["why"] = _why_from_rec(item["rec"], item["action"], executed=True)
                 fills.append(fill)
                 equity = self._equity(account["cash"], positions, quotes)
 
@@ -134,7 +164,16 @@ class SimPortfolioEngine:
             code = item["code"]
             px = quotes.get(code)
             if px is None or float(px) <= 0:
-                fills.append(_skip_fill(run_id, run_date, code, item["action"], "无行情，跳过"))
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        "无行情，跳过",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
+                )
                 continue
             px = float(px)
             target_pct = _target_pct(item["rec"], default=None)
@@ -146,6 +185,7 @@ class SimPortfolioEngine:
                         code,
                         item["action"],
                         "报告未给出 position_pct，模拟盘不默认开仓（避免静默按 10%）",
+                        why=_why_from_rec(item["rec"], item["action"]),
                     )
                 )
                 continue
@@ -155,6 +195,16 @@ class SimPortfolioEngine:
             cur_value = cur_shares * px
             need_value = target_value - cur_value
             if need_value <= px * self.config.lot_size * 0.5:
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        f"已接近目标仓位 {target_pct:.0f}%，本轮无需加仓",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
+                )
                 continue
             invested = sum(
                 float(p["shares"]) * float(quotes.get(c) or 0)
@@ -166,15 +216,63 @@ class SimPortfolioEngine:
             buy_shares = _floor_lot(need_value / px, self.config.lot_size)
             if buy_shares <= 0:
                 fills.append(
-                    _skip_fill(run_id, run_date, code, item["action"], "现金或总仓不足，未开仓")
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        item["action"],
+                        "现金或总仓不足，未开仓",
+                        why=_why_from_rec(item["rec"], item["action"]),
+                    )
                 )
                 continue
             fill = self._execute_buy(
                 run_id, run_date, code, buy_shares, px, item["action"], account, positions
             )
             if fill:
+                fill["why"] = _why_from_rec(
+                    item["rec"], item["action"], executed=True, target_pct=target_pct
+                )
                 fills.append(fill)
                 equity = self._equity(account["cash"], positions, quotes)
+
+        # 非买卖动作也记账：说明为何本轮不调仓
+        held_codes = set(positions.keys())
+        traded_or_skipped = {str(f.get("stock_code") or "") for f in fills}
+        for rec in recommendations:
+            action = str(rec.get("action") or "watch").lower().strip()
+            code = _norm_code(rec.get("code") or rec.get("stock_code") or "")
+            if not code or code in traded_or_skipped:
+                continue
+            if action in ("buy", "add", "sell", "reduce"):
+                continue
+            if action == "hold" and code in held_codes:
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        action,
+                        "终局为持有：模拟盘维持仓位，不调仓",
+                        why=_why_from_rec(rec, action),
+                    )
+                )
+            elif action == "watch":
+                note = (
+                    "终局为观察且模拟盘无该仓：不开仓"
+                    if code not in held_codes
+                    else "终局为观察：未发出卖出，模拟盘继续持有既有仓位（不新增）"
+                )
+                fills.append(
+                    _skip_fill(
+                        run_id,
+                        run_date,
+                        code,
+                        action,
+                        note,
+                        why=_why_from_rec(rec, action),
+                    )
+                )
 
         self.db.sim_save_account(float(account["cash"]))
         self.db.sim_replace_positions(list(positions.values()))
@@ -405,8 +503,45 @@ def _target_pct(rec: dict[str, Any], default: float | None) -> float | None:
         return default
 
 
+def _one_line(text: Any, limit: int = 100) -> str:
+    s = " ".join(str(text or "").split())
+    if len(s) <= limit:
+        return s
+    return s[: limit - 1] + "…"
+
+
+def _why_from_rec(
+    rec: dict[str, Any] | None,
+    action: str,
+    *,
+    executed: bool = False,
+    target_pct: float | None = None,
+) -> str:
+    """从 §4 建议提炼模拟盘动作原因。"""
+    rec = rec or {}
+    parts: list[str] = []
+    if executed:
+        if action in ("buy", "add") and target_pct is not None:
+            parts.append(f"承接 §4 终局 `{action}`，目标仓位 {float(target_pct):.0f}%")
+        else:
+            parts.append(f"承接 §4 终局 `{action}`")
+    rationale = _one_line(rec.get("rationale"), 90)
+    if rationale:
+        parts.append(rationale)
+    debate = rec.get("debate") if isinstance(rec.get("debate"), dict) else {}
+    if debate.get("referee"):
+        parts.append(f"辩论裁判={debate.get('referee')}")
+    return "；".join(parts) if parts else f"§4 动作 `{action}`"
+
+
 def _skip_fill(
-    run_id: int, run_date: str, code: str, action: str, note: str
+    run_id: int,
+    run_date: str,
+    code: str,
+    action: str,
+    note: str,
+    *,
+    why: str = "",
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -419,28 +554,194 @@ def _skip_fill(
         "cost_fee": 0,
         "action_src": action,
         "note": note,
+        "why": why or note,
         "skipped": True,
     }
 
 
-def render_sim_section(sim: dict[str, Any] | None) -> list[str]:
+def build_sim_round_explanation(
+    sim: dict[str, Any] | None,
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """本轮模拟盘：做了什么 / 为什么；没动作时也要说清原因。"""
+    sim = sim or {}
+    result = result or {}
+    recs = result.get("recommendations") or []
+    summary = result.get("decision_summary") or {}
+    overrides = list(
+        result.get("validation_overrides") or summary.get("validation_overrides") or []
+    )
+    portfolio_summary = str(
+        summary.get("portfolio_summary")
+        or (result.get("decision_stages") or {}).get("final_portfolio_summary")
+        or ""
+    ).strip()
+
+    fills = [f for f in (sim.get("fills") or []) if not f.get("skipped")]
+    skips = [f for f in (sim.get("fills") or []) if f.get("skipped")]
+    positions = sim.get("positions") or []
+
+    deployable = []
+    watch_n = hold_n = sell_n = 0
+    for rec in recs:
+        action = str(rec.get("action") or "watch").lower()
+        try:
+            pct = float(rec.get("position_pct") or 0)
+        except (TypeError, ValueError):
+            pct = 0.0
+        if action in ("buy", "add") and pct > 0:
+            deployable.append(rec)
+        elif action == "hold":
+            hold_n += 1
+        elif action == "sell":
+            sell_n += 1
+        else:
+            watch_n += 1
+
+    bullets: list[str] = []
+    if fills:
+        for f in fills:
+            code = f.get("stock_code") or f.get("code")
+            side = f.get("side")
+            why = f.get("why") or _one_line(f.get("note"), 80)
+            if not why:
+                why = f"执行 §4 `{f.get('action_src')}`"
+            bullets.append(
+                f"**成交** `{code}` {side} {f.get('shares'):.0f}股 @ {f.get('price')}：{why}"
+            )
+        headline = f"本轮模拟成交 {len(fills)} 笔（机械回放 §4 终局动作）。"
+    else:
+        headline = "本轮模拟盘**无成交**。"
+        if not deployable and sell_n == 0:
+            bullets.append(
+                "§4 无可执行开仓/卖出（无 buy/add 且仓位>0，亦无 sell）："
+                "模拟引擎因此不买卖。"
+            )
+            if portfolio_summary:
+                bullets.append(f"终局摘要：{_one_line(portfolio_summary, 160)}")
+            if watch_n:
+                bullets.append(
+                    f"计数：观察 {watch_n}"
+                    + (f" · 持有指令 {hold_n}" if hold_n else "")
+                    + "；研究层 buy 不会单独触发模拟开仓。"
+                )
+        elif deployable and not fills:
+            bullets.append(
+                f"§4 有 {len(deployable)} 笔名义开仓/加仓，但模拟引擎未成交"
+                "（见下方未成交原因：缺行情/仓位已满/现金不足等）。"
+            )
+        else:
+            bullets.append("本轮无实际成交；原因见下方未成交说明。")
+
+    # 关键覆写（组合级）
+    key_ov = [
+        o
+        for o in overrides
+        if any(
+            k in str(o)
+            for k in ("禁止新买", "liquidity_stress", "总仓", "辩论裁判", "硬门禁", "空仓禁止")
+        )
+    ][:5]
+    if key_ov and not fills:
+        bullets.append("关键风控覆写：" + "；".join(str(x) for x in key_ov))
+
+    # 未成交明细（含 watch/hold 解释）— 压缩展示
+    idle_lines: list[str] = []
+    for f in skips:
+        code = f.get("stock_code")
+        note = f.get("note") or ""
+        why = f.get("why") or ""
+        action = f.get("action_src") or ""
+        # 优先展示与「为何无动作」相关的
+        detail = note
+        if why and why != note and action not in ("watch", "hold"):
+            detail = f"{note} — {why}"
+        elif why and action in ("watch", "hold"):
+            detail = f"{note}" + (f"；{why}" if why and why not in note else "")
+        idle_lines.append(f"`{code}` [{action}] {detail}")
+
+    if positions and not fills:
+        codes = "、".join(f"`{p.get('code')}`" for p in positions[:8])
+        bullets.append(
+            f"既有模拟持仓 {codes}"
+            + ("…" if len(positions) > 8 else "")
+            + "：本轮无卖出指令则继续持有并按市价盯市。"
+        )
+    elif not positions and not fills:
+        bullets.append("模拟盘保持空仓（现金待命）：因终局未给出可执行买入。")
+
+    return {
+        "headline": headline,
+        "bullets": bullets,
+        "idle_details": idle_lines[:20],
+        "idle_omitted": max(0, len(idle_lines) - 20),
+        "had_fills": bool(fills),
+        "deployable_count": len(deployable),
+        "watch_count": watch_n,
+    }
+
+
+def attach_sim_round_explanation(result: dict[str, Any]) -> None:
+    """把本轮模拟说明挂到 result['sim_portfolio']。"""
+    sim = result.get("sim_portfolio")
+    if not isinstance(sim, dict) or sim.get("skipped"):
+        return
+    sim["round_explanation"] = build_sim_round_explanation(sim, result)
+
+
+def render_sim_section(
+    sim: dict[str, Any] | None,
+    result: dict[str, Any] | None = None,
+) -> list[str]:
     """报告附录：折叠展示，避免紧挨 §4 被当成真实持仓。"""
     if not sim or sim.get("skipped"):
         return []
+    expl = sim.get("round_explanation")
+    if not expl and result is not None:
+        expl = build_sim_round_explanation(sim, result)
+    expl = expl or {}
+
     lines = [
         "<details>",
         "<summary><strong>附录：模拟账本（评估用 · 非真实持仓）</strong></summary>",
         "",
-        "> **不是你的账户。** 决策完成后机械回放「若完全按 §4 执行」的效果；"
-        "不反向影响建议。缺 `position_pct` 时**不会**静默按默认比例开仓。",
-        "",
-        f"- **初始资金**: {sim.get('initial_cash'):,.0f} 元"
-        if sim.get("initial_cash") is not None
-        else "- **初始资金**: —",
-        f"- **模拟总权益**: {sim.get('equity'):,.2f} 元 · 现金 {sim.get('cash'):,.2f} · 市值 {sim.get('market_value'):,.2f}",
-        f"- **相对初始盈亏**: {sim.get('nav_return_pct')}%",
+        "> **不是你的账户。** 决策完成后机械回放「若完全按 §4 终局执行」的效果；"
+        "不反向影响建议。缺 `position_pct` 时**不会**静默按默认比例开仓。"
+        "下面先写**本轮为什么这样操作（或为什么没操作）**，再列持仓与成交明细。",
         "",
     ]
+
+    lines.append("### 本轮模拟操作说明")
+    lines.append("")
+    if expl.get("headline"):
+        lines.append(f"**结论**: {expl['headline']}")
+        lines.append("")
+    for b in expl.get("bullets") or []:
+        lines.append(f"- {b}")
+    if expl.get("idle_details"):
+        lines.append("")
+        lines.append("**未成交 / 不调仓明细**（含「为何无动作」）:")
+        for row in expl["idle_details"]:
+            lines.append(f"- {row}")
+        omitted = int(expl.get("idle_omitted") or 0)
+        if omitted:
+            lines.append(f"- … 另有 {omitted} 条略")
+    if not (expl.get("bullets") or expl.get("idle_details")):
+        lines.append("- _（缺少决策上下文时仅展示账本数字；重跑一轮可生成完整原因）_")
+    lines.append("")
+
+    lines.append(
+        f"- **初始资金**: {sim.get('initial_cash'):,.0f} 元"
+        if sim.get("initial_cash") is not None
+        else "- **初始资金**: —"
+    )
+    lines.append(
+        f"- **模拟总权益**: {sim.get('equity'):,.2f} 元 · 现金 {sim.get('cash'):,.2f} · "
+        f"市值 {sim.get('market_value'):,.2f}"
+    )
+    lines.append(f"- **相对初始盈亏**: {sim.get('nav_return_pct')}%")
+    lines.append("")
+
     positions = sim.get("positions") or []
     if positions:
         lines.append("### 模拟持仓（非真实）")
@@ -455,26 +756,23 @@ def render_sim_section(sim: dict[str, Any] | None) -> list[str]:
     else:
         lines.append("_模拟盘当前空仓（现金待命）_")
         lines.append("")
+
     fills = [f for f in (sim.get("fills") or []) if not f.get("skipped")]
-    skips = [f for f in (sim.get("fills") or []) if f.get("skipped")]
     if fills:
         lines.append("### 本轮模拟成交")
         lines.append("")
         for f in fills:
+            why = f.get("why") or ""
+            why_s = f" — {why}" if why else ""
             lines.append(
                 f"- {f.get('side')} `{f.get('stock_code')}` {f.get('shares'):.0f}股 @ {f.get('price')} "
-                f"（执行报告动作 `{f.get('action_src')}`，费用 {f.get('cost_fee')}）"
+                f"（执行报告动作 `{f.get('action_src')}`，费用 {f.get('cost_fee')}）{why_s}"
             )
         lines.append("")
-    if skips:
-        lines.append("### 本轮未成交")
-        lines.append("")
-        for f in skips:
-            lines.append(f"- `{f.get('stock_code')}` [{f.get('action_src')}] {f.get('note')}")
-        lines.append("")
+
     lines.append(
         "_真实持仓只看 `config.yaml` → `holdings`（未声明=空仓）；"
-        "`watch_stocks` 是必跟研究名单，不是持仓。_"
+        "`watch_stocks` 是必跟研究名单，不是持仓。完整推理见 §3，终局指令见 §4。_"
     )
     lines.append("")
     lines.append("</details>")
