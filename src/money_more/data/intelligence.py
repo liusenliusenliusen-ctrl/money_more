@@ -6,7 +6,11 @@ from typing import Any
 import akshare as ak
 import pandas as pd
 
-from money_more.analysis.sentiment import FinancialSentimentScorer
+from money_more.analysis.sentiment import (
+    FinancialSentimentScorer,
+    assess_sector_crowding,
+    assess_stock_crowding,
+)
 from money_more.config import AppConfig
 from money_more.data.as_of import (
     filter_calendar_upcoming,
@@ -22,6 +26,7 @@ from money_more.data.fetcher import (
     _match_board_name,
     _safe_float,
     build_sector_money_flow,
+    fetch_hot_rank_with_fallback,
     fetch_sector_board_summary,
     normalize_code,
 )
@@ -71,6 +76,8 @@ class IntelligenceFetcher:
         self._comment_df: pd.DataFrame | None = None
         self._hot_rank_df: pd.DataFrame | None = None
         self._hot_rank_error: str | None = None
+        self._hot_rank_source: str | None = None
+        self._hot_rank_warnings: list[str] = []
         self._sector_summary_cache: tuple[pd.DataFrame, str, list[str]] | None = None
 
     def set_as_of(self, as_of: date | str | None) -> None:
@@ -84,6 +91,8 @@ class IntelligenceFetcher:
         self._comment_df = None
         self._hot_rank_df = None
         self._hot_rank_error = None
+        self._hot_rank_source = None
+        self._hot_rank_warnings = []
         self._sector_summary_cache = None
 
     def _get_comment_df(self) -> pd.DataFrame:
@@ -99,11 +108,16 @@ class IntelligenceFetcher:
         if self._hot_rank_df is not None:
             return self._hot_rank_df
         self._hot_rank_error = None
-        try:
-            self._hot_rank_df = ak.stock_hot_rank_em()
-        except Exception as exc:
+        self._hot_rank_source = None
+        self._hot_rank_warnings = []
+        df, source, warnings = fetch_hot_rank_with_fallback(limit=100)
+        self._hot_rank_source = source or None
+        self._hot_rank_warnings = warnings
+        if not df.empty:
+            self._hot_rank_df = df
+        else:
             self._hot_rank_df = pd.DataFrame()
-            self._hot_rank_error = str(exc)
+            self._hot_rank_error = "; ".join(warnings) if warnings else "hot_rank_empty"
         return self._hot_rank_df
 
     def _get_sector_summary(self) -> tuple[pd.DataFrame, str, list[str]]:
@@ -320,6 +334,9 @@ class IntelligenceFetcher:
         hot = self._get_hot_rank_df()
         if not hot.empty:
             result["market_hot_rank"] = _records(hot, min(20, self.max_items * 2))
+            result["hot_rank_source"] = self._hot_rank_source
+            if self._hot_rank_source and self._hot_rank_source != "em":
+                result["errors"].append(f"hot_rank_fallback:{self._hot_rank_source}")
         elif self._hot_rank_error:
             result["errors"].append(f"人气榜: {self._hot_rank_error}")
 
@@ -422,6 +439,9 @@ class IntelligenceFetcher:
         if self.config.sentiment.enabled:
             pool = result["related_news"] + result["rss_matches"] + result["tushare_news"]
             result["sentiment_analysis"] = self.scorer.score_for_entity(pool, [sector_name], self.max_items * 2)
+
+        hot_records = result.get("hot_rank_mentions") or _records(hot, 30) if not hot.empty else []
+        result["crowding_hint"] = assess_sector_crowding(sector_name, hot_rank_records=hot_records)
 
         return result
 
@@ -548,6 +568,14 @@ class IntelligenceFetcher:
             pool.extend(result.get("tushare", {}).get("news") or [])
             pool.extend(result.get("tushare", {}).get("announcements") or [])
             result["sentiment_analysis"] = self.scorer.score_for_entity(pool, keywords, self.max_items * 3)
+
+        hot = self._get_hot_rank_df()
+        hot_records = _records(hot, 100) if not hot.empty else []
+        result["crowding_signal"] = assess_stock_crowding(
+            code,
+            hot_rank_records=hot_records,
+            market_comment=result.get("market_comment") or {},
+        )
 
         return result
 

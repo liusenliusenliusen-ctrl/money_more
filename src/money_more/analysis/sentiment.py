@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from money_more.data.fetcher import normalize_code
+
 
 POSITIVE_WORDS: dict[str, float] = {
     "增长": 1.0, "大增": 1.4, "超预期": 1.5, "创新高": 1.3, "突破": 1.0, "涨停": 1.2,
@@ -167,13 +169,16 @@ class FinancialSentimentScorer:
 
         agg_score = weighted_sum / weight_total if weight_total else 0.0
         agg_100 = (agg_score + 1) / 2 * 100
+        dist = self._distribution(labels)
+        enrich = self._aggregate_enrichments(scored_items, agg_score, dist)
         return {
             "aggregate": {
                 "score": round(agg_score, 4),
                 "score_100": round(agg_100, 2),
                 "label": self._label(agg_score),
                 "count": len(scored_items),
-                "distribution": self._distribution(labels),
+                "distribution": dist,
+                **enrich,
             },
             "items": scored_items,
         }
@@ -213,6 +218,40 @@ class FinancialSentimentScorer:
             dist[lb] = dist.get(lb, 0) + 1
         return dist
 
+    def _aggregate_enrichments(
+        self,
+        scored_items: list[dict[str, Any]],
+        agg_score: float,
+        dist: dict[str, int],
+    ) -> dict[str, Any]:
+        """汇总层：事件分布、极端情绪标签（供因子卡与 LLM 交叉验证）。"""
+        count = len(scored_items)
+        event_counts: dict[str, int] = {}
+        for item in scored_items:
+            for ev in (item.get("sentiment") or {}).get("events") or []:
+                event_counts[str(ev)] = event_counts.get(str(ev), 0) + 1
+
+        very_pos = dist.get("very_positive", 0)
+        very_neg = dist.get("very_negative", 0)
+        pos_ratio = (dist.get("positive", 0) + very_pos) / count if count else 0.0
+        neg_ratio = (dist.get("negative", 0) + very_neg) / count if count else 0.0
+        agg_100 = (agg_score + 1) / 2 * 100
+
+        extreme: str | None = None
+        if count >= 3:
+            if (agg_100 >= 72 and very_pos >= max(2, count * 0.2)) or very_pos >= count * 0.35:
+                extreme = "euphoria"
+            elif (agg_100 <= 28 and very_neg >= max(2, count * 0.2)) or very_neg >= count * 0.35:
+                extreme = "panic"
+
+        top_events = sorted(event_counts.items(), key=lambda x: (-x[1], x[0]))[:6]
+        return {
+            "event_distribution": dict(top_events),
+            "extreme": extreme,
+            "positive_ratio": round(pos_ratio, 3),
+            "negative_ratio": round(neg_ratio, 3),
+        }
+
     @staticmethod
     def _context_multiplier(text: str, index: int, positive: bool) -> float:
         # 扩大否定窗口：覆盖「不会增长」「并未改善」等
@@ -226,3 +265,103 @@ class FinancialSentimentScorer:
             if intensifier in window:
                 mult *= factor
         return mult
+
+
+def assess_stock_crowding(
+    code: str,
+    *,
+    hot_rank_records: list[dict[str, Any]] | None = None,
+    market_comment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """个股拥挤度：人气榜排名 + 千股千评关注指数（中长线参考，非短线信号）。"""
+    code = normalize_code(code)
+    score = 0
+    signals: list[str] = []
+
+    for row in hot_rank_records or []:
+        raw = str(row.get("代码") or row.get("股票代码") or "")
+        if normalize_code(raw) != code:
+            continue
+        try:
+            rank = int(row.get("当前排名") or row.get("排名") or 999)
+        except (TypeError, ValueError):
+            rank = 999
+        if rank <= 5:
+            score += 3
+            signals.append(f"人气榜Top{rank}")
+        elif rank <= 20:
+            score += 2
+            signals.append(f"人气榜Top{rank}")
+        elif rank <= 50:
+            score += 1
+            signals.append(f"人气榜Top{rank}")
+        break
+
+    mc = market_comment or {}
+    focus_idx = _safe_float(mc.get("关注指数"))
+    if focus_idx is not None:
+        if focus_idx >= 92:
+            score += 2
+            signals.append(f"关注指数{focus_idx:.1f}")
+        elif focus_idx >= 85:
+            score += 1
+            signals.append(f"关注指数{focus_idx:.1f}")
+
+    if score >= 4:
+        level = "high"
+    elif score >= 2:
+        level = "medium"
+    else:
+        level = "low"
+
+    return {"crowding_risk": level, "crowding_score": score, "signals": signals}
+
+
+def assess_sector_crowding(
+    sector_name: str,
+    *,
+    hot_rank_records: list[dict[str, Any]] | None = None,
+    top_n: int = 30,
+) -> dict[str, Any]:
+    """板块拥挤度：人气榜 TopN 中与板块名/龙头代码匹配的数量。"""
+    from money_more.analysis.sector_map import infer_sector
+
+    if not sector_name or not hot_rank_records:
+        return {"crowding_risk": "unknown", "hot_hits": 0, "signals": []}
+
+    hits = 0
+    matched: list[str] = []
+    for row in hot_rank_records[:top_n]:
+        name = str(row.get("股票名称") or row.get("名称") or "")
+        raw_code = str(row.get("代码") or row.get("股票代码") or "")
+        code = normalize_code(raw_code)
+        sector_hit = infer_sector(code) == sector_name
+        if not sector_hit and sector_name and name:
+            sector_hit = sector_name in name or (
+                len(sector_name) >= 2 and sector_name[:2] in name
+            )
+        if sector_hit:
+            hits += 1
+            rank = row.get("当前排名") or row.get("排名")
+            matched.append(f"{name}(Top{rank})")
+
+    if hits >= 4:
+        level = "high"
+    elif hits >= 2:
+        level = "medium"
+    elif hits == 0:
+        level = "low"
+    else:
+        level = "medium"
+
+    signals = [f"人气榜Top{top_n}命中{hits}只"] + matched[:3]
+    return {"crowding_risk": level, "hot_hits": hits, "signals": signals}
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None

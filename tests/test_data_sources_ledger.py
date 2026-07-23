@@ -65,6 +65,17 @@ def test_ledger_marks_sina_spot_fallback():
     assert by_name["Tushare 宏观/公司增强"]["status"] == "fallback"
     assert by_name["舆情/情绪量化"]["status"] == "degraded"
 
+    macro_fb = {
+        **result["intelligence"]["macro_raw"],
+        "hot_rank_source": "xueqiu_follow",
+        "errors": result["intelligence"]["macro_raw"]["errors"] + ["hot_rank_fallback:xueqiu_follow"],
+    }
+    result_fb = {**result, "intelligence": {"macro_raw": macro_fb}}
+    ledger_fb = build_data_sources_ledger(result_fb)
+    by_fb = {r["name"]: r for r in ledger_fb["rows"]}
+    assert by_fb["舆情/情绪量化"]["status"] == "ok"
+    assert "雪球" in by_fb["舆情/情绪量化"]["provider"]
+
     md_lines = render_data_sources_section(result)
     md = "\n".join(md_lines)
     assert "## 数据源说明（本轮）" in md

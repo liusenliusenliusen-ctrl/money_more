@@ -88,6 +88,7 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
         "hard_gates": snap.get("hard_gates"),
         "intelligence": {
             "sentiment_analysis": intel.get("sentiment_analysis"),
+            "crowding_signal": intel.get("crowding_signal"),
             "market_comment": intel.get("market_comment"),
             "research_reports": (intel.get("research_reports") or [])[:3],
             "rss_matches": (intel.get("rss_matches") or [])[:4],

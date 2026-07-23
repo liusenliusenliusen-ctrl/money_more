@@ -312,15 +312,25 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
     # —— 情绪 ——
     sent = (macro.get("sentiment_overview") or {}).get("aggregate")
     hot_fail = _err_has(errors, "人气榜", "hot_rank", "push2.eastmoney.com")
+    hot_fb = macro.get("hot_rank_source") in ("xueqiu_follow",) or _err_has(
+        errors, "hot_rank_fallback", "xueqiu_follow"
+    )
     if sent:
+        provider = "新闻词典打分 + 千股千评"
+        if hot_fb:
+            provider += "（人气榜→雪球关注榜备源）"
+        elif hot_fail:
+            provider += "（人气榜依赖东财 push2）"
         add(
             name="舆情/情绪量化",
-            provider="新闻词典打分 + 千股千评等（人气榜依赖东财 push2）",
-            fetches="综合舆情分、拥挤度线索",
-            status="degraded" if hot_fail else "ok",
+            provider=provider,
+            fetches="综合舆情分、拥挤度线索、事件分布",
+            status="ok" if hot_fb or not hot_fail else "degraded",
             detail=(
                 f"score_100={sent.get('score_100')} label={sent.get('label')}"
-                + ("；人气榜失败已降权" if hot_fail else "")
+                + (f"; extreme={sent.get('extreme')}" if sent.get("extreme") else "")
+                + ("；人气榜已用雪球备源" if hot_fb else "")
+                + ("；人气榜失败已降权" if hot_fail and not hot_fb else "")
             ),
             used_in="§0/结论卡环境；与硬数据冲突时以硬数据为准",
         )

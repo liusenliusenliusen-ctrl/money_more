@@ -217,6 +217,50 @@ def fetch_spot_with_fallback(
     return pd.DataFrame(), "", errors
 
 
+def _hot_rank_from_xueqiu_follow(follow_df: pd.DataFrame, limit: int = 100) -> pd.DataFrame:
+    """雪球关注榜 → 东财人气榜近似字段（当前排名/代码/股票名称）。"""
+    if follow_df is None or follow_df.empty:
+        return pd.DataFrame()
+    sorted_df = follow_df.sort_values("关注", ascending=False).head(limit).reset_index(drop=True)
+    rows: list[dict[str, Any]] = []
+    for idx, row in sorted_df.iterrows():
+        rows.append(
+            {
+                "当前排名": int(idx) + 1,
+                "代码": row.get("股票代码"),
+                "股票名称": row.get("股票简称"),
+                "最新价": row.get("最新价"),
+                "涨跌幅": None,
+                "关注": row.get("关注"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def fetch_hot_rank_with_fallback(*, limit: int = 100) -> tuple[pd.DataFrame, str, list[str]]:
+    """市场人气榜：东财 push2 → 雪球关注榜（push2 失败时备源）。"""
+    errors: list[str] = []
+    try:
+        raw = ak.stock_hot_rank_em()
+        if raw is not None and not raw.empty:
+            return raw.head(limit), "em", errors
+        errors.append("hot_rank_em_empty")
+    except Exception as exc:
+        errors.append(f"hot_rank(em): {exc}")
+
+    try:
+        follow = ak.stock_hot_follow_xq()
+        normalized = _hot_rank_from_xueqiu_follow(follow, limit)
+        if not normalized.empty:
+            errors.append("hot_rank_fallback:xueqiu_follow")
+            return normalized, "xueqiu_follow", errors
+        errors.append("hot_rank_xueqiu_empty")
+    except Exception as exc:
+        errors.append(f"hot_rank(xueqiu): {exc}")
+
+    return pd.DataFrame(), "", errors
+
+
 class MarketDataFetcher:
     """从 AkShare 拉取 A 股市场数据，多数据源自动回退；支持 as_of 回放。"""
 

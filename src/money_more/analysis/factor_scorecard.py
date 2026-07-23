@@ -164,6 +164,16 @@ def build_stock_scorecard(
     if agg.get("extreme"):
         sent = min(sent, 35) if sent < 50 else max(sent, 65)
         evidence["sentiment"].append(f"极端情绪:{agg.get('extreme')}")
+    crowding = intel.get("crowding_signal") or {}
+    cr = str(crowding.get("crowding_risk") or "")
+    if cr == "high":
+        sent = max(0.0, sent - 8)
+        evidence["sentiment"].append("量化拥挤度高")
+    elif cr == "medium":
+        sent = max(0.0, sent - 3)
+        evidence["sentiment"].append("量化拥挤度中")
+    elif cr == "low":
+        evidence["sentiment"].append("量化拥挤度低")
     scores["sentiment"] = _clamp(sent)
 
     # --- quality: 财务粗指标 ---
