@@ -387,15 +387,9 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append(f"**取向**: 中长线（{horizon}）" + (f" · 节奏 `{cadence}`" if cadence else ""))
     lines.append("")
 
-    dq = result.get("data_quality") or {}
-    if dq:
-        flag = "⚠️ DEGRADED" if dq.get("degraded") else "OK"
-        lines.append(f"**数据质量**: {dq.get('score', '-')} ({flag}) — {dq.get('note', '')}")
-        if dq.get("missing"):
-            lines.append(f"- 缺失项: {', '.join(dq['missing'])}")
-        if dq.get("screen_note"):
-            lines.append(f"- 遴选: {dq['screen_note']}")
-        lines.append("")
+    from money_more.analysis.data_sources_ledger import render_data_sources_section
+
+    lines.extend(render_data_sources_section(result))
 
     ma = result.get("multi_agent") or {}
     if ma.get("enabled"):
@@ -1049,9 +1043,10 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     dq = result.get("data_quality") or {}
     if dq:
-        lines.append(f"**数据质量分**: {dq.get('score', '-')} · {dq.get('note', '')}")
-        if dq.get("missing"):
-            lines.append(f"缺失源: {', '.join(dq['missing'])}")
+        lines.append(
+            f"**数据质量分**: {dq.get('score', '-')} · {dq.get('note', '')}"
+            "（明细见文首「数据源说明」）"
+        )
         lines.append("")
 
     digest = result.get("decision_digest") or {}

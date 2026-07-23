@@ -697,8 +697,10 @@ class DecisionPipeline:
             result["trend"] = trend_report
 
         from money_more.analysis.decision_digest import build_decision_digest
+        from money_more.analysis.data_sources_ledger import build_data_sources_ledger
 
         result["decision_digest"] = build_decision_digest(result)
+        result["data_sources"] = build_data_sources_ledger(result)
         return result
 
     def run_review(
