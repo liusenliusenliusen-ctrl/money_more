@@ -780,8 +780,8 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("### 逻辑链：维度如何串起来")
     lines.append("")
     lines.append(
-        "_情报主题 → 市场阶段/风格 → 板块态度 → ①个股研究 → ②④组合终局动作。"
-        "下面每条是本轮可核对的因果链（不是另起一套结论）。_"
+        "_只写推理骨架：情报 → 市场 → 配置 → 板块态度。"
+        "具体个股见上方动作 / §3 决策链，此处不按票展开。_"
     )
     lines.append("")
     theme0 = ""
@@ -792,53 +792,48 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         theme0 = _one_line(digest["market_narratives"][0], 40)
     head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
     lines.append(f"1. {head} → 配置倾向「{alloc}」")
-    # 每条有对应个股动作的板块
+
+    # 板块层：每赛道一行态度摘要（不落到个股）
     chain_i = 2
     for sec in sectors:
         a = sec.get("analysis") or {}
         name = str(a.get("sector") or sec.get("sector") or "")
+        if not name:
+            continue
         related = by_sec.get(name) or []
-        if not related and str(a.get("priority") or "") != "high":
+        priority = str(a.get("priority") or "medium")
+        # high 优先；有对应建议的中优先级也保留；纯 low/无建议可跳过以免刷屏
+        if priority not in ("high", "medium") and not related:
+            continue
+        if priority == "medium" and not related and len(
+            [s for s in sectors if str((s.get("analysis") or {}).get("priority") or "") == "high"]
+        ) >= 2:
             continue
         stance = _sector_stance(a, related)
+        bits = [
+            f"优先级:{a.get('priority', '-')}",
+            f"景气:{a.get('prosperity', '-')}",
+            f"估值:{a.get('valuation', '-')}",
+        ]
+        crowd = (a.get("sentiment") or {}).get("crowding_risk")
+        if crowd:
+            bits.append(f"拥挤:{crowd}")
+        # 若有对应终局动作，只汇总动作类型，不列代码
+        action_set = {str(r.get("action") or "watch") for r in related}
+        action_hint = ""
         if related:
-            for r in related:
-                code = str(r.get("code") or "")
-                nm = names.get(code, "")
-                act = _ACTION_LABEL.get(str(r.get("action")), r.get("action"))
-                rating = ""
-                for st in result.get("stocks") or []:
-                    sa = st.get("analysis") or {}
-                    if str(sa.get("code") or st.get("code")) == code:
-                        rating = str(sa.get("research_rating") or "")
-                        break
-                rate_s = f"①研究:{rating} → " if rating else ""
-                lines.append(
-                    f"{chain_i}. 板块「{name}」[{a.get('priority','-')}/"
-                    f"{a.get('prosperity','-')}/{a.get('valuation','-')}] "
-                    f"— {stance} → {rate_s}**④{act}** {code}{(' '+nm) if nm else ''}"
-                )
-                chain_i += 1
-        else:
-            lines.append(
-                f"{chain_i}. 板块「{name}」[{a.get('priority','-')}] — {stance} "
-                f"→ 深度池暂无对应个股动作（板块结论仍约束追高/回避）"
+            labels = sorted(
+                {_ACTION_LABEL.get(a, a) for a in action_set if a},
+                key=lambda x: (0 if x == "买入" else 1 if x == "加仓" else 2 if x == "持有" else 3),
             )
-            chain_i += 1
-        if chain_i > 6:
-            break
-    # 无板块映射的建议也列一行
-    for rec in recs:
-        code = str(rec.get("code") or "")
-        tag = str(rec.get("sector_tag") or infer_sector(code) or "")
-        if tag and tag in {str((s.get("analysis") or {}).get("sector") or s.get("sector") or "") for s in sectors}:
-            continue
-        act = _ACTION_LABEL.get(str(rec.get("action")), rec.get("action"))
+            action_hint = f" → 对应个股终局以「{'/'.join(labels)}」为主（详见动作/§3）"
+        elif priority == "high":
+            action_hint = " → 深度池暂无对应个股，板块态度仍约束追高/回避"
         lines.append(
-            f"{chain_i}. （未映射板块）→ **{act}** {code}{(' '+names.get(code,'')) if names.get(code) else ''}"
+            f"{chain_i}. 板块「{name}」[{' · '.join(bits)}] — {stance}{action_hint}"
         )
         chain_i += 1
-        if chain_i > 7:
+        if chain_i > 5:
             break
     lines.append("")
     lines.append("---")

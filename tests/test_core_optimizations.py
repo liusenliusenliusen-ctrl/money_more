@@ -834,6 +834,14 @@ def test_render_conclusion_card_and_cross_links():
     assert "板块: 新能源" in md
     assert "### 逻辑链：维度如何串起来" in md
     assert "板块「新能源」" in md
+    assert "不按票展开" in md
+    # 逻辑链不应再逐票列出代码
+    chain_start = md.index("### 逻辑链：维度如何串起来")
+    chain_end = md.index("---", chain_start)
+    chain_block = md[chain_start:chain_end]
+    assert "300750" not in chain_block
+    assert "600519" not in chain_block
+    assert "详见动作/§3" in chain_block or "终局以" in chain_block
 
     # 维度复盘渲染
     result["dimension_reviews"] = [

@@ -10,13 +10,14 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from money_more.config import AppConfig, EmailConfig
+from money_more.notify.email_format import build_analysis_email_bodies, md_to_email_html, md_to_plain, wrap_email_html
 from money_more.notify.email_ledger import record_send, split_by_guide_status
 from money_more.utils.logging_util import setup_logging
 
 log = setup_logging()
 
-# 正文预览上限，完整内容走附件
-_BODY_PREVIEW_CHARS = 12000
+# 纯文本后备上限；HTML 正文不截断（完整 md 仍在附件）
+_BODY_PREVIEW_CHARS = 20000
 _GUIDE_REL = Path("docs") / "how-to-read-report.md"
 
 
@@ -38,7 +39,7 @@ def _preview(text: str, limit: int = _BODY_PREVIEW_CHARS) -> str:
     text = text.strip()
     if len(text) <= limit:
         return text
-    return text[:limit] + f"\n\n…（正文已截断，完整内容见附件，共 {len(text)} 字符）\n"
+    return text[:limit] + f"\n\n…（纯文本已截断；请看 HTML 正文或附件完整 md，共 {len(text)} 字符）\n"
 
 
 def _attach_file(msg: EmailMessage, path: Path) -> None:
@@ -46,7 +47,11 @@ def _attach_file(msg: EmailMessage, path: Path) -> None:
         return
     ctype, encoding = mimetypes.guess_type(str(path))
     if ctype is None or encoding is not None:
-        ctype = "application/octet-stream"
+        # .md 常被猜成 octet-stream；标明为 text/markdown 便于手机识别
+        if path.suffix.lower() == ".md":
+            ctype = "text/markdown"
+        else:
+            ctype = "application/octet-stream"
     maintype, subtype = ctype.split("/", 1)
     msg.add_attachment(
         path.read_bytes(),
@@ -65,12 +70,17 @@ def send_report_email(
     *,
     subject: str,
     body: str,
+    html_body: str | None = None,
     attachments: Sequence[str | Path] | None = None,
     to_addrs: Sequence[str] | None = None,
     kind: str = "generic",
     guide_attached: bool = False,
 ) -> dict[str, Any]:
-    """发送一封报告邮件；失败不抛到上层业务（返回 error 字段）。"""
+    """发送一封报告邮件；失败不抛到上层业务（返回 error 字段）。
+
+    body: 纯文本后备；html_body: 手机可读 HTML（优先展示）。
+    attachments: 完整 Markdown 等文件。
+    """
     cfg = config.email
     ok, reason = email_ready(cfg)
     if not ok:
@@ -86,6 +96,8 @@ def send_report_email(
     msg["From"] = from_addr
     msg["To"] = ", ".join(to_list)
     msg.set_content(_preview(body), charset="utf-8")
+    if html_body:
+        msg.add_alternative(html_body, subtype="html", charset="utf-8")
 
     for item in attachments or []:
         _attach_file(msg, Path(item))
@@ -106,10 +118,11 @@ def send_report_email(
                 smtp.login(cfg.smtp_user, cfg.smtp_password)
                 smtp.send_message(msg, to_addrs=to_list)
         log.info(
-            "email sent to %s subject=%s guide=%s",
+            "email sent to %s subject=%s guide=%s html=%s",
             to_list,
             subject,
             guide_attached,
+            bool(html_body),
         )
         record_send(
             config.project_root,
@@ -152,6 +165,7 @@ def _send_with_optional_guide(
     *,
     subject: str,
     body: str,
+    html_body: str | None,
     attachments: list[Path],
     kind: str,
 ) -> dict[str, Any]:
@@ -170,16 +184,22 @@ def _send_with_optional_guide(
     if first:
         atts = list(attachments)
         body_first = body
+        html_first = html_body
         attached = False
         if guide_ok:
             atts.append(guide)
             attached = True
-            body_first = (
-                body
-                + "\n\n---\n"
-                + "【首次说明】附件含《如何解读报告》(how-to-read-report.md)，"
-                + "建议先读结论卡再看详细论证；之后邮件不再重复附送。\n"
+            note = (
+                "【首次说明】附件含《如何解读报告》(how-to-read-report.md)，"
+                "建议先读结论卡再看详细论证；之后邮件不再重复附送。"
             )
+            body_first = body + "\n\n---\n" + note + "\n"
+            if html_first:
+                html_first = html_first.replace(
+                    "</body>",
+                    f'<p class="foot">{note}</p></body>',
+                    1,
+                )
         else:
             log.warning("guide doc missing: %s", guide)
         batches.append(
@@ -187,6 +207,7 @@ def _send_with_optional_guide(
                 config,
                 subject=subject,
                 body=body_first,
+                html_body=html_first,
                 attachments=atts,
                 to_addrs=first,
                 kind=kind,
@@ -199,6 +220,7 @@ def _send_with_optional_guide(
                 config,
                 subject=subject,
                 body=body,
+                html_body=html_body,
                 attachments=attachments,
                 to_addrs=returning,
                 kind=kind,
@@ -228,8 +250,10 @@ def _send_with_optional_guide(
 
 
 def notify_analysis_report(config: AppConfig, report_path: str | Path, run_date: str) -> dict[str, Any]:
+    """分析报告邮件：正文=结论卡+详细论证（HTML）；附件=完整 md（及趋势 md）。"""
     path = Path(report_path)
-    body = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
+    full_md = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
+    plain, html_body = build_analysis_email_bodies(full_md, run_date)
     attachments: list[Path] = [path]
     trend = config.resolve(config.paths.reports) / "trend.md"
     if trend.exists():
@@ -237,19 +261,32 @@ def notify_analysis_report(config: AppConfig, report_path: str | Path, run_date:
     return _send_with_optional_guide(
         config,
         subject=f"[money_more] 分析报告 {run_date}",
-        body=f"money_more 分析报告已生成（{run_date}）。\n\n{body}",
+        body=plain,
+        html_body=html_body,
         attachments=attachments,
         kind="analysis",
     )
 
 
 def notify_optimize_report(config: AppConfig, report_path: str | Path, run_date: str) -> dict[str, Any]:
+    """优化报告：正文转 HTML 便于手机阅读；附件仍为 md。"""
     path = Path(report_path)
-    body = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
+    full_md = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
+    plain = (
+        f"money_more 自优化报告 {run_date}\n"
+        f"（完整 Markdown 见附件。）\n\n"
+        + md_to_plain(full_md)
+    )
+    html_body = wrap_email_html(
+        md_to_email_html(full_md),
+        run_date=run_date,
+        meta=f"money_more 自优化报告 {run_date} · 完整 md 见附件",
+    )
     return _send_with_optional_guide(
         config,
         subject=f"[money_more] 自优化报告 {run_date}",
-        body=f"money_more 自优化报告已生成（{run_date}）。\n\n{body}",
+        body=plain,
+        html_body=html_body,
         attachments=[path],
         kind="optimize",
     )
