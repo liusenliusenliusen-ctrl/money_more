@@ -137,10 +137,11 @@ def _compact_sector_flow(flow: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tail_macro_hard(hard: dict[str, Any]) -> dict[str, Any]:
+    """macro_hard 序列来自 AkShare 降序，保留最新 3 期。"""
     out = {}
     for k, v in hard.items():
         if isinstance(v, list):
-            out[k] = v[-3:]
+            out[k] = v[:3]
         else:
             out[k] = v
     return out

@@ -201,17 +201,45 @@ def test_scorecard_uses_percentiles():
 
 
 def test_synthetic_calendar_and_northbound_freshness():
-    from money_more.data.intelligence import _northbound_freshness, _synthetic_calendar_from_macro_hard
+    from money_more.data.intelligence import (
+        _macro_records_from_df,
+        _northbound_freshness,
+        _synthetic_calendar_from_macro_hard,
+    )
 
     macro_hard = {"pmi": [{"月份": "2026年06月份", "制造业": 49.5}]}
     events = _synthetic_calendar_from_macro_hard(macro_hard, date(2026, 7, 12))
     assert len(events) == 1
     assert events[0]["event"] == "中国制造业PMI"
+    assert events[0]["日期"] == "2026-06"
+
+    # AkShare 宏观序列降序：head 取最新，合成日历不得落到 2008
+    import pandas as pd
+
+    pmi_df = pd.DataFrame(
+        [
+            {"月份": "2026年06月份", "制造业-指数": 50.3},
+            {"月份": "2026年05月份", "制造业-指数": 50.0},
+            {"月份": "2008年01月份", "制造业-指数": 53.0},
+        ]
+    )
+    records = _macro_records_from_df(pmi_df, 6)
+    synth = _synthetic_calendar_from_macro_hard({"pmi": records}, date(2026, 7, 23))
+    assert synth[0]["日期"] == "2026-06"
+    assert "2008" not in synth[0]["日期"]
 
     fresh = _northbound_freshness([{"日期": "2026-07-10"}], date(2026, 7, 12))
     assert fresh["stale"] is False
     stale = _northbound_freshness([{"日期": "2026-07-01"}], date(2026, 7, 12))
     assert stale["stale"] is True
+
+
+def test_parse_macro_period_date():
+    from money_more.data.as_of import parse_macro_period_date, parse_record_date
+
+    assert parse_macro_period_date({"月份": "2026年06月份"}) == date(2026, 6, 1)
+    assert parse_macro_period_date({"月份": "2008年01月份"}) == date(2008, 1, 1)
+    assert parse_record_date({"月份": "2026年06月份"}) == date(2026, 6, 1)
 
 
 def test_macro_news_backfill_and_quality():
@@ -353,11 +381,25 @@ def test_open_questions_expiry():
 
 
 def test_compact_macro():
-    from money_more.analysis.context_builder import compact_macro_intel
+    from money_more.analysis.context_builder import _tail_macro_hard, compact_macro_intel
 
     raw = {"policy_news": [{"a": i} for i in range(20)], "errors": [], "sentiment_overview": {"aggregate": {}}}
     c = compact_macro_intel(raw, max_news=6)
     assert len(c["policy_news"]) == 6
+
+    hard = {
+        "pmi": [
+            {"月份": "2026年06月份", "制造业-指数": 50.3},
+            {"月份": "2026年05月份", "制造业-指数": 50.0},
+            {"月份": "2026年04月份", "制造业-指数": 49.8},
+            {"月份": "2026年03月份", "制造业-指数": 49.5},
+            {"月份": "2008年01月份", "制造业-指数": 53.0},
+        ]
+    }
+    tailed = _tail_macro_hard(hard)
+    assert len(tailed["pmi"]) == 3
+    assert tailed["pmi"][0]["月份"] == "2026年06月份"
+    assert all("2008" not in str(r.get("月份")) for r in tailed["pmi"])
 
 
 def test_ashare_costs():

@@ -17,6 +17,7 @@ from money_more.data.as_of import (
     filter_calendar_upcoming,
     filter_records_by_date,
     parse_as_of,
+    parse_macro_period_date,
     parse_record_date,
     recent_weekdays,
     ymd,
@@ -37,6 +38,13 @@ from money_more.data.tushare_source import TushareSource
 
 
 def _records(df: pd.DataFrame | None, limit: int = 10) -> list[dict[str, Any]]:
+    if df is None or df.empty:
+        return []
+    return df.head(limit).to_dict(orient="records")
+
+
+def _macro_records_from_df(df: pd.DataFrame | None, limit: int = 6) -> list[dict[str, Any]]:
+    """AkShare PMI/CPI/M2 等序列按时间降序，取最新 limit 条。"""
     if df is None or df.empty:
         return []
     return df.head(limit).to_dict(orient="records")
@@ -290,7 +298,7 @@ class IntelligenceFetcher:
             try:
                 df = fn()
                 if df is not None and not df.empty:
-                    macro_hard[label] = _records(df.tail(6), 6)
+                    macro_hard[label] = _macro_records_from_df(df, 6)
             except Exception as exc:
                 result["errors"].append(f"宏观{label}: {exc}")
         result["macro_hard"] = macro_hard
@@ -655,26 +663,50 @@ _MACRO_CAL_LABELS = {
 }
 
 
+def _pick_latest_macro_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """从宏观序列中选取最新一期（兼容降序/乱序）。"""
+    best: dict[str, Any] | None = None
+    best_period: date | None = None
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        period = parse_macro_period_date(rec)
+        if period is None:
+            continue
+        if best_period is None or period > best_period:
+            best_period = period
+            best = rec
+    if best is not None:
+        return best
+    for rec in records:
+        if isinstance(rec, dict):
+            return rec
+    return None
+
+
 def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
     """主经济日历为空时，用 PMI/CPI/M2 最新发布构造宏观事件锚。"""
     events: list[dict[str, Any]] = []
-    month_keys = ("月份", "month", "日期", "date", "时间", "公布时间")
     for key, label in _MACRO_CAL_LABELS.items():
         records = macro_hard.get(key) or []
         if not records:
             continue
-        latest = records[-1]
+        latest = _pick_latest_macro_record(records)
         if not isinstance(latest, dict):
             continue
-        date_str = None
-        for mk in month_keys:
-            if mk in latest and latest.get(mk):
-                date_str = str(latest[mk])
-                break
+        period = parse_macro_period_date(latest)
+        period_label = str(latest.get("月份") or latest.get("month") or "").strip()
+        if period is not None:
+            date_str = period.strftime("%Y-%m")
+        elif period_label:
+            date_str = period_label
+        else:
+            date_str = as_of.isoformat()
         events.append(
             {
-                "日期": date_str or as_of.isoformat(),
+                "日期": date_str,
                 "event": label,
+                "period_label": period_label or None,
                 "snapshot": latest,
                 "source": "macro_hard",
             }

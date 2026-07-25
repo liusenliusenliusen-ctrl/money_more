@@ -60,10 +60,31 @@ def parse_record_date(
         "发布日期",
         "交易日",
         "trade_date",
+        "月份",
     ),
 ) -> date | None:
     """从记录中解析日期，供新鲜度/日历判断复用。"""
     return _extract_date(item, date_keys)
+
+
+def parse_macro_period_date(item: dict) -> date | None:
+    """解析宏观指标「月份」字段（如 2026年06月份），返回该月 1 日。"""
+    for key in ("月份", "month", "日期", "date", "时间", "公布时间"):
+        if key not in item:
+            continue
+        raw = item.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text:
+            continue
+        for fmt in ("%Y年%m月份", "%Y年%m月", "%Y-%m", "%Y/%m"):
+            try:
+                dt = datetime.strptime(text, fmt)
+                return date(dt.year, dt.month, 1)
+            except ValueError:
+                continue
+    return None
 
 
 def filter_records_by_date(
@@ -145,6 +166,8 @@ def _extract_date(item: dict, date_keys: tuple[str, ...]) -> date | None:
                 "%Y/%m/%d",
                 "%Y%m%d",
                 "%Y年%m月%d日",
+                "%Y年%m月份",
+                "%Y年%m月",
             ):
                 try:
                     return datetime.strptime(cand, fmt).date()
