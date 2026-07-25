@@ -183,7 +183,7 @@ class AppConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com/v1"
-    llm_model: str = "deepseek-chat"
+    llm_model: str = "deepseek-v4-flash"
     tushare_token: str = ""
     cursor_api_key: str = ""
     claude_api_key: str = ""
@@ -400,7 +400,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         ),
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1"),
-        llm_model=os.getenv("LLM_MODEL", "deepseek-chat"),
+        llm_model=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
         tushare_token=os.getenv("TUSHARE_TOKEN", ""),
         cursor_api_key=os.getenv("CURSOR_API_KEY", ""),
         claude_api_key=os.getenv("ANTHROPIC_API_KEY")
