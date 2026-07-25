@@ -230,8 +230,12 @@ def test_synthetic_calendar_and_northbound_freshness():
 
     fresh = _northbound_freshness([{"日期": "2026-07-10"}], date(2026, 7, 12))
     assert fresh["stale"] is False
+    assert fresh.get("trading_staleness_days") == 0
     stale = _northbound_freshness([{"日期": "2026-07-01"}], date(2026, 7, 12))
     assert stale["stale"] is True
+    # 周五数据 + 周一 as_of：仅 1 个交易日滞后，不应判 stale
+    fri_pause = _northbound_freshness([{"日期": "2026-07-24"}], date(2026, 7, 27))
+    assert fri_pause["stale"] is False
 
 
 def test_parse_macro_period_date():

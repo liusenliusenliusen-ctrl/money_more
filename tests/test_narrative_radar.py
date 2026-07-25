@@ -15,6 +15,7 @@ def test_radar_hits_us_debt_and_national_team() -> None:
         "global_news": [
             {"title": "美债收益率再创新高引发流动性担忧"},
             {"title": "市场传国家队护盘后或将逐步出清"},
+            {"title": "中东地缘冲突升级，伊朗袭击美军基地推升避险情绪"},
         ],
         "rss_telegraph": [{"content": "AI泡沫争论再起，英伟达估值受质疑"}],
     }
@@ -23,6 +24,7 @@ def test_radar_hits_us_debt_and_national_team() -> None:
     assert by_id["us_liquidity_debt"]["signal_strength"] != "none"
     assert by_id["policy_national_team"]["signal_strength"] != "none"
     assert by_id["ai_valuation_bubble"]["signal_strength"] != "none"
+    assert by_id["geopolitical_risk"]["signal_strength"] != "none"
     assert radar["policy_market_hypothesis"]["status"] in ("watch", "elevated")
     assert "叙事雷达" in radar["plain_note"] or "命中" in radar["plain_note"]
 

@@ -331,6 +331,11 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 + (f"; extreme={sent.get('extreme')}" if sent.get("extreme") else "")
                 + ("；人气榜已用雪球备源" if hot_fb else "")
                 + ("；人气榜失败已降权" if hot_fail and not hot_fb else "")
+                + (
+                    f"；行业情绪指数{len((macro.get('industry_sentiment_index') or {}).get('sectors') or [])}板块"
+                    if (macro.get("industry_sentiment_index") or {}).get("sectors")
+                    else ""
+                )
             ),
             used_in="§0/结论卡环境；与硬数据冲突时以硬数据为准",
         )

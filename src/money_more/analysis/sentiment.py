@@ -50,6 +50,10 @@ EVENT_TAG_LABELS: dict[str, str] = {
     "regulatory_negative": "监管立案/处罚",
     "earnings_positive": "业绩预增/扭亏",
     "earnings_negative": "业绩预减/低于预期",
+    "geopolitical_negative": "地缘冲突/战争风险",
+    "risk_off": "避险/风险偏好下降",
+    "energy_shock": "油价/能源冲击",
+    "policy_support": "产业政策/扶持",
 }
 
 EVENT_PATTERNS: list[tuple[str, float, str]] = [
@@ -61,6 +65,10 @@ EVENT_PATTERNS: list[tuple[str, float, str]] = [
     (r"立案|调查|处罚|警示", -1.3, "regulatory_negative"),
     (r"业绩预增|扭亏|超预期", 1.2, "earnings_positive"),
     (r"业绩预减|首亏|续亏|低于预期", -1.2, "earnings_negative"),
+    (r"地缘|冲突|战争|袭击|导弹|军事打击|中东|伊朗|以军|俄乌", -1.3, "geopolitical_negative"),
+    (r"避险|风险偏好下降|恐慌情绪|VIX|黄金大涨|美债风暴", -1.0, "risk_off"),
+    (r"油价|原油|能源危机|OPEC|页岩油", -0.8, "energy_shock"),
+    (r"产业政策|扶持|补贴|国产替代|自主可控|专项规划", 0.9, "policy_support"),
 ]
 
 
@@ -276,6 +284,59 @@ class FinancialSentimentScorer:
             if intensifier in window:
                 mult *= factor
         return mult
+
+
+def _sector_match_keywords(sector_name: str) -> list[str]:
+    """板块名 + 行业别名，供宏观语料关键词匹配。"""
+    keywords = [sector_name]
+    from money_more.analysis.sector_map import _INDUSTRY_ALIASES
+
+    for keys, label in _INDUSTRY_ALIASES:
+        if label == sector_name:
+            keywords.extend(keys)
+    return list(dict.fromkeys(k for k in keywords if k))
+
+
+def build_industry_sentiment_index(
+    news_pool: list[dict[str, Any]],
+    sector_names: list[str],
+    *,
+    scorer: FinancialSentimentScorer | None = None,
+    limit_per_sector: int = 15,
+) -> dict[str, Any]:
+    """从已采集宏观/快讯语料按板块关键词聚合行业情绪指数（无额外 API）。"""
+    if not news_pool or not sector_names:
+        return {"sectors": [], "note": "empty_pool"}
+
+    engine = scorer or FinancialSentimentScorer()
+    rows: list[dict[str, Any]] = []
+    for name in dict.fromkeys(sector_names):
+        if not name:
+            continue
+        sa = engine.score_for_entity(news_pool, _sector_match_keywords(name), limit_per_sector)
+        agg = sa.get("aggregate") or {}
+        count = int(agg.get("count") or 0)
+        if count <= 0:
+            continue
+        rows.append(
+            {
+                "sector": name,
+                "score_100": agg.get("score_100"),
+                "label": agg.get("label"),
+                "count": count,
+                "extreme": agg.get("extreme"),
+                "event_distribution": agg.get("event_distribution") or {},
+            }
+        )
+
+    rows.sort(
+        key=lambda r: (abs(float(r.get("score_100") or 50) - 50), int(r.get("count") or 0)),
+        reverse=True,
+    )
+    return {
+        "sectors": rows[:12],
+        "note": "基于宏观/快讯语料关键词匹配，非板块专用新闻接口",
+    }
 
 
 def build_macro_event_signals(macro_intel: dict[str, Any]) -> dict[str, Any]:

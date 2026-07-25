@@ -27,6 +27,7 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "tushare_macro_backfill": macro.get("tushare_macro_backfill"),
         "market_hot_rank": (macro.get("market_hot_rank") or [])[:10],
         "macro_event_signals": _compact_macro_events(macro.get("macro_event_signals") or {}),
+        "industry_sentiment_index": _compact_industry_sentiment(macro.get("industry_sentiment_index") or {}),
         "narrative_radar": _compact_narrative_radar(macro.get("narrative_radar") or {}),
         "errors": (macro.get("errors") or [])[:8],
     }
@@ -41,6 +42,25 @@ def _compact_macro_events(signals: dict[str, Any]) -> dict[str, Any]:
         "dominant_tags": (signals.get("dominant_tags") or [])[:5],
         "watchlist": (signals.get("watchlist") or [])[:6],
     }
+
+
+def _compact_industry_sentiment(index: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(index, dict) or not index:
+        return {}
+    sectors = []
+    for row in (index.get("sectors") or [])[:8]:
+        if not isinstance(row, dict):
+            continue
+        sectors.append(
+            {
+                "sector": row.get("sector"),
+                "score_100": row.get("score_100"),
+                "label": row.get("label"),
+                "count": row.get("count"),
+                "extreme": row.get("extreme"),
+            }
+        )
+    return {"sectors": sectors, "note": index.get("note")}
 
 
 def _compact_narrative_radar(radar: dict[str, Any]) -> dict[str, Any]:

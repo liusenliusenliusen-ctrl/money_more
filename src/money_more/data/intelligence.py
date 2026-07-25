@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import akshare as ak
@@ -10,6 +10,7 @@ from money_more.analysis.sentiment import (
     FinancialSentimentScorer,
     assess_sector_crowding,
     assess_stock_crowding,
+    build_industry_sentiment_index,
     build_macro_event_signals,
 )
 from money_more.config import AppConfig
@@ -399,15 +400,29 @@ class IntelligenceFetcher:
                 result["tushare_macro_backfill"] = True
                 result["errors"].append("tushare_macro_backfill_from_alt_sources")
 
+        macro_news_pool: list[dict[str, Any]] = []
+        macro_news_pool.extend(result["policy_news"])
+        macro_news_pool.extend(result["global_news"])
+        macro_news_pool.extend(result.get("global_news_sina") or [])
+        macro_news_pool.extend(result["rss_important"])
+        macro_news_pool.extend(result["rss_telegraph"][: self.max_items])
+        macro_news_pool.extend(result["tushare_macro_news"])
+
         if self.config.sentiment.enabled:
-            macro_news_pool: list[dict[str, Any]] = []
-            macro_news_pool.extend(result["policy_news"])
-            macro_news_pool.extend(result["global_news"])
-            macro_news_pool.extend(result.get("global_news_sina") or [])
-            macro_news_pool.extend(result["rss_important"])
-            macro_news_pool.extend(result["rss_telegraph"][: self.max_items])
-            macro_news_pool.extend(result["tushare_macro_news"])
             result["sentiment_overview"] = self.scorer.score_news_items(macro_news_pool)
+
+        sector_names = list(
+            dict.fromkeys(
+                list(self.config.watch_sectors or [])
+                + _sector_names_from_money_flow(result.get("sector_money_flow") or {})
+            )
+        )
+        if sector_names and macro_news_pool and self.config.sentiment.enabled:
+            result["industry_sentiment_index"] = build_industry_sentiment_index(
+                macro_news_pool,
+                sector_names,
+                scorer=self.scorer,
+            )
 
         result["macro_event_signals"] = build_macro_event_signals(result)
 
@@ -714,19 +729,53 @@ def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date)
     return events
 
 
+def _trading_days_between(start: date, end: date) -> int:
+    """start 与 end 之间的工作日数（不含 start，含 end）。"""
+    if start >= end:
+        return 0
+    days = 0
+    cursor = start + timedelta(days=1)
+    while cursor <= end:
+        if cursor.weekday() < 5:
+            days += 1
+        cursor += timedelta(days=1)
+    return days
+
+
+def _sector_names_from_money_flow(flow: dict[str, Any], limit: int = 6) -> list[str]:
+    """从板块资金流摘要提取自动扩板块候选名。"""
+    names: list[str] = []
+    for key in ("top_inflow", "top_gainers"):
+        for row in flow.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            board = str(row.get("板块") or row.get("名称") or row.get("board") or "").strip()
+            if board and board not in names:
+                names.append(board)
+            if len(names) >= limit:
+                return names
+    return names
+
+
 def _northbound_freshness(summary: list[dict[str, Any]], as_of: date) -> dict[str, Any]:
-    """检测北向数据是否滞后（节假日/接口空窗）。"""
+    """检测北向数据是否滞后（按交易日计，避免周末误判）。"""
     if not summary:
         return {"stale": True, "staleness_days": None, "latest_date": None}
     latest_row = summary[-1]
     latest_date = parse_record_date(latest_row)
     if latest_date is None:
         return {"stale": False, "staleness_days": None, "latest_date": None, "note": "date_unparsed"}
-    staleness = (as_of - latest_date).days
-    # 允许周末 + 1 个交易日缓冲
-    stale = staleness > 3
+    calendar_gap = (as_of - latest_date).days
+    trading_gap = _trading_days_between(latest_date, as_of)
+    # 允许 2 个交易日缓冲（节假日/台风停市等）
+    stale = trading_gap > 2
+    note = None
+    if stale and calendar_gap <= 3:
+        note = "trading_pause_likely"
     return {
         "stale": stale,
-        "staleness_days": staleness,
+        "staleness_days": calendar_gap,
+        "trading_staleness_days": trading_gap,
         "latest_date": latest_date.isoformat(),
+        "note": note,
     }
