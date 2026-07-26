@@ -151,7 +151,7 @@ class ScreenConfig:
     universe_mode: str = "spot_all"  # spot_all=全 A 现货；sector_spot=关注板块成分
     max_universe: int = 400
     max_quant: int = 50
-    max_deep: int = 15  # 量化新票上限；必跟不占此名额
+    max_deep: int = 15  # 量化新票上限；声明持仓强制进池时不占此名额
     sector_cons_limit: int = 60
     min_amount: float = 5.0e7
     pe_max: float = 0.0  # <=0 不硬截断；高 PE 由打分降权
@@ -164,7 +164,6 @@ class ScreenConfig:
 @dataclass
 class AppConfig:
     watch_sectors: list[str] = field(default_factory=list)
-    watch_stocks: list[str] = field(default_factory=list)  # 必跟名单，非唯一宇宙
     holdings: list[Holding] = field(default_factory=list)
     trading: TradingConfig = field(default_factory=TradingConfig)
     screen: ScreenConfig = field(default_factory=ScreenConfig)
@@ -290,7 +289,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
 
     return AppConfig(
         watch_sectors=list(raw.get("watch_sectors") or []),
-        watch_stocks=[_normalize_code(c) for c in (raw.get("watch_stocks") or [])],
         holdings=holdings,
         trading=TradingConfig(
             max_single_position_pct=float(trading_raw.get("max_single_position_pct", 20)),

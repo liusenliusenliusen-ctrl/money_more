@@ -772,7 +772,7 @@ def render_sim_section(
 
     lines.append(
         "_真实持仓只看 `config.yaml` → `holdings`（未声明=空仓）；"
-        "`watch_stocks` 是必跟研究名单，不是持仓。完整推理见 §3，终局指令见 §4。_"
+        "完整推理见详细论证 B2，终局指令见结论卡 A3。_"
     )
     lines.append("")
     lines.append("</details>")

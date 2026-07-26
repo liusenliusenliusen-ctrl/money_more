@@ -52,7 +52,7 @@ def test_filters_exclude_st_and_illiquid() -> None:
     assert stats["st"] >= 1
 
 
-def test_run_screen_expands_beyond_must() -> None:
+def test_run_screen_expands_beyond_force_holdings() -> None:
     cfg = ScreenConfig(
         enabled=True,
         universe_mode="sector_spot",
@@ -67,28 +67,50 @@ def test_run_screen_expands_beyond_must() -> None:
         fetcher,  # type: ignore[arg-type]
         config=cfg,
         watch_sectors=["银行", "白酒"],
-        must_codes=["600519", "300750"],
+        force_codes=["600519", "300750"],  # 模拟声明持仓强制进池
         sector_analyses=[{"sector": "银行", "analysis": {"priority": "high", "sector": "银行"}}],
     )
     deep = result["deep_codes"]
-    assert "600519" in deep and "300750" in deep  # must
-    # 必跟不占 max_deep：深度池 ≤ 必跟数 + max_deep
+    assert "600519" in deep and "300750" in deep
+    # 持仓强制不占 max_deep：深度池 ≤ 强制数 + max_deep
     assert len(deep) <= 2 + 5
     assert int(result.get("screened_added") or 0) <= 5
-    # 应扩到板块成分里的低估值银行股
     assert any(c in deep for c in ("601318", "600036", "000001", "601398"))
     assert result["universe_size"] >= 3
+    assert result.get("force_codes") == ["600519", "300750"]
 
 
-def test_screen_disabled_only_must() -> None:
+def test_screen_empty_force_is_pure_quant() -> None:
+    cfg = ScreenConfig(
+        enabled=True,
+        universe_mode="spot_all",
+        max_universe=100,
+        max_quant=10,
+        max_deep=3,
+        min_amount=1e7,
+        pe_max=90,
+    )
+    result = run_stock_screen(
+        _FakeFetcher(_sample_spot()),  # type: ignore[arg-type]
+        config=cfg,
+        watch_sectors=[],
+        force_codes=[],
+    )
+    assert result.get("force_codes") == []
+    assert len(result["deep_codes"]) <= 3
+    assert int(result.get("screened_added") or 0) == len(result["deep_codes"])
+
+
+def test_screen_disabled_only_force() -> None:
     cfg = ScreenConfig(enabled=False)
     result = run_stock_screen(
         _FakeFetcher(_sample_spot()),  # type: ignore[arg-type]
         config=cfg,
         watch_sectors=["银行"],
-        must_codes=["600519"],
+        force_codes=["600519"],
     )
     assert result["deep_codes"] == ["600519"]
+    assert result["coverage_mode"] == "force_only"
 
 
 def test_screen_spot_empty_degraded() -> None:
@@ -103,7 +125,7 @@ def test_screen_spot_empty_degraded() -> None:
         _Empty(),  # type: ignore[arg-type]
         config=ScreenConfig(enabled=True),
         watch_sectors=["银行"],
-        must_codes=["600519", "300750"],
+        force_codes=["600519", "300750"],
     )
     assert result["ok"] is False
     assert result["degraded"] is True

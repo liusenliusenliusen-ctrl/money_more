@@ -1,9 +1,9 @@
 """个股遴选漏斗：板块/全市场 → 量化初筛 → 深度分析名单。
 
 术语：
-- 必跟名单 = watch_stocks + 声明持仓（强制纳入深度池，不占 max_deep 名额）
+- 声明持仓 = holdings 代码（强制纳入深度池，不占 max_deep 名额）
 - 量化池 = 量化打分入围（max_quant）
-- 深度池 = 必跟 ∪ 量化前列（最多 max_deep 只新票）
+- 深度池 = 声明持仓 ∪ 量化前列（最多 max_deep 只新票）
 """
 
 from __future__ import annotations
@@ -24,45 +24,51 @@ def run_stock_screen(
     *,
     config: ScreenConfig,
     watch_sectors: list[str],
-    must_codes: list[str],
+    force_codes: list[str] | None = None,
+    must_codes: list[str] | None = None,  # 兼容旧调用名
     sector_analyses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """返回 deep_codes（供 LLM）与筛选过程摘要。"""
-    must = _uniq_codes(must_codes)
+    """返回 deep_codes（供 LLM）与筛选过程摘要。
+
+    force_codes：通常为声明持仓，强制进深度池且不占 max_deep。
+    """
+    force = _uniq_codes(list(force_codes if force_codes is not None else (must_codes or [])))
     if not config.enabled:
         return {
             "enabled": False,
             "ok": True,
-            "deep_codes": must,
-            "quant_codes": must,
-            "universe_size": len(must),
-            "must_codes": must,
-            "coverage_mode": "must_only",
-            "note": "screen.enabled=false，仅分析必跟名单（窄池模式）",
+            "deep_codes": force,
+            "quant_codes": force,
+            "universe_size": len(force),
+            "force_codes": force,
+            "must_codes": force,
+            "coverage_mode": "force_only",
+            "note": "screen.enabled=false，仅分析声明持仓（窄池模式）",
             "errors": [],
             "filter_stats": {},
             "plain_note": (
-                "本轮未启用全市场/板块漏斗，深度分析仅覆盖必跟名单。"
-                "若你期望更大覆盖面，请在 config.yaml 打开 screen.enabled。"
+                "本轮未启用全市场/板块漏斗，深度分析仅覆盖声明持仓（若有）。"
+                "若你期望自动筛选，请在 config.yaml 打开 screen.enabled。"
             ),
         }
 
     spot = fetcher._get_spot_df()
     if spot is None or spot.empty:
-        log.warning("screen: spot empty, fallback to must_codes only")
+        log.warning("screen: spot empty, fallback to force_codes only")
         return {
             "enabled": True,
             "ok": False,
-            "deep_codes": must,
-            "quant_codes": must,
-            "universe_size": len(must),
-            "must_codes": must,
-            "coverage_mode": "fallback_must",
-            "note": "全市场行情不可用，回退必跟名单（覆盖严重不足）",
+            "deep_codes": force,
+            "quant_codes": force,
+            "universe_size": len(force),
+            "force_codes": force,
+            "must_codes": force,
+            "coverage_mode": "fallback_force",
+            "note": "全市场行情不可用，回退声明持仓（覆盖严重不足）",
             "errors": ["spot_empty"],
             "filter_stats": {},
             "plain_note": (
-                "行情接口失败，本轮无法做量化遴选，深度池只剩必跟名单。"
+                "行情接口失败，本轮无法做量化遴选，深度池只剩声明持仓（若有）。"
                 "结论可信度应下调，不宜当作「已全市场海选」。"
             ),
             "degraded": True,
@@ -87,16 +93,16 @@ def run_stock_screen(
         else:
             universe_df = spot.copy()
             source = "spot_all_fallback"
-        must_df = spot[spot["code"].isin(must)]
-        universe_df = pd.concat([universe_df, must_df], ignore_index=True).drop_duplicates(
+        force_df = spot[spot["code"].isin(force)]
+        universe_df = pd.concat([universe_df, force_df], ignore_index=True).drop_duplicates(
             subset=["code"], keep="first"
         )
 
     before_filter = len(universe_df)
     universe_df, filter_stats = _apply_hard_filters(universe_df, config)
-    if must:
-        must_rows = spot[spot["code"].isin(must)]
-        universe_df = pd.concat([universe_df, must_rows], ignore_index=True).drop_duplicates(
+    if force:
+        force_rows = spot[spot["code"].isin(force)]
+        universe_df = pd.concat([universe_df, force_rows], ignore_index=True).drop_duplicates(
             subset=["code"], keep="first"
         )
 
@@ -121,8 +127,8 @@ def run_stock_screen(
     quant_df = universe_df.head(config.max_quant)
     quant_codes = [normalize_code(c) for c in quant_df["code"].tolist()]
 
-    # 深度名单：必跟不占 max_deep；另从量化池最多再取 max_deep 只
-    deep: list[str] = list(must)
+    # 深度名单：声明持仓不占 max_deep；另从量化池最多再取 max_deep 只
+    deep: list[str] = list(force)
     screened_added = 0
     for c in quant_codes:
         if c in deep:
@@ -136,20 +142,24 @@ def run_stock_screen(
 
     top_rows = []
     for _, row in quant_df.head(15).iterrows():
+        code = normalize_code(str(row["code"]))
         top_rows.append(
             {
-                "code": normalize_code(str(row["code"])),
+                "code": code,
                 "name": str(row.get("name") or ""),
                 "screen_score": round(float(row.get("screen_score") or 0), 2),
                 "pe": _safe_float(row.get("pe")),
                 "pb": _safe_float(row.get("pb")),
                 "change_pct": _safe_float(row.get("change_pct")),
                 "amount": _safe_float(row.get("amount")),
-                "must": normalize_code(str(row["code"])) in must,
+                "forced": code in force,
+                "must": code in force,
             }
         )
 
-    coverage_ok = screened_added > 0 or (mode == "spot_all" and before_filter > len(must))
+    coverage_ok = screened_added > 0 or (mode == "spot_all" and before_filter > len(force))
+    force_bit = f"持仓强制{len(force)}不占名额 + " if force else ""
+    force_plain = f"持仓强制 {len(force)} + " if force else ""
     out = {
         "enabled": True,
         "ok": True,
@@ -161,7 +171,8 @@ def run_stock_screen(
         "quant_size": len(quant_codes),
         "deep_size": len(deep),
         "screened_added": screened_added,
-        "must_codes": must,
+        "force_codes": force,
+        "must_codes": force,
         "quant_codes": quant_codes,
         "deep_codes": deep,
         "priority_sectors": priority_sectors,
@@ -172,20 +183,22 @@ def run_stock_screen(
         "errors": [],
         "note": (
             f"漏斗: {source} {before_filter}→滤后{len(universe_df)}→量化{len(quant_codes)}"
-            f"→深度{len(deep)}（必跟{len(must)}不占名额 + 新票{screened_added}≤{config.max_deep}）"
+            f"→深度{len(deep)}（{force_bit}新票{screened_added}≤{config.max_deep}）"
         ),
         "plain_note": (
             f"本轮从「{source}」约 {before_filter} 只候选起步，过滤后 {len(universe_df)} 只，"
             f"量化入围 {len(quant_codes)}，深度分析 {len(deep)} 只"
-            f"（必跟 {len(must)} + 新票 {screened_added}）。"
-            "必跟≠持仓；深度池≠全市场逐只深挖。"
+            f"（{force_plain}新票 {screened_added}）。"
+            "深度池来自自动量化遴选"
+            + ("与声明持仓" if force else "")
+            + "；≠全市场逐只深挖。"
         ),
     }
-    if not coverage_ok and len(deep) <= max(len(must), 1):
+    if not coverage_ok and len(deep) <= max(len(force), 1):
         out["degraded"] = True
         out["ok"] = False
         out["errors"] = ["coverage_collapsed"]
-        out["plain_note"] += " 警告：深度池几乎未扩出必跟，覆盖偏窄。"
+        out["plain_note"] += " 警告：深度池几乎未从量化漏斗扩出，覆盖偏窄。"
     spot_source = getattr(fetcher, "spot_source", None)
     if spot_source:
         out["spot_source"] = spot_source

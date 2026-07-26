@@ -32,4 +32,4 @@ alwaysApply: true
    ```
    （仅当用户明确要求跳过自优化时，才加 `--skip-optimize`。）
 
-4. 不要把 `watch_stocks` 当成持仓；关注列表与持仓是两回事。
+4. 不要把 `watch_sectors`（关注板块）当成持仓；板块关注与持仓是两回事。深度池由 `screen` 自动遴选。

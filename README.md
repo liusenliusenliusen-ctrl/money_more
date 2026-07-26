@@ -10,8 +10,8 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 |---|---|
 | 投资取向 | 中长线（数周–数季），非短线 |
 | 调度 | **手动触发**（本地/服务器 cron 已关闭） |
-| 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池；`watch_stocks` 为必跟（可空） |
-| 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；必跟 ≠ 持仓 |
+| 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池（自动筛选） |
+| 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；有持仓则强制进深度池 |
 | 产出 | 周期决策报告、优化报告、趋势报告、模拟账本（附录） |
 | 通知 | SMTP 邮件（分析 + 可选自优化） |
 | 自进化 | 周期结束后 Cursor 优化代码；优先补数据源，再改分析 |
@@ -33,7 +33,7 @@ money-more scheduled
 ```
 
 严谨性：as_of 贯通、空仓/深度池硬约束、遴选失败进数据质量、因子评分卡、双源/硬门禁、模拟账本与真实持仓分离。  
-全面性补充：**叙事雷达** + 结论卡侧栏；**政策市假说**；**微观结构/流动性断点**；个股**信息完备性**（缺口→观望，禁止内幕指控）；报告分【主结论】/【侧栏】语气。
+全面性补充：**叙事雷达** + 结论卡侧栏；**政策市假说**；**微观结构/流动性断点**；个股**信息完备性**（缺口→观望，禁止内幕指控）；报告分主结论 / 侧栏。
 
 ## 快速开始
 
@@ -43,10 +43,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-cp config.yaml.example config.yaml   # 先读清 holdings / watch_stocks / screen
+cp config.yaml.example config.yaml   # 先读清 holdings / screen
 cp .env.example .env                 # 填 LLM / Cursor / 邮件等密钥
 
-money-more doctor                    # 环境自检（会提示空仓/必跟语义）
+money-more doctor                    # 环境自检（会提示空仓语义）
 money-more scheduled --force --skip-optimize   # 立刻跑一轮分析
 money-more email-test                # 验证邮件（需先配好 SMTP）
 ```
@@ -73,10 +73,9 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 | 项 | 默认含义 |
 |----|----------|
-| `holdings` | 真实持仓；`[]` = 空仓 |
-| `watch_stocks` | 必跟研究名单（可 `[]`），**不是持仓** |
+| `holdings` | 真实持仓；`[]` = 空仓（有仓则强制进深度池） |
 | `screen.universe_mode` | 默认 `spot_all`（全 A 现货）；`sector_spot` 为窄池 |
-| `screen.max_quant` / `max_deep` | `50` / `15`（必跟**不占** `max_deep`） |
+| `screen.max_quant` / `max_deep` | `50` / `15`（持仓强制进池时**不占** `max_deep`） |
 | `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |
 | `screen.auto_sector_from_flow` | 资金流入前列自动扩 §2 板块（默认 3） |
 | `analysis.debate_top_k` | `>0` 开启：所有 `buy`/`add` 必辩；`0` 关闭（如 `--skip-debate`） |
@@ -92,9 +91,8 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | 术语 | 含义 |
 |------|------|
 | 声明持仓 | `holdings` |
-| 必跟名单 | `watch_stocks` + 声明持仓代码（强制进深度池） |
 | 量化池 | 漏斗打分入围（`max_quant`） |
-| 深度池 | 本轮 LLM 细读名单（必跟 ∪ 量化前列） |
+| 深度池 | 本轮 LLM 细读名单（量化前列 ∪ 声明持仓） |
 | 模拟账本 | 决策后回放，评估「若完全按建议执行」 |
 
 ## 多 Agent 决策
@@ -167,7 +165,7 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 | `money-more trend` | 滚动趋势报告 |
 | `money-more stats` | 旧纸面台账 + 模拟组合统计 |
 | `money-more sim` | 查看模拟组合；`--reset` 清空重来 |
-| `money-more doctor` | 环境与数据源自检（含持仓/必跟提示） |
+| `money-more doctor` | 环境与数据源自检（含持仓/空仓提示） |
 | `money-more risk-check` | 仓位/板块集中度 |
 | `money-more compare` | 近日 digest 稳定性对比 |
 

@@ -241,14 +241,11 @@ class DecisionPipeline:
             )
         result["sectors"] = sector_analyses
 
-        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（watch_stocks 为必跟）
+        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（声明持仓强制进池）
         from money_more.analysis.screen import run_stock_screen
 
-        must_codes = list(
-            dict.fromkeys(
-                [normalize_code(c) for c in self.config.watch_stocks]
-                + [h.code for h in self.config.holdings]
-            )
+        force_codes = list(
+            dict.fromkeys(normalize_code(h.code) for h in self.config.holdings if h.code)
         )
         screen_cfg = getattr(self.config, "screen", None)
         if screen_cfg is None:
@@ -259,14 +256,14 @@ class DecisionPipeline:
             self.fetcher,
             config=screen_cfg,
             watch_sectors=list(self.config.watch_sectors),
-            must_codes=must_codes,
+            force_codes=force_codes,
             sector_analyses=sector_analyses,
         )
         result["screen"] = screen_result
         result["data_quality"] = self._merge_screen_into_dq(
             result.get("data_quality") or {}, screen_result
         )
-        stock_codes = list(screen_result.get("deep_codes") or must_codes)
+        stock_codes = list(screen_result.get("deep_codes") or force_codes)
         log.info(
             "run_id=%s screen deep=%s quant=%s universe=%s ok=%s",
             run_id,
@@ -437,7 +434,7 @@ class DecisionPipeline:
             "screen_summary": {
                 "note": screen_result.get("note"),
                 "deep_codes": stock_codes,
-                "must_codes": must_codes,
+                "force_codes": force_codes,
                 "top_candidates": (screen_result.get("top_candidates") or [])[:12],
             },
             "trading_constraints": trading_constraints,
@@ -1170,7 +1167,7 @@ class DecisionPipeline:
         dq: dict[str, Any],
         screen: dict[str, Any],
     ) -> dict[str, Any]:
-        """遴选/行情失败必须进入数据质量，避免「漏斗开了其实只剩必跟」。"""
+        """遴选/行情失败必须进入数据质量，避免「漏斗开了其实覆盖极窄」。"""
         out = dict(dq or {})
         checks = dict(out.get("checks") or {})
         missing = list(out.get("missing") or [])

@@ -517,24 +517,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         console.print(f"[red]Intelligence failed[/red] {exc}")
         ok = False
 
-    # 持仓 / 必跟语义（新手易混）
+    # 持仓语义
     holdings = list(config.holdings or [])
-    watch = list(config.watch_stocks or [])
     if not holdings:
         console.print(
             "[green]holdings[/green] 空 → 按**空仓**决策（未声明=空仓）。"
-            " watch_stocks 是必跟研究名单，不是持仓。"
+            " 深度池全部来自 screen 量化遴选。"
         )
     else:
         codes = "、".join(h.code for h in holdings[:8])
-        console.print(f"[green]holdings[/green] 声明持仓 {len(holdings)} 只: {codes}")
-    if watch:
         console.print(
-            f"[yellow]watch_stocks[/yellow] 必跟 {len(watch)} 只（强制进深度池，≠持仓）: "
-            + "、".join(watch[:8])
+            f"[green]holdings[/green] 声明持仓 {len(holdings)} 只（强制进深度池）: {codes}"
         )
-    else:
-        console.print("[green]watch_stocks[/green] 空 → 深度池全部来自量化遴选")
     screen = getattr(config, "screen", None)
     if screen:
         console.print(

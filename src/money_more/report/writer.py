@@ -599,7 +599,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
         lines.append(
             "> **持仓说明**: 本轮按**空仓**决策（`holdings` 未声明或为空）。"
-            "`watch_stocks`/必跟名单**不是**持仓。"
+            "深度池来自自动量化遴选，与模拟盘无关。"
         )
         lines.append("")
 
@@ -1081,8 +1081,8 @@ def render_daily_report(result: dict[str, Any]) -> str:
         )
         lines.append("")
         lines.append(
-            "- **术语**: 必跟名单=`watch_stocks`+声明持仓（强制进深度池，**不占** `max_deep`）；"
-            "量化池=打分入围；深度池=本轮 LLM 细读名单。必跟≠持仓。"
+            "- **术语**: 量化池=打分入围；深度池=本轮 LLM 细读名单（自动遴选）；"
+            "若有声明持仓则强制进深度池且**不占** `max_deep`。"
         )
         lines.append(
             f"- 宇宙来源: `{screen.get('universe_source') or screen.get('universe_mode')}` · "
@@ -1098,16 +1098,16 @@ def render_daily_report(result: dict[str, Any]) -> str:
                 f"负PE硬剔={fs.get('neg_pe', 0)} · 高PE硬剔={fs.get('high_pe', 0)}"
                 "（默认高PE/负PE不硬剔，只降权）"
             )
-        must = screen.get("must_codes") or []
-        if must:
-            lines.append(f"- **必跟**: {'、'.join(str(c) for c in must)}")
+        forced = screen.get("force_codes") or screen.get("must_codes") or []
+        if forced:
+            lines.append(f"- **持仓强制进池**: {'、'.join(str(c) for c in forced)}")
         else:
-            lines.append("- **必跟**: （空）深度池全部来自量化遴选")
+            lines.append("- **持仓强制进池**: （空）深度池全部来自量化遴选")
         tops = screen.get("top_candidates") or []
         if tops:
             lines.append("- **量化前列**（进入深度池的优先候选）:")
             for t in tops[:10]:
-                flag = " ·必跟" if t.get("must") else ""
+                flag = " ·持仓" if (t.get("forced") or t.get("must")) else ""
                 lines.append(
                     f"  - `{t.get('code')}` {t.get('name') or ''} "
                     f"分={t.get('screen_score')} PE={t.get('pe')} PB={t.get('pb')}{flag}"

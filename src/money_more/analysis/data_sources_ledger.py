@@ -67,7 +67,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="全市场价格、涨跌幅、成交额等，构成选股宇宙",
             status="skipped",
             detail="screen.enabled=false，本轮未跑全市场漏斗",
-            used_in="关闭时深度池仅必跟/持仓名单",
+            used_in="关闭时深度池仅声明持仓（若有）",
         )
     elif screen.get("ok") and raw_n > 0:
         if spot_src and spot_src not in ("em_all", "cache", ""):
@@ -97,7 +97,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             detail=screen.get("plain_note")
             or screen.get("note")
             or ("；".join(str(e) for e in (screen.get("errors") or [])[:3]) or "spot 失败/空"),
-            used_in="失败则深度池只剩必跟名单，结论可信度下调并收紧开仓",
+            used_in="失败则深度池只剩声明持仓（若有），结论可信度下调并收紧开仓",
         )
 
     # —— 板块资金 ——
@@ -404,7 +404,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="东财/新浪日K + 个股新闻/资金流/研报等",
             fetches="K 线、报价、个股新闻与另类数据",
             status="ok",
-            detail=f"深度分析 {len(stocks)} 只（来自筛股/必跟）",
+            detail=f"深度分析 {len(stocks)} 只（来自自动筛股/持仓强制）",
             used_in="详细论证 B2 个股决策链 → 结论卡 A3；盈利修正/硬门禁",
         )
     else:

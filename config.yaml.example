@@ -2,18 +2,15 @@
 #
 # 关键语义（新手必读）：
 # - holdings = 你声明的真实持仓；未声明或 [] = 空仓
-# - watch_stocks = 必跟研究名单（强制进深度池），不是持仓
-# - screen = 个股遴选漏斗（默认全 A 现货 → 量化 → 深度分析）
+# - screen = 个股遴选漏斗（默认全 A 现货 → 量化 → 深度分析）；深度池全部自动筛选
+# - 若有 holdings，持仓代码会强制进深度池（不占 max_deep）
 
-# 关注板块（§2 LLM 深度写叙事；另可从资金流自动扩 auto_sector_from_flow 只）
+# 关注板块（详细论证 B1 LLM 叙事；另可从资金流自动扩 auto_sector_from_flow 只）
 watch_sectors:
   - 半导体
   - 新能源
   - 白酒
   - 银行
-
-# 必跟个股：可留空，让深度池全部来自量化遴选；填了也不占 max_deep 名额
-watch_stocks: []
 
 # 个股遴选：全 A / 板块成分 → 量化初筛 → 深度分析（LLM）
 screen:
@@ -21,7 +18,7 @@ screen:
   universe_mode: spot_all      # spot_all=全 A 现货（推荐）；sector_spot=仅关注板块成分（窄池教学）
   max_universe: 400
   max_quant: 50                # 量化入围
-  max_deep: 15                 # 量化新票上限；必跟额外加入、不占此名额
+  max_deep: 15                 # 量化新票上限；声明持仓强制进池时不占此名额
   sector_cons_limit: 60
   min_amount: 50000000         # 成交额下限（元）
   pe_max: 0                    # <=0 不硬截断高 PE；打分会降权
