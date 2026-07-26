@@ -26,9 +26,10 @@ def _fmt_sentiment(sent: dict[str, Any] | None) -> str:
     return " | ".join(parts)
 
 
-def _one_line(text: Any, limit: int = 72) -> str:
+def _one_line(text: Any, limit: int | None = 72) -> str:
+    """压空白；limit=None 时不截断。"""
     s = " ".join(str(text or "").split())
-    if len(s) <= limit:
+    if limit is None or len(s) <= limit:
         return s
     return s[: limit - 1] + "…"
 
@@ -86,9 +87,9 @@ def _render_contested_block(
     result: dict[str, Any],
     *,
     heading: str,
-    limit: int = 3,
+    limit: int | None = None,
 ) -> list[str]:
-    """争议叙事 / 尾部情景侧栏。"""
+    """争议叙事 / 尾部情景侧栏（信号与含义全文，不截断）。"""
     market = (result.get("market") or {}).get("analysis") or {}
     summary = result.get("decision_summary") or {}
     items = list(market.get("contested_narratives") or summary.get("contested_narratives") or [])
@@ -102,7 +103,8 @@ def _render_contested_block(
         "与上方【主结论】分层阅读。_"
     )
     lines.append("")
-    for item in items[:limit]:
+    shown = items if limit is None else items[:limit]
+    for item in shown:
         if not isinstance(item, dict):
             continue
         title = item.get("title") or "-"
@@ -111,23 +113,24 @@ def _render_contested_block(
         lines.append(f"- **{title}** · 来源 `{src}` · 概率粗分 `{prob}`")
         if item.get("confirm_signals"):
             lines.append(
-                f"  - 确认: {'；'.join(_one_line(x, 40) for x in item['confirm_signals'][:2])}"
+                f"  - 确认: {'；'.join(_one_line(x, None) for x in item['confirm_signals'])}"
             )
         if item.get("falsify_signals"):
             lines.append(
-                f"  - 证伪: {'；'.join(_one_line(x, 40) for x in item['falsify_signals'][:2])}"
+                f"  - 证伪: {'；'.join(_one_line(x, None) for x in item['falsify_signals'])}"
             )
         if item.get("portfolio_if_true"):
-            lines.append(f"  - 若成立: {_one_line(item.get('portfolio_if_true'), 70)}")
+            lines.append(f"  - 若成立: {_one_line(item.get('portfolio_if_true'), None)}")
     if pol and pol.get("status") and pol.get("status") != "inactive":
         lines.append(
-            f"- **政策市假说** `{pol.get('status')}`: {_one_line(pol.get('title') or pol.get('thesis'), 80)}"
+            f"- **政策市假说** `{pol.get('status')}`: "
+            f"{_one_line(pol.get('title') or pol.get('thesis'), None)}"
         )
         if pol.get("implication"):
-            lines.append(f"  - 若成立: {_one_line(pol.get('implication'), 70)}")
+            lines.append(f"  - 若成立: {_one_line(pol.get('implication'), None)}")
     elif pol and pol.get("title"):
         lines.append(
-            f"- **政策市假说** `inactive`（模板待命）: {_one_line(pol.get('title'), 70)}"
+            f"- **政策市假说** `inactive`（模板待命）: {_one_line(pol.get('title'), None)}"
         )
     lines.append("")
     return lines
@@ -174,12 +177,15 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
 
     summary = result.get("decision_summary") or {}
     final_sum = stages.get("final_portfolio_summary") or summary.get("portfolio_summary") or ""
+    draft_sum = stages.get("draft_portfolio_summary") or summary.get("portfolio_summary_draft") or ""
+    # 先草案、后终局，便于对照「被覆盖前」与「可执行后」
+    if draft_sum and draft_sum.strip() and draft_sum.strip() != str(final_sum).strip():
+        lines.append(
+            f"**②草案摘要（已被终局覆盖，仅供对照）**: {_one_line(draft_sum, None)}"
+        )
+        lines.append("")
     if final_sum:
         lines.append(f"**④终局组合摘要**: {final_sum}")
-        lines.append("")
-    draft_sum = stages.get("draft_portfolio_summary") or summary.get("portfolio_summary_draft") or ""
-    if draft_sum and draft_sum.strip() and draft_sum.strip() != str(final_sum).strip():
-        lines.append(f"**②草案摘要（已被终局覆盖，仅供对照）**: {_one_line(draft_sum, 160)}")
         lines.append("")
 
     research = {str(r.get("code")): r for r in (stages.get("research") or [])}
@@ -196,7 +202,7 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
         lines.append("| 代码 | ①研究评级 | ②组合草案 | ③辩论后 | ④风控终局 |")
         lines.append("|------|-----------|-----------|---------|-----------|")
         names = _stock_name_map(result)
-        for code in codes[:20]:
+        for code in codes:
             r0 = research.get(code) or {}
             rating = str(r0.get("research_rating") or "-")
             conf0 = r0.get("confidence")
@@ -207,8 +213,6 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
                 f"| {code_s} | {rating_s} | {_fmt_stage_action(draft.get(code))} | "
                 f"{_fmt_stage_action(debated.get(code))} | {_fmt_stage_action(final.get(code))} |"
             )
-        if len(codes) > 20:
-            lines.append(f"| … | 另有 {len(codes) - 20} 只略 | | | |")
         lines.append("")
 
     if stages.get("plain_note"):
@@ -676,24 +680,29 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
     outlook = summary.get("market_context") or market.get("summary") or ""
     if outlook:
-        lines.append(f"- **主情景**: {_one_line(outlook, 140)}")
-    inv = list(market.get("invalidation") or [])[:2]
+        lines.append(f"- **主情景**: {_one_line(outlook, None)}")
+    inv = [str(x) for x in (market.get("invalidation") or []) if str(x).strip()]
     if not inv:
-        for rec in recs[:2]:
-            if rec.get("invalidation"):
-                inv.append(str(rec["invalidation"]))
-            if len(inv) >= 2:
-                break
-    risks = list(digest.get("risk_flags") or [])[:2]
+        seen: set[str] = set()
+        for rec in recs:
+            raw = rec.get("invalidation")
+            if not raw:
+                continue
+            s = str(raw).strip()
+            if s and s not in seen:
+                seen.add(s)
+                inv.append(s)
+    risks = [str(r) for r in (digest.get("risk_flags") or []) if str(r).strip()]
     if risks:
-        lines.append(f"- **主要风险**: {'；'.join(_one_line(r, 60) for r in risks)}")
+        lines.append(f"- **主要风险**: {'；'.join(_one_line(r, None) for r in risks)}")
     if inv:
-        lines.append(f"- **若出现则认错**: {'；'.join(_one_line(x, 60) for x in inv)}")
+        lines.append(f"- **若出现则认错**: {'；'.join(_one_line(x, None) for x in inv)}")
     vs = market.get("vs_prior") or {}
     if vs.get("continuity"):
+        changed = "；".join(str(x) for x in (vs.get("what_changed") or []))
         lines.append(
             f"- **相对上周**: {vs.get('continuity')}"
-            + (f" — {_one_line('；'.join(vs.get('what_changed') or []), 80)}" if vs.get("what_changed") else "")
+            + (f" — {_one_line(changed, None)}" if changed.strip() else "")
         )
     lines.append("")
 
@@ -749,9 +758,9 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     theme0 = ""
     themes = digest.get("headline_themes") or []
     if themes:
-        theme0 = _one_line(themes[0], 40)
+        theme0 = _one_line(themes[0], None)
     elif digest.get("market_narratives"):
-        theme0 = _one_line(digest["market_narratives"][0], 40)
+        theme0 = _one_line(digest["market_narratives"][0], None)
     head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
     lines.append(f"1. {head} → 配置倾向「{alloc}」")
     lines.append("")
@@ -806,7 +815,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
 
     # ---------- C. 侧栏 ----------
     contested = _render_contested_block(
-        result, heading="### C. 【侧栏】争议叙事 / 尾部情景", limit=3
+        result, heading="### C. 【侧栏】争议叙事 / 尾部情景"
     )
     if contested:
         lines.extend(contested)
@@ -1036,7 +1045,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- LLM: {_one_line(market.get('microstructure_note'), 120)}")
         lines.append("")
 
-    lines.extend(_render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景", limit=3))
+    lines.extend(_render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景"))
     pol_scen = market.get("policy_market_scenario") or {}
     if pol_scen:
         lines.append("")

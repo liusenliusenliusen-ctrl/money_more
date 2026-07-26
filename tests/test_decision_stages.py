@@ -127,12 +127,15 @@ def test_decision_stages_payload_and_report_render():
     assert "④风控终局" in text
     assert "分批建仓" in text  # 草案对照可见
     assert "无可执行新开仓" in text or "终局组合摘要" in text
+    # 草案摘要在终局摘要之前
+    assert text.index("②草案摘要") < text.index("④终局组合摘要")
 
     card = "\n".join(render_conclusion_card(result))
     assert "### B. 推理链" in card
     assert "#### B2. 个股细化" in card
     assert "④风控终局" in card
     assert "分批建仓茅台" in card
+    assert card.index("②草案摘要") < card.index("④终局组合摘要")
     # 动作区应体现终局 watch，而非把草案当主指令标题
     assert "### A. 【主结论】动作：怎么做（④风控终局）" in card
 
