@@ -844,15 +844,17 @@ def test_render_conclusion_card_and_cross_links():
     md = render_daily_report(result)
     assert "## 结论卡（速读）" in md
     assert "## 详细论证" in md
+    assert "## A. 展开主结论" in md
+    assert "## B. 展开推理链" in md
+    assert "## C. 展开侧栏" in md
     assert "**落到动作**" in md
-    assert "## 3. 个股决策链" in md
-    assert "#### ① 研究" in md
-    assert "#### ④ 风控终局" in md
-    assert "**承接 §3**" in md
-    assert "板块: 新能源" in md
+    assert "### B2. 个股决策链" in md
+    assert "##### ① 研究" in md
+    assert "##### ④ 风控终局" in md
+    assert "### A3. 终局动作索引" in md
+    assert "**板块**: 新能源" in md or "板块:新能源" in md
     assert "### B. 推理链" in md
     assert "#### B1. 宏观 → 板块" in md
-    # B1 赛道态度可带代码链接；B2 才是①–④表
     assert "①研究评级" in md or "研究评级" in md
 
     # 维度复盘渲染

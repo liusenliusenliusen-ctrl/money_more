@@ -236,22 +236,25 @@ def test_stock_decision_chain_and_slim_recommendations():
         "sectors": [],
     }
     md = render_daily_report(result)
-    assert "## 3. 个股决策链" in md
-    assert "#### ① 研究（基本面 / 赔率 / 叙事）" in md
-    assert "#### ② 组合草案" in md
-    assert "#### ③ 多空辩论" in md
-    assert "#### ④ 风控终局" in md
+    assert "## A. 展开主结论" in md
+    assert "## B. 展开推理链" in md
+    assert "## C. 展开侧栏" in md
+    assert "### B2. 个股决策链" in md
+    assert "##### ① 研究（基本面 / 赔率 / 叙事）" in md
+    assert "##### ② 组合草案" in md
+    assert "##### ③ 多空辩论" in md
+    assert "##### ④ 风控终局" in md
     assert "动力电池龙头" in md
     assert "分批建仓" in md
     assert "裁判" in md and "bull" in md
     assert "微观结构liquidity_stress禁止新买" in md
-    assert "## 4. 买卖建议" in md
-    assert "**承接 §3**" in md
+    assert "### A3. 终局动作索引" in md
+    assert "## 4. 买卖建议" not in md
     assert "①买入" in md and "④观察" in md
-    # §4 不应再堆因子总分 / 长辩论摘要
-    idx4 = md.index("## 4. 买卖建议")
-    section4 = md[idx4 : md.index("## 5.", idx4)]
-    assert "因子总分" not in section4
-    assert "多头" not in section4
-    assert "指令要点" in section4
-    assert "失效条件: 装机份额显著下滑" in section4
+    # A3 只做索引，不堆辩论；失效/纪律在 B2④
+    idx_a3 = md.index("### A3. 终局动作索引")
+    idx_b = md.index("## B. 展开推理链")
+    section_a3 = md[idx_a3:idx_b]
+    assert "多头" not in section_a3
+    assert "终局一览" in section_a3
+    assert "**失效条件**: 装机份额显著下滑" in md

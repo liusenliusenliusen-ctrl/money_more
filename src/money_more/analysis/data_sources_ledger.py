@@ -405,7 +405,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="K 线、报价、个股新闻与另类数据",
             status="ok",
             detail=f"深度分析 {len(stocks)} 只（来自筛股/必跟）",
-            used_in="§3 个股决策链 → §4 终局动作；盈利修正/硬门禁",
+            used_in="详细论证 B2 个股决策链 → 结论卡 A3；盈利修正/硬门禁",
         )
     else:
         add(
@@ -414,7 +414,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="K 线、报价、个股新闻",
             status="empty",
             detail="本轮无深度个股（空仓且筛股未产出时可能发生）",
-            used_in="§4 以观察/空仓纪律为主",
+            used_in="结论卡 A3 以观察/空仓纪律为主",
         )
 
     ok_n = sum(1 for r in rows if r["status"] == "ok")
