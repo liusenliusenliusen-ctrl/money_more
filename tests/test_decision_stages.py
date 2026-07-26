@@ -137,7 +137,7 @@ def test_decision_stages_payload_and_report_render():
     assert "分批建仓茅台" in card
     assert card.index("②草案摘要") < card.index("④终局组合摘要")
     # 动作区应体现终局 watch，而非把草案当主指令标题
-    assert "### A. 【主结论】动作：怎么做（④风控终局）" in card
+    assert "#### A3. 动作：怎么做（④风控终局）" in card
 
 
 def test_stock_decision_chain_and_slim_recommendations():

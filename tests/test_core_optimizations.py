@@ -822,22 +822,24 @@ def test_render_conclusion_card_and_cross_links():
     result["recommendations"][0]["rationale"] = long_why
     card = "\n".join(render_conclusion_card(result))
     assert "## 结论卡（速读）" in card
-    assert "### A. 【主结论】分析：现在怎么看" in card
-    assert "### A. 【主结论】预测：接下来怎么预期" in card
-    assert "### A. 【主结论】动作：怎么做（④风控终局）" in card
+    assert "### A. 主结论" in card
+    assert "#### A1. 分析：现在怎么看" in card
+    assert "#### A2. 预测：接下来怎么预期" in card
+    assert "#### A3. 动作：怎么做（④风控终局）" in card
     assert "### B. 推理链" in card
     assert "#### B1. 宏观 → 板块" in card
     assert "#### B2. 个股细化" in card
-    assert "### C. 【侧栏】" in card
+    assert "### C. 侧栏" in card
+    assert "【侧栏语气】" not in card
     assert "阅读顺序" in card
     assert "观察" in card and "300750" in card
     assert "新能源" in card and "等确认" in card
     assert "回避追高" in card  # 半导体 expensive+crowding
     assert long_why in card  # 动作理由全文
     assert "理由: " + long_why in card
-    # 主结论动作应在侧栏之前
-    assert card.index("### A. 【主结论】动作") < card.index("### C. 【侧栏】")
-    assert card.index("### A. 【主结论】动作") < card.index("### B. 推理链")
+    # A3 动作应在 B / C 之前
+    assert card.index("#### A3. 动作") < card.index("### C. 侧栏")
+    assert card.index("#### A3. 动作") < card.index("### B. 推理链")
 
     md = render_daily_report(result)
     assert "## 结论卡（速读）" in md

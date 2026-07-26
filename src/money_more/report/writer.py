@@ -97,12 +97,6 @@ def _render_contested_block(
     if not items and not pol:
         return []
     lines = [heading, ""]
-    lines.append(
-        "_【侧栏语气】下列高争议/尾部情景：须确认信号出现才升权，"
-        "不得单独作为买入理由。来源：硬数据 / 市场定价 / 网络叙事。"
-        "与上方【主结论】分层阅读。_"
-    )
-    lines.append("")
     shown = items if limit is None else items[:limit]
     for item in shown:
         if not isinstance(item, dict):
@@ -615,7 +609,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("## 结论卡（速读）")
     lines.append("")
     lines.append(
-        "_阅读顺序：**A 主结论**（分析→预测→动作）→ **B 推理链**（宏观/板块骨架 + 个股①–④细化）→ "
+        "_阅读顺序：**A 主结论**（A1 分析→A2 预测→A3 动作）→ **B 推理链**（B1 宏观/板块 + B2 个股①–④）→ "
         "**C 侧栏**（争议/尾部，须确认才升权）。下方 §0–§6 是完整论证。后果自负，仅供参考。_"
     )
     lines.append("")
@@ -634,7 +628,9 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         lines.append("")
 
     # ---------- A. 主结论 ----------
-    lines.append("### A. 【主结论】分析：现在怎么看")
+    lines.append("### A. 主结论")
+    lines.append("")
+    lines.append("#### A1. 分析：现在怎么看")
     lines.append("")
     lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
     if driver and driver != "-":
@@ -676,7 +672,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         lines.append(f"- {f}")
     lines.append("")
 
-    lines.append("### A. 【主结论】预测：接下来怎么预期")
+    lines.append("#### A2. 预测：接下来怎么预期")
     lines.append("")
     outlook = summary.get("market_context") or market.get("summary") or ""
     if outlook:
@@ -706,7 +702,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
     lines.append("")
 
-    lines.append("### A. 【主结论】动作：怎么做（④风控终局）")
+    lines.append("#### A3. 动作：怎么做（④风控终局）")
     lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
@@ -815,12 +811,12 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
 
     # ---------- C. 侧栏 ----------
     contested = _render_contested_block(
-        result, heading="### C. 【侧栏】争议叙事 / 尾部情景"
+        result, heading="### C. 侧栏（争议叙事 / 尾部情景）"
     )
     if contested:
         lines.extend(contested)
     else:
-        lines.append("### C. 【侧栏】争议叙事 / 尾部情景")
+        lines.append("### C. 侧栏（争议叙事 / 尾部情景）")
         lines.append("")
         lines.append("_（本轮无侧栏争议叙事）_")
         lines.append("")
@@ -1045,7 +1041,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- LLM: {_one_line(market.get('microstructure_note'), 120)}")
         lines.append("")
 
-    lines.extend(_render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景"))
+    lines.extend(_render_contested_block(result, heading="### 侧栏（争议叙事 / 尾部情景）"))
     pol_scen = market.get("policy_market_scenario") or {}
     if pol_scen:
         lines.append("")
