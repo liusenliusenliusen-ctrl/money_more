@@ -1004,3 +1004,22 @@ def test_email_ledger_guide_once(tmp_path: Path):
     assert ledger["recipients"]["a@qq.com"]["send_count"] == 1
     assert ledger["recipients"]["a@qq.com"]["guide_sent_at"]
     assert len(ledger["sends"]) == 1
+
+
+def test_extract_policy_news_from_pool_filters_keywords() -> None:
+    from datetime import date
+
+    from money_more.data.intelligence import _extract_policy_news_from_pool
+
+    pool = [
+        {"title": "马斯克谈AI", "日期": "2026-07-25"},
+        {"title": "证监会召开座谈会稳市", "日期": "2026-07-25"},
+        {"title": "国新500亿回购增持", "日期": "2026-07-24"},
+    ]
+    out = _extract_policy_news_from_pool(
+        pool, as_of=date(2026, 7, 26), lookback_days=14, limit=5
+    )
+    titles = {i["title"] for i in out}
+    assert "证监会召开座谈会稳市" in titles
+    assert "国新500亿回购增持" in titles
+    assert "马斯克谈AI" not in titles

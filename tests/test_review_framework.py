@@ -124,7 +124,9 @@ def test_review_upsert_tracking(tmp_path: Path) -> None:
 
 
 def test_render_review_section_mentions_window() -> None:
-    md = render_daily_report(
+    from money_more.report.writer import render_review_report
+
+    md = render_review_report(
         {
             "run_date": "2026-07-18",
             "review_window": {

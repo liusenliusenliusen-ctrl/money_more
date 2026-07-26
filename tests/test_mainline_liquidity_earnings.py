@@ -54,6 +54,24 @@ def test_earnings_fina_upgrade() -> None:
     assert rev["revision_bias"] == "upgrade"
 
 
+def test_earnings_akshare_fina_fallback() -> None:
+    rev = assess_earnings_revision(
+        {"forecast": [], "financials": {"indicators": []}},
+        ak_snap={
+            "financial": {
+                "indicators": [
+                    {"日期": "2025-12-31", "净利润同比增长率(%)": 35.0, "净资产收益率(%)": 18.0},
+                    {"日期": "2024-12-31", "净利润同比增长率(%)": 12.0, "净资产收益率(%)": 14.0},
+                ]
+            }
+        },
+    )
+    assert rev["data_source"] == "akshare"
+    assert rev["revision_bias"] == "upgrade"
+    assert rev["signal"] == "positive"
+    assert any("AkShare" in e for e in rev["evidence"])
+
+
 def test_validator_blocks_buy_on_earnings_downgrade() -> None:
     recs, overs = validate_recommendations(
         [{"code": "600000", "action": "buy", "confidence": 0.85, "position_pct": 12}],

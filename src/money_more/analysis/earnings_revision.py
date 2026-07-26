@@ -21,6 +21,13 @@ def assess_earnings_revision(
 
     fc_bias, fc_evidence = _forecast_bias(forecasts)
     fina_bias, fina_evidence = _fina_bias(indicators)
+    data_source = "tushare" if (forecasts or indicators) else "none"
+
+    if fina_bias == "none" and not forecasts:
+        ak_bias, ak_evidence = _ak_fina_bias(ak_snap)
+        if ak_bias != "none":
+            fina_bias, fina_evidence = ak_bias, ak_evidence
+            data_source = "akshare"
 
     # 综合：预告优先（更接近「预期修正」），财务趋势作验证
     if fc_bias in ("upgrade", "downgrade"):
@@ -69,6 +76,7 @@ def assess_earnings_revision(
         "confidence": confidence,
         "forecast_bias": fc_bias,
         "fina_bias": fina_bias,
+        "data_source": data_source,
         "evidence": evidence,
         "note": note,
         "layer": "mainline",
@@ -116,6 +124,90 @@ def _forecast_bias(items: list[Any]) -> tuple[str, list[str]]:
     if up:
         return "upgrade", evidence[:4]
     return "neutral", evidence[:2]
+
+
+def _ak_fina_bias(ak_snap: dict[str, Any] | None) -> tuple[str, list[str]]:
+    """Tushare 缺 forecast/fina 时用已采集 AkShare 财务指标/摘要回填。"""
+    fin = (ak_snap or {}).get("financial") or {}
+    indicators = list(fin.get("indicators") or [])
+    if indicators:
+        normalized = [_normalize_ak_indicator_row(r) for r in indicators if isinstance(r, dict)]
+        bias, evidence = _fina_bias(normalized)
+        if bias != "none":
+            return bias, [f"[AkShare指标] {e}" for e in evidence]
+    abstract = list(fin.get("abstract") or [])
+    if abstract:
+        return _ak_abstract_bias(abstract)
+    return "none", []
+
+
+def _normalize_ak_indicator_row(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    yoy = _find_row_metric(row, "净利润同比增长", "扣非净利润同比", "归属净利润同比")
+    roe = _find_row_metric(row, "净资产收益率", "ROE")
+    gross = _find_row_metric(row, "销售毛利率", "毛利率")
+    if yoy is not None:
+        out["netprofit_yoy"] = yoy
+    if roe is not None:
+        out["roe"] = roe
+    if gross is not None:
+        out["grossprofit_margin"] = gross
+    return out
+
+
+def _find_row_metric(row: dict[str, Any], *needles: str) -> float | None:
+    for key, val in row.items():
+        key_s = str(key)
+        if any(n in key_s for n in needles):
+            fv = _safe_float(val)
+            if fv is not None:
+                return fv
+    return None
+
+
+def _ak_abstract_bias(rows: list[Any]) -> tuple[str, list[str]]:
+    """解析 AkShare 财务摘要透视表（行=指标，列=报告期）。"""
+    evidence: list[str] = []
+    score = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        option = str(row.get("选项") or row.get("指标") or "")
+        if not any(k in option for k in ("净利润同比", "扣非净利润同比", "归属净利润同比", "营业总收入同比")):
+            continue
+        periods: list[tuple[str, float]] = []
+        for key, val in row.items():
+            if str(key) in ("选项", "指标"):
+                continue
+            fv = _safe_float(val)
+            if fv is not None:
+                periods.append((str(key), fv))
+        if not periods:
+            continue
+        periods.sort(key=lambda x: x[0], reverse=True)
+        latest_val = periods[0][1]
+        evidence.append(f"[AkShare摘要]{option}最新={latest_val}")
+        if len(periods) >= 2:
+            delta = latest_val - periods[1][1]
+            evidence.append(f"[AkShare摘要]{option}环比Δ={round(delta, 2)}")
+            if "同比" in option:
+                if delta >= 3:
+                    score += 1
+                elif delta <= -3:
+                    score -= 1
+        elif "同比" in option:
+            if latest_val >= 20:
+                score += 1
+            elif latest_val <= -10:
+                score -= 1
+
+    if score >= 1:
+        return "upgrade", evidence[:4]
+    if score <= -1:
+        return "downgrade", evidence[:4]
+    if evidence:
+        return "neutral", evidence[:3]
+    return "none", []
 
 
 def _fina_bias(indicators: list[Any]) -> tuple[str, list[str]]:

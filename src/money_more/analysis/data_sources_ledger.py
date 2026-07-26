@@ -174,12 +174,19 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
 
     # —— 新闻 / 政策 / 快讯 ——
     if macro.get("policy_news"):
+        policy_src = str(macro.get("policy_news_source") or "")
+        stale = bool(macro.get("policy_news_stale"))
+        detail = "使用了偏旧缓存回退" if stale else f"约 {len(macro.get('policy_news') or [])} 条"
+        if policy_src == "rss_global_extract":
+            detail = f"联播陈旧，已从快讯/RSS 抽取 {len(macro.get('policy_news') or [])} 条"
+            stale = False
         add(
             name="政策/联播类新闻",
-            provider="Tushare CCTV → AkShare news_cctv",
+            provider="Tushare CCTV → AkShare news_cctv"
+            + (" → 快讯/RSS 政策抽取" if policy_src == "rss_global_extract" else ""),
             fetches="政策导向、联播要点",
-            status="degraded" if macro.get("policy_news_stale") else "ok",
-            detail="使用了偏旧缓存回退" if macro.get("policy_news_stale") else f"约 {len(macro.get('policy_news') or [])} 条",
+            status="degraded" if stale else "ok",
+            detail=detail,
             used_in="§0 情报主题 / 政策市侧栏假说",
         )
     else:

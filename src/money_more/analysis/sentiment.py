@@ -51,6 +51,7 @@ EVENT_TAG_LABELS: dict[str, str] = {
     "earnings_positive": "业绩预增/扭亏",
     "earnings_negative": "业绩预减/低于预期",
     "geopolitical_negative": "地缘冲突/战争风险",
+    "trade_friction": "贸易摩擦/关税制裁",
     "risk_off": "避险/风险偏好下降",
     "energy_shock": "油价/能源冲击",
     "policy_support": "产业政策/扶持",
@@ -66,6 +67,7 @@ EVENT_PATTERNS: list[tuple[str, float, str]] = [
     (r"业绩预增|扭亏|超预期", 1.2, "earnings_positive"),
     (r"业绩预减|首亏|续亏|低于预期", -1.2, "earnings_negative"),
     (r"地缘|冲突|战争|袭击|导弹|军事打击|中东|伊朗|以军|俄乌", -1.3, "geopolitical_negative"),
+    (r"关税|贸易摩擦|出口管制|加征关税|贸易制裁|实体清单", -1.2, "trade_friction"),
     (r"避险|风险偏好下降|恐慌情绪|VIX|黄金大涨|美债风暴", -1.0, "risk_off"),
     (r"油价|原油|能源危机|OPEC|页岩油", -0.8, "energy_shock"),
     (r"产业政策|扶持|补贴|国产替代|自主可控|专项规划", 0.9, "policy_support"),
@@ -294,6 +296,11 @@ def _sector_match_keywords(sector_name: str) -> list[str]:
     for keys, label in _INDUSTRY_ALIASES:
         if label == sector_name:
             keywords.extend(keys)
+    # 未配置别名的板块：用名称子串提高命中率（如「汽车服务及其他」→「汽车」）
+    if len(keywords) == 1 and len(sector_name) >= 4:
+        keywords.append(sector_name[:2])
+        if len(sector_name) >= 6:
+            keywords.append(sector_name[:4])
     return list(dict.fromkeys(k for k in keywords if k))
 
 

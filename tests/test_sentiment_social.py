@@ -52,6 +52,13 @@ def test_geopolitical_event_tags_detected() -> None:
     assert sr.score < 0
 
 
+def test_trade_friction_event_tags_detected() -> None:
+    scorer = FinancialSentimentScorer()
+    sr = scorer.score_text("美国新关税生效，出口管制升级，贸易摩擦风险升温")
+    assert "trade_friction" in sr.events
+    assert sr.score < 0
+
+
 def test_build_industry_sentiment_index_from_macro_pool() -> None:
     pool = [
         {"title": "半导体国产替代订单大增，景气回暖"},
@@ -64,6 +71,17 @@ def test_build_industry_sentiment_index_from_macro_pool() -> None:
     assert by_sector["半导体"]["score_100"] > 50
     assert "白酒" in by_sector
     assert by_sector["白酒"]["score_100"] < 50
+
+
+def test_industry_sentiment_matches_electronic_chemicals() -> None:
+    pool = [
+        {"title": "电子化学品湿电子需求回暖，光刻胶国产替代加速"},
+        {"title": "元件PCB出口高增，被动元件景气向上"},
+    ]
+    out = build_industry_sentiment_index(pool, ["电子化学品", "元件"])
+    sectors = {r["sector"] for r in out["sectors"]}
+    assert "电子化学品" in sectors
+    assert "元件" in sectors
 
 
 def test_build_macro_event_signals_merges_calendar() -> None:

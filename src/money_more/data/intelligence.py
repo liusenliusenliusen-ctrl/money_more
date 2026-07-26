@@ -393,6 +393,27 @@ class IntelligenceFetcher:
         result["rss_feeds"] = rss_bundle.get("feeds") or []
         result["errors"].extend(rss_bundle.get("errors") or [])
 
+        if result.get("policy_news_stale") or not result.get("policy_news"):
+            policy_pool: list[dict[str, Any]] = []
+            policy_pool.extend(result.get("global_news") or [])
+            policy_pool.extend(result.get("global_news_sina") or [])
+            policy_pool.extend(result.get("rss_important") or [])
+            policy_pool.extend(result.get("rss_telegraph") or [])
+            extracted = _extract_policy_news_from_pool(
+                policy_pool,
+                as_of=self.as_of,
+                lookback_days=self.news_lookback_days,
+                limit=self.max_items,
+            )
+            if extracted:
+                result["policy_news"] = extracted
+                result["policy_news_source"] = "rss_global_extract"
+                result.pop("policy_news_stale", None)
+                result["errors"] = [
+                    e for e in result["errors"]
+                    if e not in ("policy_news_stale_fallback", "policy_news_stale_or_empty")
+                ]
+
         if not result["tushare_macro_news"]:
             fallback = _merge_macro_news_fallback(result, self.max_items)
             if fallback:
@@ -669,6 +690,41 @@ def _merge_macro_news_fallback(macro: dict[str, Any], limit: int) -> list[dict[s
         if len(out) >= limit:
             break
     return out
+
+
+_POLICY_NEWS_KEYWORDS = (
+    "国务院", "央行", "证监会", "发改委", "财政部", "工信部", "商务部", "金融监管",
+    "政治局", "中央经济工作会议", "国常会", "降准", "降息", "货币政策", "财政政策",
+    "产业政策", "稳市", "回购", "增持", "监管", "立案", "国新", "汇金",
+)
+
+
+def _extract_policy_news_from_pool(
+    pool: list[dict[str, Any]],
+    *,
+    as_of: date,
+    lookback_days: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """联播/CCTV 陈旧或空时，从全球快讯/RSS 抽取政策导向标题（无额外 API）。"""
+    seen: set[str] = set()
+    candidates: list[dict[str, Any]] = []
+    for item in pool:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or item.get("标题") or item.get("新闻标题") or "").strip()
+        content = str(item.get("content") or item.get("内容") or item.get("summary") or "")
+        text = f"{title} {content}"
+        if not title or not any(kw in text for kw in _POLICY_NEWS_KEYWORDS):
+            continue
+        key = _news_title_key(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        candidates.append(item)
+    if not candidates:
+        return []
+    return filter_records_by_date(candidates, as_of, lookback_days=lookback_days)[:limit]
 
 
 _MACRO_CAL_LABELS = {

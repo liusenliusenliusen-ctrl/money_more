@@ -107,3 +107,27 @@ def test_report_starts_with_data_sources_section():
     assert md.index("## 数据源说明（本轮）") < md.index("## 结论卡（速读）")
     assert "全 A 现货快照" in md
     assert "❌" in md
+
+
+def test_ledger_policy_rss_extract_not_degraded() -> None:
+    result = {
+        "data_quality": {"score": 1.0, "degraded": False},
+        "screen": {"enabled": False},
+        "intelligence": {
+            "macro_raw": {
+                "policy_news": [{"title": "证监会稳市"}],
+                "policy_news_source": "rss_global_extract",
+                "global_news": [{"title": "g"}],
+                "margin_trend": {"v": 1},
+                "northbound_summary": [{"v": 1}],
+                "northbound_freshness": {"stale": False, "latest_date": "2026-07-24"},
+                "sector_money_flow": {"top_inflow": []},
+                "sentiment_overview": {"aggregate": {"score_100": 50, "label": "neutral"}},
+            }
+        },
+        "stocks": [],
+    }
+    ledger = build_data_sources_ledger(result)
+    row = next(r for r in ledger["rows"] if r["name"] == "政策/联播类新闻")
+    assert row["status"] == "ok"
+    assert "快讯/RSS" in row["provider"]
