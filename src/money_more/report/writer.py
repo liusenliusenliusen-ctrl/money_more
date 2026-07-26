@@ -162,7 +162,7 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append(
         "_流程固定为：**①个股研究 → ②组合草案 → ③多空辩论 → ④风控终局**。"
-        "下表为个股细化一览；**按票完整推理见详细论证 B2**；结论卡 A3 只列④终局指令。"
+        "下表为个股决策链一览；**按票完整推理见详细论证 B2**；结论卡 A3 只列④终局指令。"
         "只有④的 buy/add（仓位>0）可执行并进入模拟盘；①的研究评级 buy ≠ 开仓指令。_"
     )
     lines.append("")
@@ -305,7 +305,7 @@ def _overrides_for_code(overrides: list[str], code: str) -> list[str]:
 def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
     """详细论证 B2：每只票完整决策链（研究→草案→辩论→风控）。"""
     lines: list[str] = []
-    lines.append("### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
+    lines.append("#### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
     lines.append("")
     lines.append(
         "_核对结论卡 **B2**。每只票写完整推理链；**①研究评级 ≠ 可开仓指令**。"
@@ -353,13 +353,13 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         rec = rec_by.get(code) or {}
         bridge = build_stock_chain_bridge(code, result, final_rec=rec or risk_by.get(code))
 
-        lines.append(f"#### {code}{(' ' + name) if name else ''}")
+        lines.append(f"##### {code}{(' ' + name) if name else ''}")
         lines.append("")
         lines.append(f"**决策链**: {bridge}")
         lines.append("")
 
         # ① 研究
-        lines.append("##### ① 研究（基本面 / 赔率 / 叙事）")
+        lines.append("###### ① 研究（基本面 / 赔率 / 叙事）")
         lines.append("")
         lines.append(
             f"- **研究评级**: `{a.get('research_rating', '-')}` · "
@@ -420,7 +420,7 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         lines.append("")
 
         # ② 草案
-        lines.append("##### ② 组合草案")
+        lines.append("###### ② 组合草案")
         lines.append("")
         d = draft_by.get(code)
         if d:
@@ -441,7 +441,7 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         lines.append("")
 
         # ③ 辩论
-        lines.append("##### ③ 多空辩论")
+        lines.append("###### ③ 多空辩论")
         lines.append("")
         debate = rec.get("debate") or debates.get(code) or {}
         ds = debate_stage_by.get(code) or {}
@@ -475,7 +475,7 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         lines.append("")
 
         # ④ 风控
-        lines.append("##### ④ 风控终局")
+        lines.append("###### ④ 风控终局")
         lines.append("")
         final = rec or risk_by.get(code) or {}
         faction = str(final.get("action") or "watch")
@@ -519,14 +519,14 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
 
 
 def render_action_index_section(result: dict[str, Any]) -> list[str]:
-    """详细论证 A3：终局动作索引（不重复结论卡逐票列表）。"""
+    """详细论证 A3：动作索引（不重复结论卡逐票列表）。"""
     lines: list[str] = []
     summary = result.get("decision_summary") or {}
-    lines.append("### A3. 终局动作索引")
+    lines.append("#### A3. 动作：怎么做（索引 · 核对结论卡 A3）")
     lines.append("")
     lines.append(
         "_核对结论卡 **A3**（含全文理由）。逐票推理与止损/目标/失效见下方 **B2 · ④**；"
-        "模拟账本见文末附录。_"
+        "模拟账本见同日 `*-sim.md`。_"
     )
     lines.append("")
     basis = summary.get("holdings_basis") or {}
@@ -565,7 +565,7 @@ def render_action_index_section(result: dict[str, Any]) -> list[str]:
 
 
 def render_conclusion_card(result: dict[str, Any]) -> list[str]:
-    """结论卡：主结论（分析→预测→动作）→ 推理链（宏观/板块 + 个股细化）→ 侧栏。"""
+    """结论卡：主结论（分析→预测→动作）→ 推理链（宏观/板块 + 个股决策链）→ 侧栏。"""
     lines: list[str] = []
     market = (result.get("market") or {}).get("analysis") or {}
     digest = (result.get("intelligence") or {}).get("digest") or {}
@@ -586,7 +586,8 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append(
         "_阅读顺序：**A 主结论**（A1 分析→A2 预测→A3 动作）→ **B 推理链**（B1 宏观/板块 + B2 个股①–④）→ "
-        "**C 侧栏**（争议/尾部，须确认才升权）。下方 §0–§6 是完整论证。后果自负，仅供参考。_"
+        "**C 侧栏**（争议/尾部，须确认才升权）。下方详细论证 A–C → D 趋势；"
+        "复盘与模拟账本见同日独立小报告。后果自负，仅供参考。_"
     )
     lines.append("")
 
@@ -716,7 +717,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
 
     # ---------- B. 推理链（一体两层）----------
-    lines.append("### B. 推理链（宏观→板块 → 个股细化）")
+    lines.append("### B. 推理链（宏观→板块 → 个股决策链）")
     lines.append("")
     lines.append(
         "_B1 是整体骨架（情报→市场→配置→板块态度）；"
@@ -769,7 +770,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             )
     lines.append("")
 
-    lines.append("#### B2. 个股细化（①研究→②草案→③辩论→④风控）")
+    lines.append("#### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
     lines.append("")
     stage_block = render_decision_stages_section(result)
     if stage_block:
@@ -843,7 +844,8 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append("")
     lines.append(
         "_按结论卡 **A→B→C** 展开证据（不是第二份结论）。"
-        "A=主结论依据 · B=推理链展开 · C=侧栏线索；§5/§6 为复盘与趋势。_"
+        "下列 A/B/C 为子节；其后 **D 趋势更新**。"
+        "复盘与模拟账本见同日 `*-review.md` / `*-sim.md`。_"
     )
     lines.append("")
 
@@ -851,11 +853,11 @@ def render_daily_report(result: dict[str, Any]) -> str:
     radar = (result.get("intelligence") or {}).get("narrative_radar") or {}
 
     # ---------- A. 展开主结论 ----------
-    lines.append("## A. 展开主结论（核对 A1–A3）")
+    lines.append("### A. 展开主结论（核对结论卡 A1–A3）")
     lines.append("")
 
     if digest or agg:
-        lines.append("### A1. 情报综述（展开分析）")
+        lines.append("#### A1. 情报综述（展开分析）")
         lines.append("")
         if digest.get("executive_summary"):
             lines.append(digest["executive_summary"])
@@ -892,7 +894,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append("**风险旗标**: " + "；".join(digest["risk_flags"]))
         lines.append("")
 
-    lines.append("### A2. 市场阶段与展望（展开预测）")
+    lines.append("#### A2. 市场阶段与展望（展开预测）")
     lines.append("")
     lines.append(
         f"- **阶段**: {market.get('phase_label') or market.get('phase', 'unknown')} | "
@@ -934,7 +936,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     gl = ((result.get("intelligence") or {}).get("macro_raw") or {}).get("global_liquidity") or {}
     if gl:
         lines.append("")
-        lines.append("#### 全球流动性硬指标")
+        lines.append("##### 全球流动性硬指标")
         lines.append("")
         lines.append(f"> {gl.get('plain_note') or '美债/汇率等外因硬指标。'}")
         lines.append("")
@@ -971,7 +973,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     micro = result.get("market_microstructure") or market.get("market_microstructure") or {}
     if micro:
         lines.append("")
-        lines.append("#### 微观结构 / 流动性断点")
+        lines.append("##### 微观结构 / 流动性断点")
         lines.append("")
         lines.append(
             f"> {micro.get('plain_note') or ''} "
@@ -1019,9 +1021,9 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.extend(render_action_index_section(result))
 
     # ---------- B. 展开推理链 ----------
-    lines.append("## B. 展开推理链（核对 B1–B2）")
+    lines.append("### B. 展开推理链（核对结论卡 B1–B2）")
     lines.append("")
-    lines.append("### B1. 板块筛选")
+    lines.append("#### B1. 板块筛选")
     lines.append("")
     su = result.get("sector_universe") or {}
     if su.get("note"):
@@ -1074,7 +1076,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     screen = result.get("screen") or {}
     if screen:
-        lines.append("#### 个股遴选漏斗")
+        lines.append("##### 个股遴选漏斗")
         lines.append("")
         lines.append(
             f"> {screen.get('plain_note') or screen.get('note') or '量化遴选后进入深度分析。'}"
@@ -1119,7 +1121,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.extend(render_stock_decision_chains(result))
 
     # ---------- C. 展开侧栏 ----------
-    lines.append("## C. 展开侧栏（核对结论卡 C）")
+    lines.append("### C. 展开侧栏（核对结论卡 C）")
     lines.append("")
     lines.append(
         "_须确认/证伪信号才升权，**不得单独当买入理由**。"
@@ -1129,20 +1131,20 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     contested = _render_contested_block(
         result,
-        heading="### 争议叙事 / 尾部情景",
+        heading="#### 争议叙事 / 尾部情景",
         include_policy=False,
     )
     if contested:
         lines.extend(contested)
     else:
-        lines.append("### 争议叙事 / 尾部情景")
+        lines.append("#### 争议叙事 / 尾部情景")
         lines.append("")
         lines.append("_（本轮无争议叙事条目）_")
         lines.append("")
 
     pol_scen = market.get("policy_market_scenario") or {}
     if pol_scen:
-        lines.append("### 政策市假说（护盘 / 出清）")
+        lines.append("#### 政策市假说（护盘 / 出清）")
         lines.append("")
         lines.append(
             f"- **状态**: `{pol_scen.get('status', '-')}` · 来源 {pol_scen.get('source_type', '-')}"
@@ -1172,7 +1174,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     radar_assess = digest.get("narrative_radar_assessment") or []
     if radar or radar_assess:
-        lines.append("### 叙事雷达（线索扫描）")
+        lines.append("#### 叙事雷达（线索扫描）")
         lines.append("")
         if radar:
             lines.append(
@@ -1205,146 +1207,11 @@ def render_daily_report(result: dict[str, Any]) -> str:
                     )
         lines.append("")
 
-    lines.append("## 5. 复盘与经验")
-    lines.append("")
-    rw = result.get("review_window") or {}
-    rw_note = result.get("review_window_note") or ""
-    if rw or rw_note:
-        lookback = rw.get("lookback_days")
-        cutoff = rw.get("cutoff")
-        as_of = rw.get("as_of")
-        lines.append(
-            f"> **取材窗口**：近 {lookback or '—'} 日"
-            + (f"（{cutoff} → {as_of}）" if cutoff and as_of else "")
-            + "。开放式预测下，**浮盈亏只作轨迹，不等于预测成败**。"
-        )
-        if rw_note:
-            lines.append(f"> {rw_note}")
-        lines.append("")
 
-    dim_reviews = result.get("dimension_reviews") or []
-    dim_labels = {
-        "market": "市场阶段",
-        "sector": "板块优先级",
-        "narrative": "叙事 / 情报",
-        "linkage": "逻辑链（板块→个股→动作）",
-    }
-    if dim_reviews:
-        lines.append("### 维度复盘（全漏斗）")
-        lines.append("")
-        by_dim: dict[str, list] = {}
-        for dr in dim_reviews:
-            by_dim.setdefault(str(dr.get("dimension") or "other"), []).append(dr)
-        for key in ("market", "sector", "narrative", "linkage"):
-            group = by_dim.pop(key, [])
-            if not group:
-                continue
-            lines.append(f"#### {dim_labels.get(key, key)}")
-            lines.append("")
-            for dr in group:
-                subject = dr.get("subject") or ""
-                outcome = dr.get("outcome") or "pending"
-                as_of_f = dr.get("as_of_forecast") or ""
-                pq = dr.get("process_quality") or ""
-                cat = dr.get("diagnosis_category") or ""
-                lines.append(
-                    f"- **{subject}** → `{outcome}`"
-                    + (f" · 预测:{as_of_f}" if as_of_f else "")
-                    + (f" · 过程:{pq}" if pq and pq != "unclear" else "")
-                    + (f" · [{cat}]" if cat else "")
-                )
-                if dr.get("diagnosis"):
-                    lines.append(f"  - {dr['diagnosis']}")
-                if dr.get("what_worked"):
-                    lines.append(f"  - 做对: {'; '.join(str(x) for x in dr['what_worked'][:3])}")
-                if dr.get("what_failed"):
-                    lines.append(f"  - 做错: {'; '.join(str(x) for x in dr['what_failed'][:3])}")
-                if dr.get("lesson"):
-                    lines.append(f"  - 经验: {dr['lesson']}")
-            lines.append("")
-        for key, group in by_dim.items():
-            lines.append(f"#### {key}")
-            lines.append("")
-            for dr in group:
-                lines.append(
-                    f"- **{dr.get('subject') or '?'}** → `{dr.get('outcome') or 'pending'}`"
-                )
-                if dr.get("diagnosis"):
-                    lines.append(f"  - {dr['diagnosis']}")
-            lines.append("")
-
-    reviews = result.get("reviews") or []
-    lines.append("### 个股动作复盘（thesis / 失效 / 纪律 / 轨迹）")
-    lines.append("")
-    if not reviews:
-        lines.append("_本轮无新增个股复盘（未满观察期，或暂无可跟踪建议）_")
-    else:
-        for rv in reviews:
-            status = rv.get("status") or rv.get("outcome") or "tracking"
-            cat = rv.get("diagnosis_category") or ""
-            ret = rv.get("return_pct")
-            ret_s = f"{ret}%" if ret is not None else "—"
-            lines.append(
-                f"- **{rv.get('stock_code')}** status=`{status}` · 轨迹收益:{ret_s}"
-                + (f" · [{cat}]" if cat else "")
-            )
-            pq = rv.get("process_quality")
-            lq = rv.get("linkage_quality")
-            disc = rv.get("discipline")
-            bits = []
-            if pq and pq != "unclear":
-                bits.append(f"过程:{pq}")
-            if lq and lq != "unclear":
-                bits.append(f"链路:{lq}")
-            if disc and disc != "n/a":
-                bits.append(f"纪律:{disc}")
-            if bits:
-                lines.append(f"  - {' · '.join(bits)}")
-            inv = rv.get("invalidation_check") or {}
-            if inv.get("invalidated") or inv.get("fired"):
-                lines.append(f"  - 失效触发: {', '.join(str(x) for x in (inv.get('fired') or [])[:3])}")
-            if rv.get("diagnosis"):
-                lines.append(f"  - {rv['diagnosis']}")
-            if rv.get("lesson"):
-                lines.append(f"  - 经验: {rv['lesson']}")
-            if rv.get("prompt_adjustment"):
-                lines.append(f"  - 分析改进: {rv['prompt_adjustment']}")
-    if not dim_reviews and not reviews:
-        lines.append("")
-        lines.append(
-            "_提示：复盘对照近 60 日报告的市场/板块/叙事/链路与个股 thesis；"
-            "满观察期后更新 tracking，不以浮亏单独结案。_"
-        )
-    lines.append("")
-
-    patterns = result.get("history_patterns") or []
-    meta = result.get("meta_lessons") or []
-    sentiment_lessons = result.get("sentiment_lessons") or []
-    lessons_used = result.get("lessons_used") or []
-    if patterns or meta or sentiment_lessons or lessons_used:
-        lines.append("### 经验库")
-        lines.append("")
-        for item in patterns:
-            lines.append(f"- 🔁 [pattern] {item}")
-        for item in meta:
-            lines.append(f"- 🆕 {item}")
-        for item in sentiment_lessons:
-            lines.append(f"- 📢 [舆情] {item}")
-        seen = set()
-        for item in lessons_used[:20]:
-            content = (item.get('content') or '').strip()
-            key = content[:80]
-            if not content or key in seen:
-                continue
-            seen.add(key)
-            lines.append(f"- 📚 [{item.get('category')}] {content}")
-            if len(seen) >= 10:
-                break
-    lines.append("")
-
+    # ---------- D. 趋势（复盘/模拟已拆为独立小报告）----------
     trend = result.get("trend") or {}
     if trend:
-        lines.append("## 6. 趋势更新（滚动）")
+        lines.append("## D. 趋势更新（滚动）")
         lines.append("")
         regime = trend.get("market_regime") or {}
         lines.append(
@@ -1352,7 +1219,9 @@ def render_daily_report(result: dict[str, Any]) -> str:
             f"风格:{regime.get('current_style', '-')} | 风险:{regime.get('risk_level', '-')}"
         )
         if regime.get("regime_change"):
-            lines.append(f"- **regime 变化**: {regime.get('regime_change')} — {regime.get('change_note', '')}")
+            lines.append(
+                f"- **regime 变化**: {regime.get('regime_change')} — {regime.get('change_note', '')}"
+            )
         if trend.get("executive_summary"):
             lines.append(f"- {trend['executive_summary']}")
         sent_t = trend.get("sentiment_trend") or {}
@@ -1382,15 +1251,197 @@ def render_daily_report(result: dict[str, Any]) -> str:
         )
         lines.append("")
 
-    # 模拟账本放文末折叠，避免紧挨终局动作被当成真实持仓
-    from money_more.sim.engine import render_sim_section
-
-    lines.extend(render_sim_section(result.get("sim_portfolio"), result=result))
+    run_date = result.get("run_date", date.today().isoformat())
+    lines.append(
+        f"_同日独立报告：[`{run_date}-review.md`]({run_date}-review.md)（复盘与经验）· "
+        f"[`{run_date}-sim.md`]({run_date}-sim.md)（模拟账本）。_"
+    )
+    lines.append("")
 
     lines.append("---")
     lines.append("*本报告由 AI 生成，仅供参考，不构成投资建议。*")
 
     return "\n".join(lines)
+
+
+def render_review_report(result: dict[str, Any]) -> str:
+    """独立小报告：复盘与经验。"""
+    lines: list[str] = []
+    run_date = result.get("run_date", date.today().isoformat())
+    lines.append("# money_more 复盘与经验")
+    lines.append("")
+    lines.append(f"**日期**: {run_date}")
+    lines.append("")
+    lines.append("_与主报告分离；邮件不附送。浮盈亏只作轨迹，不等于预测成败。_")
+    lines.append("")
+
+    rw = result.get("review_window") or {}
+    rw_note = result.get("review_window_note") or ""
+    if rw or rw_note:
+        lookback = rw.get("lookback_days")
+        cutoff = rw.get("cutoff")
+        as_of = rw.get("as_of")
+        lines.append(
+            f"> **取材窗口**：近 {lookback or '—'} 日"
+            + (f"（{cutoff} → {as_of}）" if cutoff and as_of else "")
+            + "。开放式预测下，**浮盈亏只作轨迹，不等于预测成败**。"
+        )
+        if rw_note:
+            lines.append(f"> {rw_note}")
+        lines.append("")
+
+    dim_reviews = result.get("dimension_reviews") or []
+    dim_labels = {
+        "market": "市场阶段",
+        "sector": "板块优先级",
+        "narrative": "叙事 / 情报",
+        "linkage": "逻辑链（板块→个股→动作）",
+    }
+    if dim_reviews:
+        lines.append("## 维度复盘（全漏斗）")
+        lines.append("")
+        by_dim: dict[str, list] = {}
+        for dr in dim_reviews:
+            by_dim.setdefault(str(dr.get("dimension") or "other"), []).append(dr)
+        for key in ("market", "sector", "narrative", "linkage"):
+            group = by_dim.pop(key, [])
+            if not group:
+                continue
+            lines.append(f"### {dim_labels.get(key, key)}")
+            lines.append("")
+            for dr in group:
+                subject = dr.get("subject") or ""
+                outcome = dr.get("outcome") or "pending"
+                as_of_f = dr.get("as_of_forecast") or ""
+                pq = dr.get("process_quality") or ""
+                cat = dr.get("diagnosis_category") or ""
+                lines.append(
+                    f"- **{subject}** → `{outcome}`"
+                    + (f" · 预测:{as_of_f}" if as_of_f else "")
+                    + (f" · 过程:{pq}" if pq and pq != "unclear" else "")
+                    + (f" · [{cat}]" if cat else "")
+                )
+                if dr.get("diagnosis"):
+                    lines.append(f"  - {dr['diagnosis']}")
+                if dr.get("what_worked"):
+                    lines.append(f"  - 做对: {'; '.join(str(x) for x in dr['what_worked'][:3])}")
+                if dr.get("what_failed"):
+                    lines.append(f"  - 做错: {'; '.join(str(x) for x in dr['what_failed'][:3])}")
+                if dr.get("lesson"):
+                    lines.append(f"  - 经验: {dr['lesson']}")
+            lines.append("")
+        for key, group in by_dim.items():
+            lines.append(f"### {key}")
+            lines.append("")
+            for dr in group:
+                lines.append(
+                    f"- **{dr.get('subject') or '?'}** → `{dr.get('outcome') or 'pending'}`"
+                )
+                if dr.get("diagnosis"):
+                    lines.append(f"  - {dr['diagnosis']}")
+            lines.append("")
+
+    reviews = result.get("reviews") or []
+    lines.append("## 个股动作复盘（thesis / 失效 / 纪律 / 轨迹）")
+    lines.append("")
+    if not reviews:
+        lines.append("_本轮无新增个股复盘（未满观察期，或暂无可跟踪建议）_")
+    else:
+        for rv in reviews:
+            status = rv.get("status") or rv.get("outcome") or "tracking"
+            cat = rv.get("diagnosis_category") or ""
+            ret = rv.get("return_pct")
+            ret_s = f"{ret}%" if ret is not None else "—"
+            lines.append(
+                f"- **{rv.get('stock_code')}** status=`{status}` · 轨迹收益:{ret_s}"
+                + (f" · [{cat}]" if cat else "")
+            )
+            pq = rv.get("process_quality")
+            lq = rv.get("linkage_quality")
+            disc = rv.get("discipline")
+            bits = []
+            if pq and pq != "unclear":
+                bits.append(f"过程:{pq}")
+            if lq and lq != "unclear":
+                bits.append(f"链路:{lq}")
+            if disc and disc != "n/a":
+                bits.append(f"纪律:{disc}")
+            if bits:
+                lines.append(f"  - {' · '.join(bits)}")
+            inv = rv.get("invalidation_check") or {}
+            if inv.get("invalidated") or inv.get("fired"):
+                lines.append(
+                    f"  - 失效触发: {', '.join(str(x) for x in (inv.get('fired') or [])[:3])}"
+                )
+            if rv.get("diagnosis"):
+                lines.append(f"  - {rv['diagnosis']}")
+            if rv.get("lesson"):
+                lines.append(f"  - 经验: {rv['lesson']}")
+            if rv.get("prompt_adjustment"):
+                lines.append(f"  - 分析改进: {rv['prompt_adjustment']}")
+    if not dim_reviews and not reviews:
+        lines.append("")
+        lines.append(
+            "_提示：复盘对照近 60 日报告的市场/板块/叙事/链路与个股 thesis；"
+            "满观察期后更新 tracking，不以浮亏单独结案。_"
+        )
+    lines.append("")
+
+    patterns = result.get("history_patterns") or []
+    meta = result.get("meta_lessons") or []
+    sentiment_lessons = result.get("sentiment_lessons") or []
+    lessons_used = result.get("lessons_used") or []
+    if patterns or meta or sentiment_lessons or lessons_used:
+        lines.append("## 经验库")
+        lines.append("")
+        for item in patterns:
+            lines.append(f"- 🔁 [pattern] {item}")
+        for item in meta:
+            lines.append(f"- 🆕 {item}")
+        for item in sentiment_lessons:
+            lines.append(f"- 📢 [舆情] {item}")
+        seen = set()
+        for item in lessons_used[:20]:
+            content = (item.get("content") or "").strip()
+            key = content[:80]
+            if not content or key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"- 📚 [{item.get('category')}] {content}")
+            if len(seen) >= 10:
+                break
+        lines.append("")
+
+    lines.append("---")
+    lines.append("*复盘小报告 · 仅供参考，不构成投资建议。*")
+    return "\n".join(lines)
+
+
+def render_sim_report(result: dict[str, Any]) -> str:
+    """独立小报告：模拟账本（非真实持仓）。"""
+    from money_more.sim.engine import render_sim_section
+
+    run_date = result.get("run_date", date.today().isoformat())
+    lines: list[str] = [
+        "# money_more 模拟账本",
+        "",
+        f"**日期**: {run_date}",
+        "",
+        "_与主报告分离；邮件不附送。评估「若完全按结论卡 A3 终局执行」的效果。_",
+        "",
+    ]
+    body = render_sim_section(
+        result.get("sim_portfolio"), result=result, standalone=True
+    )
+    if not body:
+        lines.append("_本轮无模拟账本（未启用或已跳过）。_")
+        lines.append("")
+    else:
+        lines.extend(body)
+    lines.append("---")
+    lines.append("*模拟小报告 · 非真实持仓 · 仅供参考。*")
+    return "\n".join(lines)
+
 
 
 def render_trend_report(trend: dict[str, Any]) -> str:
@@ -1515,12 +1566,17 @@ def render_trend_report(trend: dict[str, Any]) -> str:
 
 
 def save_report(result: dict[str, Any], reports_dir: Path) -> Path:
+    """写入主报告 + 复盘/模拟小报告；返回主报告路径。"""
     reports_dir.mkdir(parents=True, exist_ok=True)
     run_date = result.get("run_date", date.today().isoformat())
     md_path = reports_dir / f"{run_date}.md"
     json_path = reports_dir / f"{run_date}.json"
+    review_path = reports_dir / f"{run_date}-review.md"
+    sim_path = reports_dir / f"{run_date}-sim.md"
 
     md_path.write_text(render_daily_report(result), encoding="utf-8")
+    review_path.write_text(render_review_report(result), encoding="utf-8")
+    sim_path.write_text(render_sim_report(result), encoding="utf-8")
     json_path.write_text(dumps_json(result, indent=2), encoding="utf-8")
 
     digest = result.get("decision_digest")
@@ -1533,6 +1589,11 @@ def save_report(result: dict[str, Any], reports_dir: Path) -> Path:
     if trend:
         save_trend_report(trend, reports_dir)
 
+    result["report_paths"] = {
+        "main": str(md_path),
+        "review": str(review_path),
+        "sim": str(sim_path),
+    }
     return md_path
 
 

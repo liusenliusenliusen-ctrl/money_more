@@ -692,8 +692,10 @@ def attach_sim_round_explanation(result: dict[str, Any]) -> None:
 def render_sim_section(
     sim: dict[str, Any] | None,
     result: dict[str, Any] | None = None,
+    *,
+    standalone: bool = False,
 ) -> list[str]:
-    """报告附录：折叠展示，避免紧挨 §4 被当成真实持仓。"""
+    """模拟账本正文。standalone=True 时用于独立小报告（无折叠）。"""
     if not sim or sim.get("skipped"):
         return []
     expl = sim.get("round_explanation")
@@ -701,17 +703,25 @@ def render_sim_section(
         expl = build_sim_round_explanation(sim, result)
     expl = expl or {}
 
-    lines = [
-        "<details>",
-        "<summary><strong>附录：模拟账本（评估用 · 非真实持仓）</strong></summary>",
-        "",
-        "> **不是你的账户。** 决策完成后机械回放「若完全按 §4 终局执行」的效果；"
-        "不反向影响建议。缺 `position_pct` 时**不会**静默按默认比例开仓。"
-        "下面先写**本轮为什么这样操作（或为什么没操作）**，再列持仓与成交明细。",
-        "",
-    ]
+    lines: list[str] = []
+    if not standalone:
+        lines.extend(
+            [
+                "<details>",
+                "<summary><strong>附录：模拟账本（评估用 · 非真实持仓）</strong></summary>",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "> **不是你的账户。** 决策完成后机械回放「若完全按结论卡 A3 / B2④ 终局执行」的效果；"
+            "不反向影响建议。缺 `position_pct` 时**不会**静默按默认比例开仓。"
+            "下面先写**本轮为什么这样操作（或为什么没操作）**，再列持仓与成交明细。",
+            "",
+        ]
+    )
 
-    lines.append("### 本轮模拟操作说明")
+    lines.append("## 本轮模拟操作说明" if standalone else "### 本轮模拟操作说明")
     lines.append("")
     if expl.get("headline"):
         lines.append(f"**结论**: {expl['headline']}")
@@ -743,8 +753,10 @@ def render_sim_section(
     lines.append("")
 
     positions = sim.get("positions") or []
+    h_pos = "## 模拟持仓（非真实）" if standalone else "### 模拟持仓（非真实）"
+    h_fill = "## 本轮模拟成交" if standalone else "### 本轮模拟成交"
     if positions:
-        lines.append("### 模拟持仓（非真实）")
+        lines.append(h_pos)
         lines.append("")
         for p in positions:
             lines.append(
@@ -759,7 +771,7 @@ def render_sim_section(
 
     fills = [f for f in (sim.get("fills") or []) if not f.get("skipped")]
     if fills:
-        lines.append("### 本轮模拟成交")
+        lines.append(h_fill)
         lines.append("")
         for f in fills:
             why = f.get("why") or ""
@@ -772,9 +784,10 @@ def render_sim_section(
 
     lines.append(
         "_真实持仓只看 `config.yaml` → `holdings`（未声明=空仓）；"
-        "完整推理见详细论证 B2，终局指令见结论卡 A3。_"
+        "完整推理见主报告详细论证 B2，终局指令见结论卡 A3。_"
     )
     lines.append("")
-    lines.append("</details>")
-    lines.append("")
+    if not standalone:
+        lines.append("</details>")
+        lines.append("")
     return lines

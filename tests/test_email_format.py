@@ -1,4 +1,4 @@
-"""分析邮件：结论卡+详细论证 HTML 正文，附件仍为 md。"""
+"""分析邮件：正文仅结论卡 HTML；附件为主报告 md。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ SAMPLE = """# money_more 中长线周期决策报告
 
 - **环境**: 弱势 · 风险 high
 - **配置倾向**: 偏防御
+- 主题：**美债**上行
 
 #### A3. 动作：怎么做（④风控终局）
 
@@ -37,45 +38,44 @@ SAMPLE = """# money_more 中长线周期决策报告
 
 _按结论卡 A→B→C 展开证据_
 
-## A. 展开主结论（核对 A1–A3）
+### A. 展开主结论（核对结论卡 A1–A3）
 
-### A1. 情报综述（展开分析）
+#### A1. 情报综述（展开分析）
 
-主题：**美债**上行。
+详细论证里的长文不应进邮件正文。
 
-<details>
-<summary><strong>附录：模拟账本（评估用 · 非真实持仓）</strong></summary>
+## D. 趋势更新（滚动）
 
-- 空仓
-
-</details>
+- 阶段: 弱势
 
 ---
 *本报告由 AI 生成，仅供参考，不构成投资建议。*
 """
 
 
-def test_extract_skips_data_sources_and_sim_appendix():
+def test_extract_only_conclusion_card():
     section = extract_analysis_email_markdown(SAMPLE)
     assert section.startswith("## 结论卡")
     assert "数据源说明" not in section
-    assert "模拟账本" not in section
-    assert "详细论证" in section
+    assert "详细论证" not in section
+    assert "趋势更新" not in section
     assert "美债" in section
-    assert "仅供参考" in section
+    assert "300750" in section
+    assert "长文不应进邮件正文" not in section
 
 
 def test_html_has_structure_and_no_raw_md_headers():
     plain, html_body = build_analysis_email_bodies(SAMPLE, "2026-07-25")
     assert "结论卡" in plain
+    assert "详细论证" not in plain
     assert "## 数据源" not in plain
     assert "<h2>" in html_body
     assert "结论卡" in html_body
-    assert "详细论证" in html_body
+    assert "详细论证" not in html_body
     assert "viewport" in html_body
     assert "<strong>美债</strong>" in html_body or "美债" in html_body
-    # 不应把原始 ## 标题原样堆进 HTML 可见区作为 md
     assert "## 结论卡" not in html_body
+    assert "主报告" in plain or "附件" in plain
 
 
 def test_table_and_list_render():

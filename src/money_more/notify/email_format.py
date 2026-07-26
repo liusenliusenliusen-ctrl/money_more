@@ -1,4 +1,4 @@
-"""分析邮件正文：截取结论卡+详细论证，并转成手机可读 HTML / 纯文本。"""
+"""分析邮件正文：截取结论卡，并转成手机可读 HTML / 纯文本。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def strip_details_blocks(md: str) -> str:
 
 
 def extract_analysis_email_markdown(full_md: str) -> str:
-    """只保留结论卡 + 详细论证（去掉数据源、模拟附录等）。"""
+    """只保留结论卡（不含数据源、详细论证、复盘/模拟小报告）。"""
     text = strip_details_blocks(full_md or "")
     lines = text.splitlines()
     start = -1
@@ -29,7 +29,12 @@ def extract_analysis_email_markdown(full_md: str) -> str:
         # 失败报告等无结论卡时退回全文（仍去掉 details）
         return text.strip()
 
-    chunk = "\n".join(lines[start:]).strip()
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## ") and not lines[j].startswith("## 结论卡"):
+            end = j
+            break
+    chunk = "\n".join(lines[start:end]).strip()
     chunk = re.sub(r"\n---\n+\Z", "\n", chunk)
     return chunk.strip()
 
@@ -218,7 +223,7 @@ def wrap_email_html(
         meta
         or (
             f"money_more 分析报告 {run_date} · "
-            "正文：结论卡 + 详细论证（完整 md 见附件）"
+            "正文：结论卡（主报告 md 见附件）"
         )
     )
     return f"""<!DOCTYPE html>
@@ -338,7 +343,7 @@ def build_analysis_email_bodies(full_md: str, run_date: str) -> tuple[str, str]:
         section = strip_details_blocks(full_md)
     intro = (
         f"money_more 分析报告 {run_date}\n"
-        f"（正文为结论卡 + 详细论证；完整 Markdown 见附件。）\n\n"
+        f"（正文仅为结论卡；主报告 Markdown 见附件。复盘/模拟小报告不附送。）\n\n"
     )
     plain = intro + md_to_plain(section)
     html_body = wrap_email_html(md_to_email_html(section), run_date=run_date)

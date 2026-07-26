@@ -132,7 +132,7 @@ def test_decision_stages_payload_and_report_render():
 
     card = "\n".join(render_conclusion_card(result))
     assert "### B. 推理链" in card
-    assert "#### B2. 个股细化" in card
+    assert "#### B2. 个股决策链" in card
     assert "④风控终局" in card
     assert "分批建仓茅台" in card
     assert card.index("②草案摘要") < card.index("④终局组合摘要")
@@ -236,24 +236,33 @@ def test_stock_decision_chain_and_slim_recommendations():
         "sectors": [],
     }
     md = render_daily_report(result)
-    assert "## A. 展开主结论" in md
-    assert "## B. 展开推理链" in md
-    assert "## C. 展开侧栏" in md
-    assert "### B2. 个股决策链" in md
-    assert "##### ① 研究（基本面 / 赔率 / 叙事）" in md
-    assert "##### ② 组合草案" in md
-    assert "##### ③ 多空辩论" in md
-    assert "##### ④ 风控终局" in md
+    assert "## 详细论证" in md
+    assert "### A. 展开主结论" in md
+    assert "### B. 展开推理链" in md
+    assert "### C. 展开侧栏" in md
+    assert "#### B2. 个股决策链" in md
+    assert "###### ① 研究（基本面 / 赔率 / 叙事）" in md
+    assert "###### ② 组合草案" in md
+    assert "###### ③ 多空辩论" in md
+    assert "###### ④ 风控终局" in md
     assert "动力电池龙头" in md
     assert "分批建仓" in md
     assert "裁判" in md and "bull" in md
     assert "微观结构liquidity_stress禁止新买" in md
-    assert "### A3. 终局动作索引" in md
+    assert "#### A3. 动作：怎么做（索引" in md
     assert "## 4. 买卖建议" not in md
+    assert "## D. 复盘与经验" not in md
+    assert "## 附录：模拟账本" not in md
     assert "①买入" in md and "④观察" in md
+    from money_more.report.writer import render_review_report, render_sim_report
+
+    review_md = render_review_report(result)
+    assert "# money_more 复盘与经验" in review_md
+    sim_md = render_sim_report(result)
+    assert "# money_more 模拟账本" in sim_md
     # A3 只做索引，不堆辩论；失效/纪律在 B2④
-    idx_a3 = md.index("### A3. 终局动作索引")
-    idx_b = md.index("## B. 展开推理链")
+    idx_a3 = md.index("#### A3. 动作：怎么做（索引")
+    idx_b = md.index("### B. 展开推理链")
     section_a3 = md[idx_a3:idx_b]
     assert "多头" not in section_a3
     assert "终局一览" in section_a3

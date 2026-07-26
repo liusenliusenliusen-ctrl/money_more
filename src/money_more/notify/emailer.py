@@ -250,20 +250,16 @@ def _send_with_optional_guide(
 
 
 def notify_analysis_report(config: AppConfig, report_path: str | Path, run_date: str) -> dict[str, Any]:
-    """分析报告邮件：正文=结论卡+详细论证（HTML）；附件=完整 md（及趋势 md）。"""
+    """分析报告邮件：正文=结论卡（HTML）；附件=仅主报告 md（不含复盘/模拟/趋势）。"""
     path = Path(report_path)
     full_md = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
     plain, html_body = build_analysis_email_bodies(full_md, run_date)
-    attachments: list[Path] = [path]
-    trend = config.resolve(config.paths.reports) / "trend.md"
-    if trend.exists():
-        attachments.append(trend)
     return _send_with_optional_guide(
         config,
         subject=f"[money_more] 分析报告 {run_date}",
         body=plain,
         html_body=html_body,
-        attachments=attachments,
+        attachments=[path],
         kind="analysis",
     )
 

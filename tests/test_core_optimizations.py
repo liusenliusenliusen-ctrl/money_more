@@ -828,7 +828,7 @@ def test_render_conclusion_card_and_cross_links():
     assert "#### A3. 动作：怎么做（④风控终局）" in card
     assert "### B. 推理链" in card
     assert "#### B1. 宏观 → 板块" in card
-    assert "#### B2. 个股细化" in card
+    assert "#### B2. 个股决策链" in card
     assert "### C. 侧栏" in card
     assert "【侧栏语气】" not in card
     assert "阅读顺序" in card
@@ -844,14 +844,16 @@ def test_render_conclusion_card_and_cross_links():
     md = render_daily_report(result)
     assert "## 结论卡（速读）" in md
     assert "## 详细论证" in md
-    assert "## A. 展开主结论" in md
-    assert "## B. 展开推理链" in md
-    assert "## C. 展开侧栏" in md
+    assert "### A. 展开主结论" in md
+    assert "### B. 展开推理链" in md
+    assert "### C. 展开侧栏" in md
     assert "**落到动作**" in md
-    assert "### B2. 个股决策链" in md
-    assert "##### ① 研究" in md
-    assert "##### ④ 风控终局" in md
-    assert "### A3. 终局动作索引" in md
+    assert "#### B2. 个股决策链" in md
+    assert "###### ① 研究" in md
+    assert "###### ④ 风控终局" in md
+    assert "#### A3. 动作：怎么做（索引" in md
+    assert "## D. 复盘与经验" not in md
+    assert "## 附录：模拟账本" not in md
     assert "**板块**: 新能源" in md or "板块:新能源" in md
     assert "### B. 推理链" in md
     assert "#### B1. 宏观 → 板块" in md
@@ -870,10 +872,14 @@ def test_render_conclusion_card_and_cross_links():
         }
     ]
     result["history_patterns"] = ["左侧须等资金确认"]
-    md2 = render_daily_report(result)
-    assert "### 维度复盘" in md2
+    from money_more.report.writer import render_review_report
+
+    md2 = render_review_report(result)
+    assert "## 维度复盘" in md2
     assert "市场阶段" in md2 or "震荡偏强" in md2
     assert "🔁 [pattern]" in md2
+    main2 = render_daily_report(result)
+    assert "## 维度复盘" not in main2
 
 
 def test_build_prior_dimension_forecasts(tmp_path: Path):

@@ -12,7 +12,7 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 | 调度 | **手动触发**（本地/服务器 cron 已关闭） |
 | 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池（自动筛选） |
 | 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；有持仓则强制进深度池 |
-| 产出 | 周期决策报告、优化报告、趋势报告、模拟账本（附录） |
+| 产出 | 主报告 + 复盘/模拟小报告、优化报告、滚动趋势 |
 | 通知 | SMTP 邮件（分析 + 可选自优化） |
 | 自进化 | 周期结束后 Cursor 优化代码；优先补数据源，再改分析 |
 | 多Agent | DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
@@ -26,7 +26,7 @@ money-more scheduled
   ├─ 市场 / 板块（关注板块 + 资金流自动扩）/ 个股漏斗
   ├─ 建议（空仓硬校验；深度池白名单；buy/add 全量辩论 → 风控终局摘要）
   ├─ 复盘（近 60 日；浮盈亏 ≠ 结案）
-  ├─ 报告 → reports/YYYY-MM-DD.md + 趋势 reports/trend.md
+  ├─ 报告 → 主报告.md + *-review.md + *-sim.md；趋势 reports/trend.md
   ├─ （可选）邮件发送分析报告
   ├─ （可选）Cursor 自优化
   └─ （可选）邮件发送优化报告
@@ -82,7 +82,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `schedule.interval_days` | 距上次成功跑的门禁天数；**不是**已启用的 cron |
 | `schedule.optimize_after_run` | `scheduled` 默认跑完后自优化 |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
-| `sim.*` | 文末折叠模拟账本；缺 `position_pct` 不静默开仓 |
+| `sim.*` | 独立小报告模拟账本；缺 `position_pct` 不静默开仓 |
 
 读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。
 
@@ -174,9 +174,11 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 | 路径 | 说明 |
 |------|------|
 | `data/money_more.db` | SQLite |
-| `reports/YYYY-MM-DD.md` | 中长线周期决策报告 |
+| `reports/YYYY-MM-DD.md` | 主报告（结论卡 + 详细论证 + 趋势） |
+| `reports/YYYY-MM-DD-review.md` | 复盘与经验小报告（邮件不附） |
+| `reports/YYYY-MM-DD-sim.md` | 模拟账本小报告（邮件不附） |
 | `reports/optimize-YYYY-MM-DD.md` | 自优化报告 |
-| `reports/trend.md` | 趋势报告 |
+| `reports/trend.md` | 滚动趋势报告 |
 | `logs/last_full_run.txt` | 上次成功周期日期（门禁用） |
 | `logs/OPTIMIZE_PAUSE` | 人工改码暂停自优化 |
 | `docs/how-to-read-report.md` | 读报指南（首次邮件附件） |

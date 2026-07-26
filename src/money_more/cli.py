@@ -56,9 +56,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         report_path = save_report(result, config.resolve(config.paths.reports))
         db.finish_run(result["run_id"], "success", str(report_path))
         console.print("\n" + render_daily_report(result))
-        console.print(Panel(f"分析报告已保存: {report_path}", style="green"))
+        console.print(Panel(f"主报告已保存: {report_path}", style="green"))
+        paths = result.get("report_paths") or {}
+        if paths.get("review"):
+            console.print(Panel(f"复盘小报告: {paths['review']}", style="cyan"))
+        if paths.get("sim"):
+            console.print(Panel(f"模拟账本小报告: {paths['sim']}", style="cyan"))
         if result.get("trend"):
-            console.print(Panel("趋势报告已更新: reports/trend.md", style="cyan"))
+            console.print(Panel("滚动趋势已更新: reports/trend.md", style="cyan"))
         dq = result.get("data_quality") or {}
         if dq.get("degraded"):
             console.print(Panel(dq.get("note", "数据降级"), title="数据质量", style="yellow"))
