@@ -22,12 +22,12 @@ SAMPLE = """# money_more 中长线周期决策报告
 
 ## 结论卡（速读）
 
-### 【主结论】分析：现在怎么看
+### A. 【主结论】分析：现在怎么看
 
 - **环境**: 弱势 · 风险 high
 - **配置倾向**: 偏防御
 
-### 【主结论】动作：怎么做（④风控终局）
+### A. 【主结论】动作：怎么做（④风控终局）
 
 - **观察** 300750 宁德时代
 
@@ -92,7 +92,7 @@ def test_table_and_list_render():
 
 
 def test_plain_strips_markers():
-    text = md_to_plain("### 【主结论】动作\n\n- **观察** `300750`\n")
+    text = md_to_plain("### A. 【主结论】动作\n\n- **观察** `300750`\n")
     assert "**" not in text
     assert "`" not in text
     assert "观察" in text

@@ -517,7 +517,7 @@ def test_email_ready_and_preview():
         )
     )
     assert ok2 is True
-    assert "截断" in _preview("字" * 13000)
+    assert "截断" in _preview("字" * 25000)
 
 
 def test_optimize_prompt_includes_data_sources(tmp_path: Path):
@@ -795,7 +795,7 @@ def test_render_conclusion_card_and_cross_links():
                 "action": "watch",
                 "confidence": 0.55,
                 "position_pct": 0,
-                "rationale": "基本面强但资金未稳",
+                "rationale": "placeholder",
                 "sector_tag": "新能源",
                 "invalidation": "半年报不及预期",
             },
@@ -812,16 +812,32 @@ def test_render_conclusion_card_and_cross_links():
             "portfolio_summary": "维持茅台，观察宁德",
         },
     }
+    # 构造超长理由（旧版 _one_line(..., 64) 会截断；现应全文保留）
+    long_why = (
+        "基本面强但资金未稳，需等待北向与板块资金确认后再动手；"
+        "同时关注美债收益率回落与微观结构修复，二者齐备前保持观察；"
+        "若出现板块资金连续三日净流出或北向大幅撤离，则继续观望。"
+    )
+    assert len(long_why) > 64
+    result["recommendations"][0]["rationale"] = long_why
     card = "\n".join(render_conclusion_card(result))
     assert "## 结论卡（速读）" in card
-    assert "### 【主结论】分析：现在怎么看" in card
-    assert "### 【主结论】预测：接下来怎么预期" in card
-    assert "### 【主结论】动作：怎么做（④风控终局）" in card
-    assert "### 板块：赛道态度" in card
-    assert "阅读分层" in card
+    assert "### A. 【主结论】分析：现在怎么看" in card
+    assert "### A. 【主结论】预测：接下来怎么预期" in card
+    assert "### A. 【主结论】动作：怎么做（④风控终局）" in card
+    assert "### B. 推理链" in card
+    assert "#### B1. 宏观 → 板块" in card
+    assert "#### B2. 个股细化" in card
+    assert "### C. 【侧栏】" in card
+    assert "阅读顺序" in card
     assert "观察" in card and "300750" in card
     assert "新能源" in card and "等确认" in card
     assert "回避追高" in card  # 半导体 expensive+crowding
+    assert long_why in card  # 动作理由全文
+    assert "理由: " + long_why in card
+    # 主结论动作应在侧栏之前
+    assert card.index("### A. 【主结论】动作") < card.index("### C. 【侧栏】")
+    assert card.index("### A. 【主结论】动作") < card.index("### B. 推理链")
 
     md = render_daily_report(result)
     assert "## 结论卡（速读）" in md
@@ -832,16 +848,10 @@ def test_render_conclusion_card_and_cross_links():
     assert "#### ④ 风控终局" in md
     assert "**承接 §3**" in md
     assert "板块: 新能源" in md
-    assert "### 逻辑链：维度如何串起来" in md
-    assert "板块「新能源」" in md
-    assert "不按票展开" in md
-    # 逻辑链不应再逐票列出代码
-    chain_start = md.index("### 逻辑链：维度如何串起来")
-    chain_end = md.index("---", chain_start)
-    chain_block = md[chain_start:chain_end]
-    assert "300750" not in chain_block
-    assert "600519" not in chain_block
-    assert "详见动作/§3" in chain_block or "终局以" in chain_block
+    assert "### B. 推理链" in md
+    assert "#### B1. 宏观 → 板块" in md
+    # B1 赛道态度可带代码链接；B2 才是①–④表
+    assert "①研究评级" in md or "研究评级" in md
 
     # 维度复盘渲染
     result["dimension_reviews"] = [

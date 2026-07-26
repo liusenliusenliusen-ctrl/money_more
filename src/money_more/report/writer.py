@@ -163,7 +163,7 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append(
         "_流程固定为：**①个股研究 → ②组合草案 → ③多空辩论 → ④风控终局**。"
-        "下表为全市场一览；**按票完整推理见 §3**；§4 只列④终局指令。"
+        "下表为个股细化一览；**按票完整推理见 §3**；§4 / 上方 A 动作只列④终局指令。"
         "只有④的 buy/add（仓位>0）可执行并进入模拟盘；①的研究评级 buy ≠ 开仓指令。_"
     )
     lines.append("")
@@ -591,13 +591,15 @@ def render_recommendations_section(result: dict[str, Any]) -> list[str]:
 
 
 def render_conclusion_card(result: dict[str, Any]) -> list[str]:
-    """结论卡：从已有结果派生，便于外行速读验证。"""
+    """结论卡：主结论（分析→预测→动作）→ 推理链（宏观/板块 + 个股细化）→ 侧栏。"""
     lines: list[str] = []
     market = (result.get("market") or {}).get("analysis") or {}
     digest = (result.get("intelligence") or {}).get("digest") or {}
     summary = result.get("decision_summary") or {}
     names = _stock_name_map(result)
     by_sec = _recs_by_sector(result)
+    sectors = result.get("sectors") or []
+    recs = result.get("recommendations") or []
 
     phase = market.get("phase_label") or market.get("phase") or "-"
     style = market.get("style_label") or market.get("style") or "-"
@@ -609,9 +611,8 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("## 结论卡（速读）")
     lines.append("")
     lines.append(
-        "_阅读分层：**【主结论】**可交易、可复核；"
-        "**【侧栏】**高争议/尾部，须确认信号才升权，不得单独当买入理由。"
-        "下方 §0–§6 是完整论证。后果自负，仅供参考。_"
+        "_阅读顺序：**A 主结论**（分析→预测→动作）→ **B 推理链**（宏观/板块骨架 + 个股①–④细化）→ "
+        "**C 侧栏**（争议/尾部，须确认才升权）。下方 §0–§6 是完整论证。后果自负，仅供参考。_"
     )
     lines.append("")
 
@@ -628,20 +629,8 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
         lines.append("")
 
-    stage_block = render_decision_stages_section(result)
-    if stage_block:
-        for ln in stage_block:
-            if ln.startswith("## "):
-                lines.append("### " + ln[3:])
-            else:
-                lines.append(ln)
-    else:
-        lines.append("### 决策流程（分阶段结论）")
-        lines.append("")
-        lines.append("_本轮未写入 decision_stages（旧报告）；以 §4 终局动作为准。_")
-        lines.append("")
-
-    lines.append("### 【主结论】分析：现在怎么看")
+    # ---------- A. 主结论 ----------
+    lines.append("### A. 【主结论】分析：现在怎么看")
     lines.append("")
     lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
     if driver and driver != "-":
@@ -683,15 +672,14 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         lines.append(f"- {f}")
     lines.append("")
 
-    lines.append("### 【主结论】预测：接下来怎么预期")
+    lines.append("### A. 【主结论】预测：接下来怎么预期")
     lines.append("")
     outlook = summary.get("market_context") or market.get("summary") or ""
     if outlook:
         lines.append(f"- **主情景**: {_one_line(outlook, 140)}")
     inv = list(market.get("invalidation") or [])[:2]
     if not inv:
-        # 从建议里抽失效条件
-        for rec in (result.get("recommendations") or [])[:2]:
+        for rec in recs[:2]:
             if rec.get("invalidation"):
                 inv.append(str(rec["invalidation"]))
             if len(inv) >= 2:
@@ -709,11 +697,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
     lines.append("")
 
-    lines.extend(
-        _render_contested_block(result, heading="### 【侧栏】争议叙事 / 尾部情景", limit=3)
-    )
-
-    lines.append("### 【主结论】动作：怎么做（④风控终局）")
+    lines.append("### A. 【主结论】动作：怎么做（④风控终局）")
     lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
@@ -724,7 +708,6 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     else:
         lines.append("_以下为面向你声明持仓的操作建议（④终局）；模拟盘见后文独立章节。_")
     lines.append("")
-    recs = result.get("recommendations") or []
     if not recs:
         lines.append("- （本轮无结构化建议）")
     else:
@@ -736,24 +719,52 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             pos = rec.get("position_pct")
             pos_s = f" · 仓位 {pos}%" if pos is not None else ""
             conf_s = rec.get("confidence", "-")
-            why = _one_line(rec.get("rationale"), 64)
+            # 理由全文，不截断（仅压空白）
+            why = " ".join(str(rec.get("rationale") or "").split())
             sector = rec.get("sector_tag") or infer_sector(code) or ""
             sec_s = f" · 板块:{sector}" if sector else ""
-            lines.append(
+            head = (
                 f"- **{label}** {code}{(' ' + name) if name else ''} "
-                f"(置信度 {conf_s}{pos_s}{sec_s}) — {why}"
+                f"(置信度 {conf_s}{pos_s}{sec_s})"
             )
+            if why:
+                lines.append(f"{head}")
+                lines.append(f"  - 理由: {why}")
+            else:
+                lines.append(head)
     lines.append("")
 
-    lines.append("### 板块：赛道态度")
+    # ---------- B. 推理链（一体两层）----------
+    lines.append("### B. 推理链（宏观→板块 → 个股细化）")
     lines.append("")
-    sectors = result.get("sectors") or []
+    lines.append(
+        "_B1 是整体骨架（情报→市场→配置→板块态度）；"
+        "B2 是在此基础上对每只票的①研究→②草案→③辩论→④风控。"
+        "①研究评级 ≠ 可开仓指令；可执行只看④与上方动作。_"
+    )
+    lines.append("")
+
+    lines.append("#### B1. 宏观 → 板块")
+    lines.append("")
+    theme0 = ""
+    themes = digest.get("headline_themes") or []
+    if themes:
+        theme0 = _one_line(themes[0], 40)
+    elif digest.get("market_narratives"):
+        theme0 = _one_line(digest["market_narratives"][0], 40)
+    head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
+    lines.append(f"1. {head} → 配置倾向「{alloc}」")
+    lines.append("")
     if not sectors:
         lines.append("- （无板块筛选）")
     else:
+        lines.append("**赛道态度**")
+        lines.append("")
         for sec in sectors:
             a = sec.get("analysis") or {}
             name = str(a.get("sector") or sec.get("sector") or "")
+            if not name:
+                continue
             related = by_sec.get(name) or []
             stance = _sector_stance(a, related)
             pri = a.get("priority", "-")
@@ -777,65 +788,34 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             )
     lines.append("")
 
-    lines.append("### 逻辑链：维度如何串起来")
+    lines.append("#### B2. 个股细化（①研究→②草案→③辩论→④风控）")
     lines.append("")
-    lines.append(
-        "_只写推理骨架：情报 → 市场 → 配置 → 板块态度。"
-        "具体个股见上方动作 / §3 决策链，此处不按票展开。_"
-    )
-    lines.append("")
-    theme0 = ""
-    themes = (digest.get("headline_themes") or [])
-    if themes:
-        theme0 = _one_line(themes[0], 40)
-    elif digest.get("market_narratives"):
-        theme0 = _one_line(digest["market_narratives"][0], 40)
-    head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
-    lines.append(f"1. {head} → 配置倾向「{alloc}」")
+    stage_block = render_decision_stages_section(result)
+    if stage_block:
+        # 降级标题层级，并去掉外层「决策流程」二级标题（已由 B2 承接）
+        for ln in stage_block:
+            if ln.startswith("## "):
+                continue
+            if ln.startswith("### "):
+                lines.append("##### " + ln[4:])
+            else:
+                lines.append(ln)
+    else:
+        lines.append("_本轮未写入 decision_stages（旧报告）；以 A 动作 / §4 终局为准。_")
+        lines.append("")
 
-    # 板块层：每赛道一行态度摘要（不落到个股）
-    chain_i = 2
-    for sec in sectors:
-        a = sec.get("analysis") or {}
-        name = str(a.get("sector") or sec.get("sector") or "")
-        if not name:
-            continue
-        related = by_sec.get(name) or []
-        priority = str(a.get("priority") or "medium")
-        # high 优先；有对应建议的中优先级也保留；纯 low/无建议可跳过以免刷屏
-        if priority not in ("high", "medium") and not related:
-            continue
-        if priority == "medium" and not related and len(
-            [s for s in sectors if str((s.get("analysis") or {}).get("priority") or "") == "high"]
-        ) >= 2:
-            continue
-        stance = _sector_stance(a, related)
-        bits = [
-            f"优先级:{a.get('priority', '-')}",
-            f"景气:{a.get('prosperity', '-')}",
-            f"估值:{a.get('valuation', '-')}",
-        ]
-        crowd = (a.get("sentiment") or {}).get("crowding_risk")
-        if crowd:
-            bits.append(f"拥挤:{crowd}")
-        # 若有对应终局动作，只汇总动作类型，不列代码
-        action_set = {str(r.get("action") or "watch") for r in related}
-        action_hint = ""
-        if related:
-            labels = sorted(
-                {_ACTION_LABEL.get(a, a) for a in action_set if a},
-                key=lambda x: (0 if x == "买入" else 1 if x == "加仓" else 2 if x == "持有" else 3),
-            )
-            action_hint = f" → 对应个股终局以「{'/'.join(labels)}」为主（详见动作/§3）"
-        elif priority == "high":
-            action_hint = " → 深度池暂无对应个股，板块态度仍约束追高/回避"
-        lines.append(
-            f"{chain_i}. 板块「{name}」[{' · '.join(bits)}] — {stance}{action_hint}"
-        )
-        chain_i += 1
-        if chain_i > 5:
-            break
-    lines.append("")
+    # ---------- C. 侧栏 ----------
+    contested = _render_contested_block(
+        result, heading="### C. 【侧栏】争议叙事 / 尾部情景", limit=3
+    )
+    if contested:
+        lines.extend(contested)
+    else:
+        lines.append("### C. 【侧栏】争议叙事 / 尾部情景")
+        lines.append("")
+        lines.append("_（本轮无侧栏争议叙事）_")
+        lines.append("")
+
     lines.append("---")
     lines.append("")
     return lines

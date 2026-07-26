@@ -129,11 +129,12 @@ def test_decision_stages_payload_and_report_render():
     assert "无可执行新开仓" in text or "终局组合摘要" in text
 
     card = "\n".join(render_conclusion_card(result))
-    assert "决策流程" in card
+    assert "### B. 推理链" in card
+    assert "#### B2. 个股细化" in card
     assert "④风控终局" in card
     assert "分批建仓茅台" in card
     # 动作区应体现终局 watch，而非把草案当主指令标题
-    assert "动作：怎么做（④风控终局）" in card
+    assert "### A. 【主结论】动作：怎么做（④风控终局）" in card
 
 
 def test_stock_decision_chain_and_slim_recommendations():
