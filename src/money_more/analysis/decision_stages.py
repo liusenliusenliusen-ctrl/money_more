@@ -76,10 +76,10 @@ def build_decision_stages(
 ) -> dict[str, Any]:
     return {
         "flow": [
-            "① 个股研究（research_rating）",
-            "② 组合决策草案（LLM 动作/仓位）",
-            "③ 多空辩论（仅 buy/add）",
-            "④ 风控校验（终局可执行动作）",
+            "① 个股研究（逐票 research_rating，≠开仓）",
+            "② 组合草案（双分析师独立草案 → 综合委员合并）",
+            "③ 多空辩论（仅对②中 buy/add）",
+            "④ 风控终局（硬约束后的可执行动作）",
         ],
         "research": research,
         "portfolio_draft": portfolio_draft,
@@ -88,8 +88,9 @@ def build_decision_stages(
         "overrides": list(overrides or [])[:40],
         "draft_portfolio_summary": draft_portfolio_summary or "",
         "plain_note": (
-            "研究评级≠可开仓指令。只有④风控终局的 buy/add（且仓位>0）才会进入模拟盘；"
-            "①②③供核对「为何从看好变成观察」。"
+            "①研究评级≠开仓；②才是组合层取舍（含综合）；"
+            "只有④的 buy/add（仓位>0）可执行并进模拟盘。"
+            "表中「-」=该阶段无记录（未进草案），不是「同上」。"
         ),
     }
 

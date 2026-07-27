@@ -152,6 +152,51 @@ def _fmt_stage_action(rec: dict[str, Any] | None) -> str:
     return f"{label}{(' ' + pct_s) if pct_s else ''}{conf_s}{extra}"
 
 
+def _count_buy_add(recs: list[dict[str, Any]] | None) -> int:
+    n = 0
+    for r in recs or []:
+        if str(r.get("action") or "").lower() in ("buy", "add"):
+            try:
+                if r.get("position_pct") is not None and float(r.get("position_pct")) <= 0:
+                    continue
+            except (TypeError, ValueError):
+                pass
+            n += 1
+    return n
+
+
+def _multi_agent_synthesis_note(result: dict[str, Any]) -> str:
+    """结论卡用：说明②来自双分析师→综合，并给本轮计数对照。"""
+    ma = result.get("multi_agent") or {}
+    if not ma.get("enabled"):
+        return (
+            "本轮未开多 Agent：②由单一决策模型直接给出组合动作/仓位"
+            "（仍≠①研究评级）。"
+        )
+    meta = ma.get("meta") if isinstance(ma.get("meta"), dict) else {}
+    primary = str(meta.get("primary") or "?")
+    secondary = str(meta.get("secondary") or "?")
+    synth = str(meta.get("synthesizer") or "synthesizer")
+    drafts = result.get("multi_agent_drafts") or {}
+    bits: list[str] = []
+    for name in (primary, secondary):
+        if name in drafts and isinstance(drafts[name], dict):
+            n = _count_buy_add(drafts[name].get("recommendations"))
+            bits.append(f"{name} 建议买入/加仓 {n} 只")
+        elif name not in ("?", ""):
+            bits.append(f"{name}（独立草案）")
+    draft_n = _count_buy_add((result.get("decision_stages") or {}).get("portfolio_draft"))
+    contrast = ("；".join(bits) + f" → **综合后写入②：买入/加仓 {draft_n} 只**") if bits else (
+        f"综合后写入②：买入/加仓 {draft_n} 只"
+    )
+    return (
+        f"启用多 Agent：`{primary}` + `{secondary}` 各出独立组合草案，"
+        f"再由 **`{synth}` 综合委员** 合并取舍后写入下表②。"
+        f" {contrast}。"
+        "① 的 research buy 再多，也不自动进入②。"
+    )
+
+
 def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     """展示 研究→草案→辩论→风控 分阶段结论。"""
     stages = result.get("decision_stages") or {}
@@ -161,14 +206,32 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     lines.append("## 决策流程（分阶段结论）")
     lines.append("")
     lines.append(
-        "_流程固定为：**①个股研究 → ②组合草案 → ③多空辩论 → ④风控终局**。"
-        "下表为个股决策链一览；**按票完整推理见详细论证 B2**；结论卡 A3 只列④终局指令。"
-        "只有④的 buy/add（仓位>0）可执行并进入模拟盘；①的研究评级 buy ≠ 开仓指令。_"
+        "_下表是个股决策链一览（结论卡速读）；**按票完整推理见详细论证 B2**；"
+        "结论卡 **A3** 只列④终局指令。_"
+    )
+    lines.append("")
+    lines.append("**步骤说明（先读再看表）**")
+    lines.append("")
+    lines.append(
+        "- **① 个股研究**：对深度池**每一只**做单票研究，产出 `research_rating`"
+        "（如 buy/hold）。回答「这只票基本面/叙事怎么看」；**不是**下单指令。"
+    )
+    lines.append(
+        "- **② 组合草案**：在①之上做**组合层取舍**（买哪些、仓位多少、其余是否搁置）。"
+        f"{_multi_agent_synthesis_note(result)}"
+    )
+    lines.append(
+        "- **③ 多空辩论**：只对②里 **buy/add** 的票开多空对抗并可能下调置信度；"
+        "未进②的票不会出现在本列（显示 `-`）。"
+    )
+    lines.append(
+        "- **④ 风控终局**：叠硬门禁/微观结构/总仓/流动性等规则后的**可执行动作**；"
+        "只有此处 buy/add 且仓位>0 才进模拟盘。表中 `-` = 该阶段无记录，**不是「同上」**。"
     )
     lines.append("")
     flow = stages.get("flow") or []
     if flow:
-        lines.append("**本轮步骤**: " + " → ".join(str(x) for x in flow))
+        lines.append("**本轮链路**: " + " → ".join(str(x) for x in flow))
         lines.append("")
 
     summary = result.get("decision_summary") or {}
@@ -177,7 +240,7 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
     # 先草案、后终局，便于对照「被覆盖前」与「可执行后」
     if draft_sum and draft_sum.strip() and draft_sum.strip() != str(final_sum).strip():
         lines.append(
-            f"**②草案摘要（已被终局覆盖，仅供对照）**: {_one_line(draft_sum, None)}"
+            f"**②草案摘要（综合后 · 已被终局覆盖，仅供对照）**: {_one_line(draft_sum, None)}"
         )
         lines.append("")
     if final_sum:
@@ -308,7 +371,8 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
     lines.append("#### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
     lines.append("")
     lines.append(
-        "_核对结论卡 **B2**。每只票写完整推理链；**①研究评级 ≠ 可开仓指令**。"
+        "_核对结论卡 **B2**（含步骤说明）。每只票写完整推理链；"
+        "**①研究评级 ≠ 可开仓指令**；**②含综合取舍**。"
         "可执行列表见结论卡 **A3**；止损/目标等纪律字段写在各票 **④**。_"
     )
     lines.append("")
@@ -607,7 +671,17 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     # ---------- A. 主结论 ----------
     lines.append("### A. 主结论")
     lines.append("")
+    lines.append(
+        "_A 回答「看什么→预期什么→怎么做」。A3 动作来自决策链 **④风控终局**；"
+        "完整①–④见下方 **B2**。_"
+    )
+    lines.append("")
     lines.append("#### A1. 分析：现在怎么看")
+    lines.append("")
+    lines.append(
+        "_**本步做什么**：综合情报、宏观/流动性、微观结构与矛盾点，"
+        "给出当前市场环境与配置倾向（描述现状，不下单）。_"
+    )
     lines.append("")
     lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
     if driver and driver != "-":
@@ -651,6 +725,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
 
     lines.append("#### A2. 预测：接下来怎么预期")
     lines.append("")
+    lines.append(
+        "_**本步做什么**：在 A1 基础上给出主情景、主要风险与认错条件；"
+        "并对照上周（延续/转向），仍属预期层。_"
+    )
+    lines.append("")
     outlook = summary.get("market_context") or market.get("summary") or ""
     if outlook:
         lines.append(f"- **主情景**: {_one_line(outlook, None)}")
@@ -680,6 +759,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
 
     lines.append("#### A3. 动作：怎么做（④风控终局）")
+    lines.append("")
+    lines.append(
+        "_**本步做什么**：只列**可执行终局动作**（来自 B2④）。"
+        "不是①研究评级列表；研究看好但未进组合/被风控压掉的票不会出现在这里。_"
+    )
     lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
@@ -720,13 +804,18 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("### B. 推理链（宏观→板块 → 个股决策链）")
     lines.append("")
     lines.append(
-        "_B1 是整体骨架（情报→市场→配置→板块态度）；"
-        "B2 是在此基础上对每只票的①研究→②草案→③辩论→④风控。"
-        "①研究评级 ≠ 可开仓指令；可执行只看④与上方动作。_"
+        "_B 解释 A 怎么来的：**B1** 先定宏观→板块骨架；"
+        "**B2** 再对深度池走 ①研究→②组合草案（含综合）→③辩论→④风控。"
+        "①研究评级 ≠ 开仓；可执行只看④与上方 **A3**。_"
     )
     lines.append("")
 
     lines.append("#### B1. 宏观 → 板块")
+    lines.append("")
+    lines.append(
+        "_**本步做什么**：把情报主题落到市场阶段/风格/风险，再给出关注赛道的态度"
+        "（优先/回避/跟踪），作为个股决策的上层约束。_"
+    )
     lines.append("")
     theme0 = ""
     themes = digest.get("headline_themes") or []
@@ -771,6 +860,12 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
 
     lines.append("#### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
+    lines.append("")
+    lines.append(
+        "_**本步做什么**：展示从「单票研究」到「可执行动作」的漏斗。"
+        "下面「步骤说明」写清每列含义；尤其 **②=双分析师草案经综合后的组合取舍**，"
+        "不是①的简单汇总。_"
+    )
     lines.append("")
     stage_block = render_decision_stages_section(result)
     if stage_block:

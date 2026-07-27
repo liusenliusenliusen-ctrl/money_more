@@ -123,6 +123,9 @@ def test_decision_stages_payload_and_report_render():
     }
     block = render_decision_stages_section(result)
     text = "\n".join(block)
+    assert "步骤说明" in text
+    assert "① 个股研究" in text or "①个股研究" in text or "**① 个股研究**" in text
+    assert "综合" in text
     assert "①研究评级" in text
     assert "④风控终局" in text
     assert "分批建仓" in text  # 草案对照可见
@@ -133,6 +136,7 @@ def test_decision_stages_payload_and_report_render():
     card = "\n".join(render_conclusion_card(result))
     assert "### B. 推理链" in card
     assert "#### B2. 个股决策链" in card
+    assert "本步做什么" in card
     assert "④风控终局" in card
     assert "分批建仓茅台" in card
     assert card.index("②草案摘要") < card.index("④终局组合摘要")
