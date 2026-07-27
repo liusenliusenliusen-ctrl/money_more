@@ -460,9 +460,9 @@ def test_midlong_defaults():
     from money_more.config import load_config
 
     c = load_config()
-    assert c.schedule.cadence == "every_5_days"
-    assert c.schedule.interval_days == 5
+    assert c.schedule.cadence == "tue_fri"
     assert c.schedule.run_hour == 1
+    assert c.schedule.optimize_after_run is True
     assert c.analysis.investment_horizon == "medium_long"
     assert c.analysis.review_min_hold_days >= 14
     assert c.trading.stop_loss_pct >= 12
@@ -484,6 +484,30 @@ def test_schedule_gate(tmp_path: Path):
     assert ok3 is True
     ok4, _ = should_run(tmp_path, interval_days=5, today=today + timedelta(days=1), force=True)
     assert ok4 is True
+
+
+def test_schedule_gate_tue_fri(tmp_path: Path):
+    from datetime import date
+
+    from money_more.schedule_gate import should_run, write_last_run
+
+    # 2026-07-28 = Tuesday, 2026-07-29 = Wednesday, 2026-07-31 = Friday
+    tue = date(2026, 7, 28)
+    wed = date(2026, 7, 29)
+    fri = date(2026, 7, 31)
+    ok, reason = should_run(tmp_path, cadence="tue_fri", today=tue)
+    assert ok is True
+    assert "周二/周五" in reason
+    ok_w, reason_w = should_run(tmp_path, cadence="tue_fri", today=wed)
+    assert ok_w is False
+    assert "非周二/周五" in reason_w
+    write_last_run(tmp_path, tue)
+    ok_dup, _ = should_run(tmp_path, cadence="tue_fri", today=tue)
+    assert ok_dup is False
+    ok_f, _ = should_run(tmp_path, cadence="tue_fri", today=fri)
+    assert ok_f is True
+    ok_force, _ = should_run(tmp_path, cadence="tue_fri", today=wed, force=True)
+    assert ok_force is True
 
 
 def test_optimize_pause_lock(tmp_path: Path):

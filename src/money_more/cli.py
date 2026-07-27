@@ -37,6 +37,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     cadence = config.schedule.cadence
     label = {
+        "tue_fri": "每周二/周五",
+        "tuesday_friday": "每周二/周五",
         "every_5_days": f"每{config.schedule.interval_days}天",
         "weekly": "周度",
         "daily": "每日",
@@ -206,6 +208,7 @@ def cmd_scheduled(args: argparse.Namespace) -> int:
         config.project_root,
         interval_days=config.schedule.interval_days,
         force=force,
+        cadence=config.schedule.cadence,
     )
     if not ok:
         console.print(Panel(reason, title="跳过本次（未到间隔）", style="yellow"))

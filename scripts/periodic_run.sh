@@ -1,9 +1,9 @@
 #!/bin/bash
-# 每 5 天周期任务：分析报告 + Cursor 自优化报告
-# cron 每天凌晨 1 点触发；脚本内按 interval_days=5 门禁，未到间隔则跳过。
+# 周二/周五 01:00 周期任务：分析报告 + Cursor 自优化（optimize_after_run）
+# 由 LaunchAgent / cron 在排期日触发；门禁见 schedule.cadence=tue_fri
 #
-# crontab 示例（每天 01:00）：
-# 0 1 * * * cd /Users/liusen/Documents/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
+# crontab 示例（周二、周五 01:00）：
+# 0 1 * * 2,5 cd /Users/liusen/Documents/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

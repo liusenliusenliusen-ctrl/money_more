@@ -68,7 +68,7 @@ OPTIMIZE_PROMPT_TEMPLATE = """你是 money_more（A股中长线 AI 研究助手�
 7. 不要提交 git、不要改 .env 密钥、不要扩大成短线交易系统
 
 ## 约束
-- 保持中长线 + 每5天周期（config: investment_horizon / schedule.interval_days）
+- 保持中长线 + 周二/周五周期（config: investment_horizon / schedule.cadence=tue_fri）
 - 新增数据源优先 AkShare/公开 RSS/免费 API；付费源（Tushare 权限）仅作可选增强
 - 改完后确保 `python -m pytest tests/ -q` 能过
 """

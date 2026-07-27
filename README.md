@@ -9,7 +9,7 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 | | 本项目 |
 |---|---|
 | 投资取向 | 中长线（数周–数季），非短线 |
-| 调度 | **手动触发**（本地/服务器 cron 已关闭） |
+| 调度 | **每周二、周五 01:00** 自动跑一轮（含自优化）；也可手动 `--force` |
 | 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池（**自动筛选**；无独立「必跟股池」） |
 | 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；有持仓则强制进深度池 |
 | 产出 | 主报告（数据源→结论卡→详细论证→D 趋势）+ 复盘/模拟小报告、优化报告、滚动趋势 |
@@ -21,7 +21,7 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 
 ```
 money-more scheduled
-  ├─ 间隔门禁（距上次成功未满 interval_days 则跳过；--force 可强制）
+  ├─ 排期门禁（cadence=tue_fri：仅周二/周五；--force 可强制）
   ├─ 情报（14 日窗口）
   ├─ 市场 / 板块（watch_sectors + 资金流自动扩 → 结论卡 B1）/ 个股漏斗
   ├─ 决策链：①研究 → ②组合草案（双分析师 → 综合）→ ③辩论（凡 buy/add）→ ④风控终局
@@ -55,7 +55,7 @@ money-more scheduled --force --skip-optimize   # 立刻跑一轮分析
 money-more email-test                # 验证邮件（需先配好 SMTP）
 ```
 
-推荐入口：需要时手动 `money-more scheduled --force`（或告诉 Cursor 跑一轮）。  
+推荐入口：定时任务自动跑；需要时也可手动 `money-more scheduled --force`。  
 **跑任务时**：说明了持仓就写入 `holdings`；未提持仓 → 清空为 `holdings: []` 再跑。
 
 ## 环境变量（`.env`）
@@ -84,7 +84,9 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |
 | `screen.auto_sector_from_flow` | 资金流入前列自动扩 B1 板块（默认 3） |
 | `analysis.debate_top_k` | `>0` 开启：所有 `buy`/`add` 必辩；`0` 关闭（如 `--skip-debate`） |
-| `schedule.interval_days` | 距上次成功跑的门禁天数；**不是**已启用的 cron |
+| `schedule.cadence` | 默认 `tue_fri`（每周二/周五）；也可用 `every_5_days` |
+| `schedule.interval_days` | 非 `tue_fri` 时的间隔门禁天数 |
+| `schedule.run_hour` | 定时触发小时（默认 1=凌晨） |
 | `schedule.optimize_after_run` | `scheduled` 默认跑完后自优化 |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
 | `sim.*` | 独立小报告 `*-sim.md`；缺 `position_pct` 不静默开仓 |
@@ -121,10 +123,12 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 - **不附**：`*-review.md`、`*-sim.md`、`trend.md`
 - **首次发送**：每个收件人第一次收到邮件时，另附 `docs/how-to-read-report.md`
 
-## 运行方式（手动）
+## 运行方式
 
-本地与服务器上的 **cron / LaunchAgent 定时任务已取消**。  
-`schedule.interval_days` 只约束「手动连跑太勤」时的跳过逻辑；需要立刻跑请加 `--force`。
+**定时（已启用）**：每周二、周五本地 **01:00** 由 LaunchAgent 拉起 `periodic_run.sh`（分析 + 自优化）。  
+安装/重装：`./scripts/install_launchd.sh`（macOS 推荐）；或 `./scripts/install_cron.sh`。
+
+手动：
 
 ```bash
 # 本地
@@ -135,7 +139,8 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 ./scripts/periodic_run.sh --force
 ```
 
-服务器（`/opt/money_more`）同样手动触发。`scripts/install_cron.sh` / `install_launchd.sh` 仍保留，但默认不要安装。
+`schedule.cadence=tue_fri` 时，非周二/周五会被门禁跳过（`--force` 除外）。  
+项目在 `~/Documents` 下时，请给 `/bin/bash`「完整磁盘访问权限」，否则定时任务可能 `Operation not permitted`。
 
 ## 人工改动 vs 自优化
 

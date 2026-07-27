@@ -74,9 +74,9 @@ class AnalysisConfig:
 
 @dataclass
 class ScheduleConfig:
-    cadence: str = "every_5_days"  # every_5_days | weekly | daily
-    interval_days: int = 5
-    run_hour: int = 1  # 本地凌晨 1 点（由 cron 触发）
+    cadence: str = "tue_fri"  # tue_fri | every_5_days | weekly | daily
+    interval_days: int = 3  # 非 tue_fri 时的间隔门禁；tue_fri 以星期为准
+    run_hour: int = 1  # 本地凌晨 1 点（由 LaunchAgent/cron 触发）
     optimize_after_run: bool = True
 
 
@@ -320,8 +320,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             default_time_horizon=str(analysis_raw.get("default_time_horizon", "medium")),
         ),
         schedule=ScheduleConfig(
-            cadence=str(schedule_raw.get("cadence", "every_5_days")),
-            interval_days=int(schedule_raw.get("interval_days", 5)),
+            cadence=str(schedule_raw.get("cadence", "tue_fri")),
+            interval_days=int(schedule_raw.get("interval_days", 3)),
             run_hour=int(schedule_raw.get("run_hour", 1)),
             optimize_after_run=bool(schedule_raw.get("optimize_after_run", True)),
         ),

@@ -47,11 +47,11 @@ trading:
 # 复盘回看窗口（天）
 review_lookback_days: 60
 
-# 调度：手动触发为主；interval_days 仅作「距上次成功跑」门禁（--force 可跳过）
-# 本地/服务器 cron 已默认关闭，不要依赖定时
+# 调度：每周二、周五本地 01:00 由 LaunchAgent/cron 触发；带自优化
+# 安装：./scripts/install_launchd.sh（macOS 推荐）或 ./scripts/install_cron.sh
 schedule:
-  cadence: every_5_days
-  interval_days: 5
+  cadence: tue_fri
+  interval_days: 3            # 非 tue_fri 时的间隔门禁；tue_fri 以星期为准
   run_hour: 1
   optimize_after_run: true
 
