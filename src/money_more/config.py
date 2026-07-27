@@ -66,7 +66,6 @@ class TrendConfig:
 class AnalysisConfig:
     prompt_version: str = "v3-midlong-5d"
     debate_top_k: int = 3  # >0 开启辩论（对所有 buy/add）；0=关闭（如 --skip-debate）
-    debate_min_score: float = 55.0  # 历史字段，选股辩论已改为「凡 buy/add 必辩」，不再作门槛
     investment_horizon: str = "medium_long"  # medium_long | short
     review_min_hold_days: int = 14
     paper_horizon_days: int = 60
@@ -315,7 +314,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         analysis=AnalysisConfig(
             prompt_version=str(analysis_raw.get("prompt_version", "v3-midlong-5d")),
             debate_top_k=int(analysis_raw.get("debate_top_k", 3)),
-            debate_min_score=float(analysis_raw.get("debate_min_score", 55)),
             investment_horizon=str(analysis_raw.get("investment_horizon", "medium_long")),
             review_min_hold_days=int(analysis_raw.get("review_min_hold_days", 14)),
             paper_horizon_days=int(analysis_raw.get("paper_horizon_days", 60)),

@@ -201,9 +201,9 @@ class DecisionPipeline:
             "watch_sectors": watch_sectors,
             "auto_sectors": auto_sectors,
             "note": (
-                "§2 含「关注板块」+ 资金流入自动扩板块；个股漏斗另见 §2.1。"
+                "B1 含「关注板块」+ 资金流入自动扩板块；个股漏斗另见筛股说明。"
                 if auto_sectors
-                else "§2 仅覆盖 config.watch_sectors；个股漏斗可更宽（见 screen.universe_mode）。"
+                else "B1 仅覆盖 config.watch_sectors；个股漏斗可更宽（见 screen.universe_mode）。"
             ),
         }
         sector_analyses: list[dict[str, Any]] = []
@@ -509,6 +509,7 @@ class DecisionPipeline:
             build_decision_stages,
             build_final_portfolio_summary,
             build_research_stage,
+            build_synthesis_audit,
             deep_copy_recs,
             snapshot_recommendations,
         )
@@ -516,6 +517,13 @@ class DecisionPipeline:
         research_stage = build_research_stage(stock_analyses)
         draft_recs_snap = snapshot_recommendations(deep_copy_recs(raw_recs))
         draft_portfolio_summary = str(decision.get("portfolio_summary") or "")
+        synthesis_audit = build_synthesis_audit(
+            multi_agent_drafts=result.get("multi_agent_drafts"),
+            portfolio_draft=draft_recs_snap,
+            meta=(result.get("multi_agent") or {}).get("meta")
+            if isinstance((result.get("multi_agent") or {}).get("meta"), dict)
+            else {},
+        )
 
         # 凡 buy/add 必须多空辩论（debate_top_k>0 表示开启；=0 为 --skip-debate）
         debates: dict[str, Any] = {}
@@ -607,6 +615,7 @@ class DecisionPipeline:
             after_risk=after_risk_snap,
             overrides=overrides,
             draft_portfolio_summary=draft_portfolio_summary,
+            synthesis_audit=synthesis_audit,
         )
         from money_more.analysis.risk_check import risk_check_book
 

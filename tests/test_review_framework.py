@@ -123,7 +123,7 @@ def test_review_upsert_tracking(tmp_path: Path) -> None:
     assert any(int(x["id"]) == 10 for x in pending)
 
 
-def test_render_review_section_mentions_window() -> None:
+def test_render_review_report_mentions_window() -> None:
     from money_more.report.writer import render_review_report
 
     md = render_review_report(

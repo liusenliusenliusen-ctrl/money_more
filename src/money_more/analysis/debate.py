@@ -105,37 +105,6 @@ def run_buy_add_debates(
     return out
 
 
-def run_top_k_debates(
-    llm: LLMClient,
-    stock_analyses: list[dict[str, Any]],
-    *,
-    top_k: int = 2,
-    min_score: float = 55.0,
-) -> dict[str, Any]:
-    """兼容旧接口：按因子分 Top-K（新流水线请用 run_buy_add_debates）。"""
-    ranked = []
-    for s in stock_analyses:
-        sc = s.get("factor_scorecard") or {}
-        total = sc.get("total_score")
-        if total is None:
-            continue
-        try:
-            total_f = float(total)
-        except (TypeError, ValueError):
-            continue
-        if total_f < min_score:
-            continue
-        ranked.append((total_f, s))
-    ranked.sort(key=lambda x: x[0], reverse=True)
-    selected = [s for _, s in ranked[:top_k]]
-    out: dict[str, Any] = {}
-    for s in selected:
-        code = normalize_code(str(s.get("code") or ""))
-        if code:
-            out[code] = run_debate_on_stock(llm, s)
-    return out
-
-
 def apply_debate_to_recommendations(
     recommendations: list[dict[str, Any]],
     debates: dict[str, Any],

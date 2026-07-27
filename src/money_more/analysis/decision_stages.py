@@ -27,7 +27,7 @@ def slim_recommendation(rec: dict[str, Any]) -> dict[str, Any]:
     """可序列化的建议快照（避免把整份辩论/因子卡塞进轨迹）。"""
     code = normalize_code(str(rec.get("code") or ""))
     debate = rec.get("debate") if isinstance(rec.get("debate"), dict) else {}
-    return {
+    out: dict[str, Any] = {
         "code": code,
         "action": str(rec.get("action") or "watch").lower(),
         "position_pct": rec.get("position_pct"),
@@ -37,6 +37,9 @@ def slim_recommendation(rec: dict[str, Any]) -> dict[str, Any]:
         "decision_hint": debate.get("decision_hint") if debate else None,
         "rationale": _one_line(rec.get("rationale"), 100),
     }
+    if rec.get("selection"):
+        out["selection"] = str(rec.get("selection"))
+    return out
 
 
 def snapshot_recommendations(recs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -65,6 +68,139 @@ def build_research_stage(stock_analyses: list[dict[str, Any]]) -> list[dict[str,
     return rows
 
 
+def _buy_add_codes(recs: list[dict[str, Any]] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for r in recs or []:
+        if str(r.get("action") or "").lower() not in ("buy", "add"):
+            continue
+        try:
+            if r.get("position_pct") is not None and float(r.get("position_pct")) <= 0:
+                continue
+        except (TypeError, ValueError):
+            pass
+        code = normalize_code(str(r.get("code") or ""))
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        out.append(code)
+    return out
+
+
+def build_synthesis_audit(
+    *,
+    multi_agent_drafts: dict[str, Any] | None,
+    portfolio_draft: list[dict[str, Any]],
+    meta: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """对照主/副独立草案与综合后的②：保留/否决哪些买入（仅审计，不改建议）。"""
+    drafts = multi_agent_drafts or {}
+    if not drafts:
+        return None
+    meta = meta or {}
+    primary = str(meta.get("primary") or "")
+    secondary = str(meta.get("secondary") or "")
+    agent_names = [n for n in (primary, secondary) if n] or list(drafts.keys())
+
+    by_agent: dict[str, list[str]] = {}
+    for name in agent_names:
+        blob = drafts.get(name) if isinstance(drafts.get(name), dict) else None
+        if not blob:
+            continue
+        by_agent[name] = _buy_add_codes(blob.get("recommendations"))
+
+    if not by_agent:
+        return None
+
+    synth_buys = _buy_add_codes(portfolio_draft)
+    synth_set = set(synth_buys)
+    union: set[str] = set()
+    for codes in by_agent.values():
+        union |= set(codes)
+
+    kept_u: list[str] = []
+    seen_k: set[str] = set()
+    for c in synth_buys:
+        if c not in seen_k:
+            seen_k.add(c)
+            kept_u.append(c)
+
+    dropped = sorted(union - synth_set)
+    agent_only: dict[str, list[str]] = {}
+    names = list(by_agent.keys())
+    if len(names) >= 2:
+        a, b = names[0], names[1]
+        agent_only[a] = sorted(set(by_agent[a]) - set(by_agent[b]))
+        agent_only[b] = sorted(set(by_agent[b]) - set(by_agent[a]))
+        agreed = sorted(set(by_agent[a]) & set(by_agent[b]))
+    else:
+        agreed = sorted(union)
+
+    return {
+        "agents": {k: list(v) for k, v in by_agent.items()},
+        "agent_buy_counts": {k: len(v) for k, v in by_agent.items()},
+        "agreed_buys": agreed,
+        "agent_only_buys": agent_only,
+        "synthesized_buys": kept_u,
+        "dropped_buys": dropped,
+        "note": (
+            "仅审计组合层取舍；① research buy 不计入。"
+            "dropped_buys=至少一名分析师建议买入但综合未写入②。"
+        ),
+    }
+
+
+def complete_stage_coverage(
+    research: list[dict[str, Any]],
+    portfolio_draft: list[dict[str, Any]],
+    after_debate: list[dict[str, Any]],
+    after_risk: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """深度池研究有、但未进入综合建议的代码：在②③④轨迹补「未入选」观察行。
+
+    只改 decision_stages 快照，不改 recommendations / A3 / 模拟盘输入。
+    """
+    draft = list(portfolio_draft or [])
+    debated = list(after_debate or [])
+    risked = list(after_risk or [])
+    have = {str(r.get("code") or "") for r in draft if r.get("code")}
+    for row in draft:
+        row.setdefault("selection", "selected")
+    for row in debated:
+        row.setdefault("selection", "selected")
+    for row in risked:
+        row.setdefault("selection", "selected")
+
+    for r in research or []:
+        code = str(r.get("code") or "")
+        if not code or code in have:
+            continue
+        have.add(code)
+        pad = {
+            "code": code,
+            "action": "watch",
+            "position_pct": 0,
+            "confidence": None,
+            "debate_status": "n/a",
+            "referee": None,
+            "decision_hint": None,
+            "selection": "not_selected",
+            "rationale": "综合未纳入组合草案（①研究另见；≠漏跑）",
+        }
+        draft.append(dict(pad))
+        debated.append(dict(pad))
+        risked.append(dict(pad))
+
+    def _sort_key(row: dict[str, Any]) -> tuple[int, str]:
+        sel = 0 if row.get("selection") == "selected" else 1
+        return (sel, str(row.get("code") or ""))
+
+    draft.sort(key=_sort_key)
+    debated.sort(key=_sort_key)
+    risked.sort(key=_sort_key)
+    return draft, debated, risked
+
+
 def build_decision_stages(
     *,
     research: list[dict[str, Any]],
@@ -73,8 +209,17 @@ def build_decision_stages(
     after_risk: list[dict[str, Any]],
     overrides: list[str] | None = None,
     draft_portfolio_summary: str | None = None,
+    synthesis_audit: dict[str, Any] | None = None,
+    complete_coverage: bool = True,
 ) -> dict[str, Any]:
-    return {
+    draft = list(portfolio_draft or [])
+    debated = list(after_debate or [])
+    risked = list(after_risk or [])
+    if complete_coverage:
+        draft, debated, risked = complete_stage_coverage(
+            research, draft, debated, risked
+        )
+    out: dict[str, Any] = {
         "flow": [
             "① 个股研究（逐票 research_rating，≠开仓）",
             "② 组合草案（双分析师独立草案 → 综合委员合并）",
@@ -82,17 +227,20 @@ def build_decision_stages(
             "④ 风控终局（硬约束后的可执行动作）",
         ],
         "research": research,
-        "portfolio_draft": portfolio_draft,
-        "after_debate": after_debate,
-        "after_risk": after_risk,
+        "portfolio_draft": draft,
+        "after_debate": debated,
+        "after_risk": risked,
         "overrides": list(overrides or [])[:40],
         "draft_portfolio_summary": draft_portfolio_summary or "",
         "plain_note": (
             "①研究评级≠开仓；②才是组合层取舍（含综合）；"
-            "只有④的 buy/add（仓位>0）可执行并进模拟盘。"
-            "表中「-」=该阶段无记录（未进草案），不是「同上」。"
+            "只有④里已入选且 buy/add（仓位>0）可执行并进模拟盘。"
+            "「观察·未入选」=综合未写入组合（有意搁置，不是漏跑）。"
         ),
     }
+    if synthesis_audit:
+        out["synthesis_audit"] = synthesis_audit
+    return out
 
 
 def _forbid_reason(overrides: list[str]) -> str:

@@ -517,21 +517,21 @@ def _why_from_rec(
     executed: bool = False,
     target_pct: float | None = None,
 ) -> str:
-    """从 §4 建议提炼模拟盘动作原因。"""
+    """从结论卡 A3 / B2④ 终局建议提炼模拟盘动作原因。"""
     rec = rec or {}
     parts: list[str] = []
     if executed:
         if action in ("buy", "add") and target_pct is not None:
-            parts.append(f"承接 §4 终局 `{action}`，目标仓位 {float(target_pct):.0f}%")
+            parts.append(f"承接 A3/④终局 `{action}`，目标仓位 {float(target_pct):.0f}%")
         else:
-            parts.append(f"承接 §4 终局 `{action}`")
+            parts.append(f"承接 A3/④终局 `{action}`")
     rationale = _one_line(rec.get("rationale"), 90)
     if rationale:
         parts.append(rationale)
     debate = rec.get("debate") if isinstance(rec.get("debate"), dict) else {}
     if debate.get("referee"):
         parts.append(f"辩论裁判={debate.get('referee')}")
-    return "；".join(parts) if parts else f"§4 动作 `{action}`"
+    return "；".join(parts) if parts else f"A3/④动作 `{action}`"
 
 
 def _skip_fill(
@@ -605,16 +605,16 @@ def build_sim_round_explanation(
             side = f.get("side")
             why = f.get("why") or _one_line(f.get("note"), 80)
             if not why:
-                why = f"执行 §4 `{f.get('action_src')}`"
+                why = f"执行 A3/④ `{f.get('action_src')}`"
             bullets.append(
                 f"**成交** `{code}` {side} {f.get('shares'):.0f}股 @ {f.get('price')}：{why}"
             )
-        headline = f"本轮模拟成交 {len(fills)} 笔（机械回放 §4 终局动作）。"
+        headline = f"本轮模拟成交 {len(fills)} 笔（机械回放结论卡 A3 / B2④ 终局动作）。"
     else:
         headline = "本轮模拟盘**无成交**。"
         if not deployable and sell_n == 0:
             bullets.append(
-                "§4 无可执行开仓/卖出（无 buy/add 且仓位>0，亦无 sell）："
+                "终局（A3/④）无可执行开仓/卖出（无 buy/add 且仓位>0，亦无 sell）："
                 "模拟引擎因此不买卖。"
             )
             if portfolio_summary:
@@ -627,7 +627,7 @@ def build_sim_round_explanation(
                 )
         elif deployable and not fills:
             bullets.append(
-                f"§4 有 {len(deployable)} 笔名义开仓/加仓，但模拟引擎未成交"
+                f"终局（A3/④）有 {len(deployable)} 笔名义开仓/加仓，但模拟引擎未成交"
                 "（见下方未成交原因：缺行情/仓位已满/现金不足等）。"
             )
         else:
@@ -692,10 +692,8 @@ def attach_sim_round_explanation(result: dict[str, Any]) -> None:
 def render_sim_section(
     sim: dict[str, Any] | None,
     result: dict[str, Any] | None = None,
-    *,
-    standalone: bool = False,
 ) -> list[str]:
-    """模拟账本正文。standalone=True 时用于独立小报告（无折叠）。"""
+    """模拟账本正文（独立小报告用；无折叠附录）。"""
     if not sim or sim.get("skipped"):
         return []
     expl = sim.get("round_explanation")
@@ -704,14 +702,6 @@ def render_sim_section(
     expl = expl or {}
 
     lines: list[str] = []
-    if not standalone:
-        lines.extend(
-            [
-                "<details>",
-                "<summary><strong>附录：模拟账本（评估用 · 非真实持仓）</strong></summary>",
-                "",
-            ]
-        )
     lines.extend(
         [
             "> **不是你的账户。** 决策完成后机械回放「若完全按结论卡 A3 / B2④ 终局执行」的效果；"
@@ -721,7 +711,7 @@ def render_sim_section(
         ]
     )
 
-    lines.append("## 本轮模拟操作说明" if standalone else "### 本轮模拟操作说明")
+    lines.append("## 本轮模拟操作说明")
     lines.append("")
     if expl.get("headline"):
         lines.append(f"**结论**: {expl['headline']}")
@@ -753,10 +743,8 @@ def render_sim_section(
     lines.append("")
 
     positions = sim.get("positions") or []
-    h_pos = "## 模拟持仓（非真实）" if standalone else "### 模拟持仓（非真实）"
-    h_fill = "## 本轮模拟成交" if standalone else "### 本轮模拟成交"
     if positions:
-        lines.append(h_pos)
+        lines.append("## 模拟持仓（非真实）")
         lines.append("")
         for p in positions:
             lines.append(
@@ -771,7 +759,7 @@ def render_sim_section(
 
     fills = [f for f in (sim.get("fills") or []) if not f.get("skipped")]
     if fills:
-        lines.append(h_fill)
+        lines.append("## 本轮模拟成交")
         lines.append("")
         for f in fills:
             why = f.get("why") or ""
@@ -787,7 +775,4 @@ def render_sim_section(
         "完整推理见主报告详细论证 B2，终局指令见结论卡 A3。_"
     )
     lines.append("")
-    if not standalone:
-        lines.append("</details>")
-        lines.append("")
     return lines

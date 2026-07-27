@@ -137,6 +137,8 @@ def _fmt_stage_action(rec: dict[str, Any] | None) -> str:
         return "-"
     action = str(rec.get("action") or "watch")
     label = _ACTION_LABEL.get(action, action)
+    if rec.get("selection") == "not_selected":
+        return f"{label}·未入选"
     try:
         pct = rec.get("position_pct")
         pct_s = f"{float(pct):.0f}%" if pct is not None and float(pct) != 0 else ""
@@ -149,12 +151,16 @@ def _fmt_stage_action(rec: dict[str, Any] | None) -> str:
         extra = f" 裁判={rec.get('referee')}"
     elif rec.get("debate_status") == "undebated":
         extra = " 未辩论"
+    elif rec.get("debate_status") == "n/a" and action == "watch":
+        extra = " 跳过辩论"
     return f"{label}{(' ' + pct_s) if pct_s else ''}{conf_s}{extra}"
 
 
 def _count_buy_add(recs: list[dict[str, Any]] | None) -> int:
     n = 0
     for r in recs or []:
+        if r.get("selection") == "not_selected":
+            continue
         if str(r.get("action") or "").lower() in ("buy", "add"):
             try:
                 if r.get("position_pct") is not None and float(r.get("position_pct")) <= 0:
@@ -168,6 +174,8 @@ def _count_buy_add(recs: list[dict[str, Any]] | None) -> int:
 def _multi_agent_synthesis_note(result: dict[str, Any]) -> str:
     """结论卡用：说明②来自双分析师→综合，并给本轮计数对照。"""
     ma = result.get("multi_agent") or {}
+    stages = result.get("decision_stages") or {}
+    audit = stages.get("synthesis_audit") if isinstance(stages.get("synthesis_audit"), dict) else None
     if not ma.get("enabled"):
         return (
             "本轮未开多 Agent：②由单一决策模型直接给出组合动作/仓位"
@@ -177,18 +185,27 @@ def _multi_agent_synthesis_note(result: dict[str, Any]) -> str:
     primary = str(meta.get("primary") or "?")
     secondary = str(meta.get("secondary") or "?")
     synth = str(meta.get("synthesizer") or "synthesizer")
-    drafts = result.get("multi_agent_drafts") or {}
-    bits: list[str] = []
-    for name in (primary, secondary):
-        if name in drafts and isinstance(drafts[name], dict):
-            n = _count_buy_add(drafts[name].get("recommendations"))
-            bits.append(f"{name} 建议买入/加仓 {n} 只")
-        elif name not in ("?", ""):
-            bits.append(f"{name}（独立草案）")
-    draft_n = _count_buy_add((result.get("decision_stages") or {}).get("portfolio_draft"))
-    contrast = ("；".join(bits) + f" → **综合后写入②：买入/加仓 {draft_n} 只**") if bits else (
-        f"综合后写入②：买入/加仓 {draft_n} 只"
-    )
+    draft_n = _count_buy_add(stages.get("portfolio_draft"))
+    if audit and audit.get("agent_buy_counts"):
+        bits = [f"{k} 建议买入/加仓 {v} 只" for k, v in audit["agent_buy_counts"].items()]
+        dropped = audit.get("dropped_buys") or []
+        drop_s = (
+            f"；综合否决买入 {len(dropped)} 只"
+            + (f"（{'、'.join(dropped[:6])}{'…' if len(dropped) > 6 else ''}）" if dropped else "")
+        )
+        contrast = "；".join(bits) + f" → **综合后写入②：买入/加仓 {draft_n} 只**" + drop_s
+    else:
+        drafts = result.get("multi_agent_drafts") or {}
+        bits = []
+        for name in (primary, secondary):
+            if name in drafts and isinstance(drafts[name], dict):
+                n = _count_buy_add(drafts[name].get("recommendations"))
+                bits.append(f"{name} 建议买入/加仓 {n} 只")
+            elif name not in ("?", ""):
+                bits.append(f"{name}（独立草案）")
+        contrast = ("；".join(bits) + f" → **综合后写入②：买入/加仓 {draft_n} 只**") if bits else (
+            f"综合后写入②：买入/加仓 {draft_n} 只"
+        )
     return (
         f"启用多 Agent：`{primary}` + `{secondary}` 各出独立组合草案，"
         f"再由 **`{synth}` 综合委员** 合并取舍后写入下表②。"
@@ -221,17 +238,32 @@ def render_decision_stages_section(result: dict[str, Any]) -> list[str]:
         f"{_multi_agent_synthesis_note(result)}"
     )
     lines.append(
-        "- **③ 多空辩论**：只对②里 **buy/add** 的票开多空对抗并可能下调置信度；"
-        "未进②的票不会出现在本列（显示 `-`）。"
+        "- **③ 多空辩论**：只对②里 **已入选且 buy/add** 的票开多空对抗；"
+        "「观察·未入选」跳过辩论（不是漏跑）。"
     )
     lines.append(
         "- **④ 风控终局**：叠硬门禁/微观结构/总仓/流动性等规则后的**可执行动作**；"
-        "只有此处 buy/add 且仓位>0 才进模拟盘。表中 `-` = 该阶段无记录，**不是「同上」**。"
+        "只有已入选且 buy/add（仓位>0）才进模拟盘与结论卡 A3。"
+        "「观察·未入选」=组合层有意搁置。"
     )
     lines.append("")
     flow = stages.get("flow") or []
     if flow:
         lines.append("**本轮链路**: " + " → ".join(str(x) for x in flow))
+        lines.append("")
+
+    audit = stages.get("synthesis_audit") if isinstance(stages.get("synthesis_audit"), dict) else None
+    if audit:
+        dropped = audit.get("dropped_buys") or []
+        kept = audit.get("synthesized_buys") or []
+        lines.append(
+            "**综合取舍审计**: "
+            f"写入②买入 {len(kept)} 只"
+            + (f"（{'、'.join(kept[:8])}）" if kept else "")
+            + f"；否决买入 {len(dropped)} 只"
+            + (f"（{'、'.join(dropped[:8])}{'…' if len(dropped) > 8 else ''}）" if dropped else "")
+            + "。"
+        )
         lines.append("")
 
     summary = result.get("decision_summary") or {}
@@ -487,7 +519,11 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         lines.append("###### ② 组合草案")
         lines.append("")
         d = draft_by.get(code)
-        if d:
+        if d and d.get("selection") == "not_selected":
+            lines.append("- **草案动作**: 观察·未入选（综合未写入组合；≠漏跑）")
+            if d.get("rationale"):
+                lines.append(f"- **说明**: {d['rationale']}")
+        elif d:
             lines.append(
                 f"- **草案动作**: {_ACTION_LABEL.get(str(d.get('action')), d.get('action'))}"
                 + (f" · 仓位 {d.get('position_pct')}%" if d.get("position_pct") is not None else "")
@@ -510,7 +546,9 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         debate = rec.get("debate") or debates.get(code) or {}
         ds = debate_stage_by.get(code) or {}
         status = rec.get("debate_status") or ds.get("debate_status")
-        if debate and not debate.get("error"):
+        if ds.get("selection") == "not_selected" or d and d.get("selection") == "not_selected":
+            lines.append("- _未入选组合，跳过辩论_")
+        elif debate and not debate.get("error"):
             lines.append(
                 f"- **裁判**: `{debate.get('referee', '-')}` · "
                 f"haircut={debate.get('confidence_haircut', '-')} · "
@@ -541,7 +579,14 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         # ④ 风控
         lines.append("###### ④ 风控终局")
         lines.append("")
-        final = rec or risk_by.get(code) or {}
+        risk_row = risk_by.get(code) or {}
+        final = rec or risk_row or {}
+        if (not rec) and risk_row.get("selection") == "not_selected":
+            lines.append("- **终局动作**: **观察·未入选**（未进入可执行建议列表 / A3）")
+            if risk_row.get("rationale"):
+                lines.append(f"- **说明**: {risk_row['rationale']}")
+            lines.append("")
+            continue
         faction = str(final.get("action") or "watch")
         lines.append(
             f"- **终局动作**: **{_ACTION_LABEL.get(faction, faction)}**"
@@ -772,7 +817,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         codes = "、".join(str(c) for c in basis["codes"][:8])
         lines.append(f"_以下动作基于你声明的**真实持仓**：{codes}（与模拟盘无关）；以④终局为准。_")
     else:
-        lines.append("_以下为面向你声明持仓的操作建议（④终局）；模拟盘见后文独立章节。_")
+        lines.append("_以下为面向你声明持仓的操作建议（④终局）；模拟盘见同日 `*-sim.md`。_")
     lines.append("")
     if not recs:
         lines.append("- （本轮无结构化建议）")
@@ -823,7 +868,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         theme0 = _one_line(themes[0], None)
     elif digest.get("market_narratives"):
         theme0 = _one_line(digest["market_narratives"][0], None)
-    head = f"情报「{theme0 or '（见§0）'}」→ 市场「{phase} / {style}」(风险{risk})"
+    head = f"情报「{theme0 or '（见 A1）'}」→ 市场「{phase} / {style}」(风险{risk})"
     lines.append(f"1. {head} → 配置倾向「{alloc}」")
     lines.append("")
     if not sectors:
@@ -1525,9 +1570,7 @@ def render_sim_report(result: dict[str, Any]) -> str:
         "_与主报告分离；邮件不附送。评估「若完全按结论卡 A3 终局执行」的效果。_",
         "",
     ]
-    body = render_sim_section(
-        result.get("sim_portfolio"), result=result, standalone=True
-    )
+    body = render_sim_section(result.get("sim_portfolio"), result=result)
     if not body:
         lines.append("_本轮无模拟账本（未启用或已跳过）。_")
         lines.append("")

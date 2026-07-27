@@ -11,7 +11,91 @@ from money_more.analysis.decision_stages import (
 from money_more.report.writer import render_conclusion_card, render_decision_stages_section
 
 
-def test_build_research_stage_and_snapshots():
+def test_complete_coverage_and_synthesis_audit():
+    from money_more.analysis.decision_stages import (
+        build_decision_stages,
+        build_synthesis_audit,
+        complete_stage_coverage,
+    )
+
+    research = [
+        {"code": "300750", "research_rating": "strong_buy"},
+        {"code": "603893", "research_rating": "buy"},
+        {"code": "000938", "research_rating": "buy"},
+    ]
+    draft = [{"code": "300750", "action": "buy", "position_pct": 5, "confidence": 0.5}]
+    debated = [{"code": "300750", "action": "buy", "position_pct": 5, "debate_status": "debated"}]
+    risked = [{"code": "300750", "action": "watch", "position_pct": 0}]
+    d2, b2, r2 = complete_stage_coverage(research, draft, debated, risked)
+    assert len(d2) == 3
+    by = {x["code"]: x for x in d2}
+    assert by["300750"]["selection"] == "selected"
+    assert by["603893"]["selection"] == "not_selected"
+    assert by["603893"]["action"] == "watch"
+
+    audit = build_synthesis_audit(
+        multi_agent_drafts={
+            "deepseek": {
+                "recommendations": [
+                    {"code": "300750", "action": "buy", "position_pct": 8},
+                    {"code": "603893", "action": "buy", "position_pct": 5},
+                    {"code": "000938", "action": "watch"},
+                ]
+            },
+            "cursor": {
+                "recommendations": [
+                    {"code": "300750", "action": "watch"},
+                    {"code": "603893", "action": "watch"},
+                ]
+            },
+        },
+        portfolio_draft=draft,
+        meta={"primary": "deepseek", "secondary": "cursor"},
+    )
+    assert audit is not None
+    assert audit["agent_buy_counts"]["deepseek"] == 2
+    assert audit["agent_buy_counts"]["cursor"] == 0
+    assert "300750" in audit["synthesized_buys"]
+    assert "603893" in audit["dropped_buys"]
+
+    stages = build_decision_stages(
+        research=research,
+        portfolio_draft=draft,
+        after_debate=debated,
+        after_risk=risked,
+        synthesis_audit=audit,
+    )
+    assert stages["synthesis_audit"]["dropped_buys"] == ["603893"]
+    assert any(r.get("selection") == "not_selected" for r in stages["portfolio_draft"])
+
+    result = {
+        "decision_stages": stages,
+        "decision_summary": {"holdings_basis": {"is_empty": True}},
+        "recommendations": [{"code": "300750", "action": "watch", "rationale": "风控"}],
+        "stocks": [],
+        "market": {"analysis": {}},
+        "intelligence": {"digest": {}},
+        "sectors": [],
+        "multi_agent": {
+            "enabled": True,
+            "meta": {"primary": "deepseek", "secondary": "cursor", "synthesizer": "synthesizer"},
+        },
+        "multi_agent_drafts": {
+            "deepseek": {
+                "recommendations": [
+                    {"code": "300750", "action": "buy", "position_pct": 8},
+                    {"code": "603893", "action": "buy", "position_pct": 5},
+                ]
+            },
+            "cursor": {"recommendations": [{"code": "300750", "action": "watch"}]},
+        },
+    }
+    text = "\n".join(render_decision_stages_section(result))
+    assert "观察·未入选" in text
+    assert "综合取舍审计" in text
+    assert "603893" in text
+    # A3 / recommendations 仍只有终局票，不应因 coverage 膨胀
+    assert len(result["recommendations"]) == 1
     stocks = [
         {
             "code": "600519",

@@ -117,11 +117,10 @@ def test_render_sim_section() -> None:
         }
     )
     text = "\n".join(lines)
-    assert "模拟账本" in text or "附录" in text
     assert "不是你的账户" in text
-    assert "<details>" in text
+    assert "<details>" not in text
+    assert "## 本轮模拟操作说明" in text
     assert "601318" in text
-    assert "本轮模拟操作说明" in text
 
 
 def test_sim_explains_no_trade_when_all_watch() -> None:

@@ -24,13 +24,13 @@ screen:
   pe_max: 0                    # <=0 不硬截断高 PE；打分会降权
   exclude_negative_pe: false   # 亏损扩张期票默认可进池
   exclude_st: true
-  auto_sector_from_flow: 3     # 资金流入前列自动扩 §2 板块（0=关闭）
+  auto_sector_from_flow: 3     # 资金流入前列自动扩 B1 板块（0=关闭）
 
 # 持仓（空仓示例；有仓再填 code / quantity / cost）
 # 跑任务时：未说明持仓 → 必须保持 []；说明了再写入
 holdings: []
 
-# 模拟组合：文末折叠附录，评估「若完全按建议执行」；与真实 holdings 分离
+# 模拟组合：独立小报告 *-sim.md，评估「若完全按④终局执行」；与真实 holdings 分离
 sim:
   enabled: true
   initial_cash: 50000
@@ -63,7 +63,6 @@ analysis:
   review_min_hold_days: 14
   paper_horizon_days: 60
   debate_top_k: 3             # >0 开启：所有 buy/add 必辩；0=关闭
-  debate_min_score: 55        # 保留兼容；不再作为是否辩论的门槛
 
 # Cursor Agent 自优化（需 CURSOR_API_KEY）
 optimize:

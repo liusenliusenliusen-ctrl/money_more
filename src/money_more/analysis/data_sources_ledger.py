@@ -77,7 +77,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 fetches="全市场价格、涨跌幅、成交额（新浪备源通常无 PE/PB）",
                 status="fallback",
                 detail=f"已获取约 {raw_n} 只；过滤后 {uni_n} → 量化 {quant_n} → 深度 {deep_n}",
-                used_in="§筛股漏斗 → 深度池 → §3 决策链 / §4 动作；备源时估值因子中性处理",
+                used_in="筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3；备源时估值因子中性处理",
             )
         else:
             add(
@@ -86,7 +86,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 fetches="全市场价格、涨跌幅、成交额、估值等",
                 status="ok",
                 detail=f"已获取约 {raw_n} 只；过滤后 {uni_n} → 量化 {quant_n} → 深度 {deep_n}",
-                used_in="§筛股漏斗 → 深度池 → §3 决策链 / §4 动作",
+                used_in="筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3",
             )
     else:
         add(
@@ -110,7 +110,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="行业涨跌幅、主力净流入排名",
             status="ok" if flow_src in ("", "ths_summary", "ths_flow") else "fallback",
             detail=f"来源标记 `{flow_src or 'unknown'}`，已写入板块资金摘要",
-            used_in="§2 板块优先级 / 结论卡板块态度 / 叙事与风格判断",
+            used_in="B1 板块优先级 / 结论卡板块态度 / 叙事与风格判断",
         )
     else:
         add(
@@ -132,7 +132,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="北向成交/净流入摘要",
             status="ok",
             detail=f"最新日 {nb_f.get('latest_date') or '-'}，滞后约 {nb_f.get('staleness_days', '?')} 天",
-            used_in="§1 流动性与风险偏好；与全球流动性交叉",
+            used_in="A1 流动性与风险偏好；与全球流动性交叉",
         )
     elif nb:
         add(
@@ -150,7 +150,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="北向成交/净流入摘要",
             status="fail",
             detail="未取到有效摘要",
-            used_in="§1 流动性段落会弱化外资维度",
+            used_in="A1 流动性段落会弱化外资维度",
         )
 
     if macro.get("margin_trend") or macro.get("margin_trend_sz"):
@@ -160,7 +160,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="融资余额等杠杆情绪",
             status="ok",
             detail="已取到两融趋势序列",
-            used_in="§1 风险偏好 / 去杠杆或加杠杆判断",
+            used_in="A1 风险偏好 / 去杠杆或加杠杆判断",
         )
     else:
         add(
@@ -187,7 +187,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="政策导向、联播要点",
             status="degraded" if stale else "ok",
             detail=detail,
-            used_in="§0 情报主题 / 政策市侧栏假说",
+            used_in="A1 情报主题 / 政策市侧栏假说",
         )
     else:
         add(
@@ -213,7 +213,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="盘面新闻、宏观突发摘要",
             status="ok",
             detail="；".join(parts),
-            used_in="§0 情报综述、舆情打分语料",
+            used_in="A1 情报综述、舆情打分语料",
         )
     else:
         add(
@@ -233,7 +233,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="盘中电报、早餐要点",
             status="ok",
             detail=f"telegraph≈{len(macro.get('rss_telegraph') or [])} · important≈{len(macro.get('rss_important') or [])}",
-            used_in="§0 舆情；降权短线噪声后仍可作事件线索",
+            used_in="A1 舆情；降权短线噪声后仍可作事件线索",
         )
     else:
         cls_hang = _err_has(errors, "cls", "财联社", "stock_info_global_cls")
@@ -256,7 +256,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="即将公布的宏观数据日程",
             status="ok",
             detail=f"约 {len(macro.get('economic_calendar') or [])} 条",
-            used_in="§0/§1 事件观察清单",
+            used_in="A1/A2 事件观察清单",
         )
     elif cal_alt or cal_primary:
         add(
@@ -284,7 +284,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="景气、通胀、货币供应量",
             status="ok",
             detail="已写入 macro_hard",
-            used_in="§1 中长线宏观背景；与风格（价值/成长）联动",
+            used_in="A1 中长线宏观背景；与风格（价值/成长）联动",
         )
     else:
         add(
@@ -304,7 +304,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="美债收益率、期限利差、USD/CNY",
             status="ok",
             detail=f"stance=`{stance}`；源={','.join(gl.get('source') or []) or '-'}",
-            used_in="§1.0 全球流动性；收紧时约束进攻仓位",
+            used_in="A1 全球流动性；收紧时约束进攻仓位",
         )
     else:
         add(
@@ -344,7 +344,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                     else ""
                 )
             ),
-            used_in="§0/结论卡环境；与硬数据冲突时以硬数据为准",
+            used_in="A1/结论卡环境；与硬数据冲突时以硬数据为准",
         )
     else:
         add(
@@ -368,7 +368,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             fetches="重大新闻、联播、财务指标、业绩预告、估值、解禁等",
             status="ok",
             detail=f"宏观新闻约 {len(macro.get('tushare_macro_news') or [])} 条",
-            used_in="双源交叉、盈利修正、公告/解禁风险；补强 §0/§3",
+            used_in="双源交叉、盈利修正、公告/解禁风险；补强 A1/B2",
         )
     elif ts_news and ts_backfill:
         add(
@@ -391,7 +391,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 else "不可用"
             )
             + "；积分/权限不足时常见",
-            used_in="缺少双源估值与业绩预告时，§3 更依赖 AkShare 财务摘要",
+            used_in="缺少双源估值与业绩预告时，B2 更依赖 AkShare 财务摘要",
         )
     else:
         add(
