@@ -10,6 +10,7 @@ from money_more.analysis.screen import (
     _score_universe,
     run_stock_screen,
 )
+from money_more.analysis.sector_map import infer_sector, theme_bucket
 from money_more.config import ScreenConfig
 
 
@@ -42,6 +43,73 @@ def _sample_spot() -> pd.DataFrame:
     )
 
 
+def _tech_heavy_spot() -> pd.DataFrame:
+    """科技硬件分数全面碾压，另有银行/白酒各一只，用于测深度池分散。"""
+    rows = []
+    tech_codes = [
+        ("002415", "海康威视"),
+        ("603501", "韦尔股份"),
+        ("688981", "中芯国际"),
+        ("603986", "兆易创新"),
+        ("002049", "紫光国微"),
+        ("002371", "北方华创"),
+        ("688012", "中微公司"),
+        ("688256", "寒武纪"),
+        ("300308", "中际旭创"),
+        ("300502", "新易盛"),
+        ("000938", "紫光股份"),
+        ("000725", "京东方Ａ"),
+    ]
+    for i, (code, name) in enumerate(tech_codes):
+        rows.append(
+            {
+                "代码": code,
+                "名称": name,
+                "最新价": 50 + i,
+                "涨跌幅": 0.5,
+                "成交额": 3e9 - i * 1e7,
+                "市盈率-动态": 18,
+                "市净率": 3.0,
+                "所属行业": "半导体",
+            }
+        )
+    rows.extend(
+        [
+            {
+                "代码": "600036",
+                "名称": "招商银行",
+                "最新价": 35,
+                "涨跌幅": 0.2,
+                "成交额": 1.2e9,
+                "市盈率-动态": 6,
+                "市净率": 0.8,
+                "所属行业": "银行",
+            },
+            {
+                "代码": "600519",
+                "名称": "贵州茅台",
+                "最新价": 1400,
+                "涨跌幅": -0.3,
+                "成交额": 2.5e9,
+                "市盈率-动态": 22,
+                "市净率": 7,
+                "所属行业": "白酒",
+            },
+            {
+                "代码": "300750",
+                "名称": "宁德时代",
+                "最新价": 200,
+                "涨跌幅": 1.0,
+                "成交额": 2e9,
+                "市盈率-动态": 28,
+                "市净率": 4,
+                "所属行业": "电池",
+            },
+        ]
+    )
+    return pd.DataFrame(rows)
+
+
 def test_filters_exclude_st_and_illiquid() -> None:
     cfg = ScreenConfig(min_amount=5e7, pe_max=80, exclude_st=True)
     df = _normalize_spot(_sample_spot())
@@ -61,6 +129,7 @@ def test_run_screen_expands_beyond_force_holdings() -> None:
         max_deep=5,
         min_amount=1e7,
         pe_max=90,
+        deep_diversify=False,
     )
     fetcher = _FakeFetcher(_sample_spot())
     result = run_stock_screen(
@@ -89,6 +158,7 @@ def test_screen_empty_force_is_pure_quant() -> None:
         max_deep=3,
         min_amount=1e7,
         pe_max=90,
+        deep_diversify=False,
     )
     result = run_stock_screen(
         _FakeFetcher(_sample_spot()),  # type: ignore[arg-type]
@@ -140,3 +210,42 @@ def test_score_prefers_cheap_pe() -> None:
     cheap = scored[scored["code"] == "000001"]["screen_score"].iloc[0]
     rich = scored[scored["code"] == "300750"]["screen_score"].iloc[0]
     assert cheap > rich
+
+
+def test_deep_diversify_caps_tech_and_floors_defensive() -> None:
+    cfg = ScreenConfig(
+        enabled=True,
+        universe_mode="spot_all",
+        max_universe=200,
+        max_quant=30,
+        max_deep=8,
+        min_amount=1e7,
+        pe_max=0,
+        deep_diversify=True,
+        max_deep_per_theme=3,
+        deep_theme_floor=1,
+        sector_priority_boost=0,
+    )
+    result = run_stock_screen(
+        _FakeFetcher(_tech_heavy_spot()),  # type: ignore[arg-type]
+        config=cfg,
+        watch_sectors=["半导体", "银行", "白酒"],
+        force_codes=[],
+    )
+    deep = result["deep_codes"]
+    tech_n = sum(1 for c in deep if theme_bucket(infer_sector(c)) == "科技硬件")
+    # 上限生效且默认不放宽：科技硬件 ≤3，名额可不满
+    assert tech_n <= 3
+    assert len(deep) <= 8
+    assert "600036" in deep
+    assert "600519" in deep
+    conc = result.get("theme_concentration") or {}
+    assert conc.get("applied") is True
+    assert conc.get("theme_counts")
+    assert any("银行" in str(x) for x in (conc.get("floor_filled") or []))
+
+def test_theme_bucket_groups_optical_with_tech() -> None:
+    assert theme_bucket("通信") == "科技硬件"
+    assert theme_bucket("半导体") == "科技硬件"
+    assert theme_bucket("银行") == "金融"
+    assert theme_bucket("白酒") == "消费"

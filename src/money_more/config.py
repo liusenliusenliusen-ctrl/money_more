@@ -144,7 +144,7 @@ class SimTradingConfig:
 
 @dataclass
 class ScreenConfig:
-    """个股遴选漏斗：板块/全市场 → 量化 → 深度分析。"""
+    """个股遴选漏斗：板块/全市场 → 量化 → 深度分析（中长线：分散优先于追热点）。"""
 
     enabled: bool = True
     universe_mode: str = "spot_all"  # spot_all=全 A 现货；sector_spot=关注板块成分
@@ -156,8 +156,14 @@ class ScreenConfig:
     pe_max: float = 0.0  # <=0 不硬截断；高 PE 由打分降权
     exclude_negative_pe: bool = False  # 亏损扩张期票默认可进池
     exclude_st: bool = True
-    sector_priority_boost: float = 8.0
+    sector_priority_boost: float = 5.0  # 中长线：略降主题加分，避免科技链独占
     auto_sector_from_flow: int = 3  # 资金流入前列自动扩板块 LLM（0=关闭）
+    # 深度池分散（不改变量化排序，只约束进 LLM 细读的名单）
+    deep_diversify: bool = True
+    max_deep_per_theme: int = 5  # 同一粗主题最多几只新票
+    deep_theme_floor: int = 1  # 关注/优先板块中的防御主题软保底席位
+    # False=中长线默认：同主题已满则宁缺毋滥，不把深度池用同质票填满
+    deep_relax_theme_cap: bool = False
 
 
 @dataclass
@@ -386,8 +392,12 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             pe_max=float(screen_raw.get("pe_max", 0)),
             exclude_negative_pe=bool(screen_raw.get("exclude_negative_pe", False)),
             exclude_st=bool(screen_raw.get("exclude_st", True)),
-            sector_priority_boost=float(screen_raw.get("sector_priority_boost", 8)),
+            sector_priority_boost=float(screen_raw.get("sector_priority_boost", 5)),
             auto_sector_from_flow=int(screen_raw.get("auto_sector_from_flow", 3)),
+            deep_diversify=bool(screen_raw.get("deep_diversify", True)),
+            max_deep_per_theme=int(screen_raw.get("max_deep_per_theme", 5)),
+            deep_theme_floor=int(screen_raw.get("deep_theme_floor", 1)),
+            deep_relax_theme_cap=bool(screen_raw.get("deep_relax_theme_cap", False)),
         ),
         review_lookback_days=int(raw.get("review_lookback_days", 60)),
         paths=PathsConfig(

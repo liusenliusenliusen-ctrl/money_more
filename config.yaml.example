@@ -12,7 +12,7 @@ watch_sectors:
   - 白酒
   - 银行
 
-# 个股遴选：全 A / 板块成分 → 量化初筛 → 深度分析（LLM）
+# 个股遴选：全 A / 板块成分 → 量化初筛 → 深度分析（LLM）；中长线偏估值+主题分散
 screen:
   enabled: true
   universe_mode: spot_all      # spot_all=全 A 现货（推荐）；sector_spot=仅关注板块成分（窄池教学）
@@ -24,7 +24,12 @@ screen:
   pe_max: 0                    # <=0 不硬截断高 PE；打分会降权
   exclude_negative_pe: false   # 亏损扩张期票默认可进池
   exclude_st: true
+  sector_priority_boost: 5     # 主题加分（中长线略降，避免科技链独占）
   auto_sector_from_flow: 3     # 资金流入前列自动扩 B1 板块（0=关闭）
+  deep_diversify: true         # 深度池按粗主题分散（不改量化排序，只约束细读名单）
+  max_deep_per_theme: 5        # 同一粗主题（如科技硬件）最多几只新票
+  deep_theme_floor: 1          # 关注/优先中的防御板块（银行/白酒等）软保底席位
+  deep_relax_theme_cap: false  # false=同主题已满宁缺毋滥（中长线推荐）
 
 # 持仓（空仓示例；有仓再填 code / quantity / cost）
 # 跑任务时：未说明持仓 → 必须保持 []；说明了再写入

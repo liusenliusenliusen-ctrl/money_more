@@ -1250,10 +1250,36 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append("- **量化前列**（进入深度池的优先候选）:")
             for t in tops[:10]:
                 flag = " ·持仓" if (t.get("forced") or t.get("must")) else ""
+                deep_flag = " ·深" if t.get("in_deep") else ""
+                theme = t.get("theme") or t.get("sector") or ""
+                theme_bit = f" ·{theme}" if theme else ""
                 lines.append(
                     f"  - `{t.get('code')}` {t.get('name') or ''} "
-                    f"分={t.get('screen_score')} PE={t.get('pe')} PB={t.get('pb')}{flag}"
+                    f"分={t.get('screen_score')} PE={t.get('pe')} PB={t.get('pb')}"
+                    f"{theme_bit}{deep_flag}{flag}"
                 )
+        conc = screen.get("theme_concentration") or {}
+        theme_counts = conc.get("theme_counts") or {}
+        if theme_counts:
+            dist = "、".join(
+                f"{k}×{v}" for k, v in sorted(theme_counts.items(), key=lambda x: -x[1])
+            )
+            lines.append(f"- **深度池主题分布**（中长线分散）: {dist}")
+            top_share = conc.get("top_share")
+            top_theme = conc.get("top_theme")
+            cap = conc.get("max_deep_per_theme")
+            if top_theme and top_share is not None:
+                warn = ""
+                if float(top_share) >= 0.5:
+                    warn = " ·占比偏高，注意同质化风险"
+                cap_bit = f" ·单主题上限{cap}" if cap else ""
+                lines.append(
+                    f"- **集中度**: 头号主题 `{top_theme}` 约占 {float(top_share):.0%}"
+                    f"{cap_bit}{warn}"
+                )
+            floors = conc.get("floor_filled") or []
+            if floors:
+                lines.append(f"- **防御软保底**: {'、'.join(str(x) for x in floors)}")
         if screen.get("degraded") or not screen.get("ok", True):
             lines.append(f"- ⚠️ **遴选降级**: {screen.get('note')}")
         lines.append("")
