@@ -127,7 +127,7 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             "rss_matches": (intel.get("rss_matches") or [])[:4],
             "tushare": {
                 "valuation": {
-                    "latest": (ts.get("valuation") or {}).get("latest"),
+                    "latest": _compact_valuation_latest((ts.get("valuation") or {}).get("latest")),
                     "percentiles": (ts.get("valuation") or {}).get("percentiles"),
                 },
                 "announcements": (ts.get("announcements") or [])[:4],
@@ -135,12 +135,14 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
                 "share_float": (ts.get("share_float") or [])[:3],
                 "financials": {
                     "indicators": ((ts.get("financials") or {}).get("indicators") or [])[:2],
+                    "cashflow": ((ts.get("financials") or {}).get("cashflow") or [])[:2],
                 },
                 "errors": (ts.get("errors") or [])[:5],
             },
             "errors": (intel.get("errors") or [])[:5],
         },
         "earnings_revision": snap.get("earnings_revision"),
+        "ocf_quality": snap.get("ocf_quality"),
         "info_completeness": snap.get("info_completeness"),
         "errors": (snap.get("errors") or [])[:5],
     }
@@ -170,6 +172,7 @@ def _tail_macro_hard(hard: dict[str, Any]) -> dict[str, Any]:
 def _compact_global_liquidity(gl: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(gl, dict) or not gl:
         return {}
+    eb = gl.get("equity_bond") or {}
     return {
         "stance": gl.get("stance"),
         "plain_note": gl.get("plain_note"),
@@ -179,10 +182,41 @@ def _compact_global_liquidity(gl: dict[str, Any]) -> dict[str, Any]:
         "cn_10y": gl.get("cn_10y"),
         "usd_cny": gl.get("usd_cny"),
         "us_cn_10y_spread_bp": gl.get("us_cn_10y_spread_bp"),
+        "equity_bond": {
+            "ok": eb.get("ok"),
+            "regime": eb.get("regime"),
+            "erp_bp": eb.get("erp_bp"),
+            "pe_ttm": eb.get("pe_ttm"),
+            "earnings_yield_pct": eb.get("earnings_yield_pct"),
+            "cn_10y_pct": eb.get("cn_10y_pct"),
+            "implied_max_total_pct": eb.get("implied_max_total_pct"),
+            "implied_min_cash_pct": eb.get("implied_min_cash_pct"),
+            "note": eb.get("note"),
+        }
+        if eb
+        else {},
         "signals": (gl.get("signals") or [])[:5],
         "series_tail": (gl.get("series_tail") or [])[-5:],
         "source": gl.get("source"),
     }
+
+
+def _compact_valuation_latest(latest: Any) -> dict[str, Any]:
+    if not isinstance(latest, dict) or not latest:
+        return {}
+    keys = (
+        "pe",
+        "pe_ttm",
+        "pb",
+        "dv_ratio",
+        "dv_ttm",
+        "close",
+        "total_mv",
+        "circ_mv",
+        "turnover_rate",
+        "trade_date",
+    )
+    return {k: latest[k] for k in keys if k in latest}
 
 
 def _keep_keys(d: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:

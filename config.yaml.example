@@ -45,9 +45,22 @@ sim:
 # 交易约束（中长线：止损更宽、止盈更高）
 trading:
   max_single_position_pct: 20
-  max_total_position_pct: 80
+  max_total_position_pct: 80   # 硬顶；股债 ERP 可再压低有效总仓
   stop_loss_pct: 15
   take_profit_pct: 40
+
+# 经营现金流质量闸（利润为正但 OCF 持续为负 → 禁止新买）
+quality:
+  ocf_gate_enabled: true
+  min_ocf_to_profit: 0.5
+  require_periods: 2
+  block_on_negative_ocf: true
+
+# 股债相对价值 → A1 总仓上限（沪深300 盈利收益率 − 中国10Y）
+equity_bond:
+  enabled: true
+  index_name: 沪深300
+  index_code: "000300.SH"
 
 # 复盘回看窗口（天）
 review_lookback_days: 60

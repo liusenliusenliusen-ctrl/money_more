@@ -20,6 +20,8 @@ def validate_recommendations(
     microstructure: dict[str, Any] | None = None,
     earnings_revisions: dict[str, dict[str, Any]] | None = None,
     global_liquidity: dict[str, Any] | None = None,
+    ocf_quality: dict[str, dict[str, Any]] | None = None,
+    equity_bond: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -67,9 +69,29 @@ def validate_recommendations(
         overrides.append("global_liquidity=tightening → 总仓位×0.85")
 
     effective_max_total = max_total * regime_mult
+    # 股债相对价值：硬封顶（可审计），再与 regime 收紧取小
+    eb = equity_bond or gl.get("equity_bond") or {}
+    if eb.get("ok") and eb.get("implied_max_total_pct") is not None:
+        try:
+            erp_cap = float(eb["implied_max_total_pct"])
+            if erp_cap < effective_max_total - 1e-6:
+                overrides.append(
+                    f"equity_bond={eb.get('regime')} ERP={eb.get('erp_bp')}bp "
+                    f"→ 总仓上限{erp_cap:.0f}%（原有效上限{effective_max_total:.0f}%）"
+                )
+                effective_max_total = erp_cap
+            elif eb.get("regime") in ("attractive", "neutral", "cautious", "expensive"):
+                overrides.append(
+                    f"equity_bond={eb.get('regime')} ERP={eb.get('erp_bp')}bp "
+                    f"→ 总仓上限维持≤{effective_max_total:.0f}%"
+                )
+        except (TypeError, ValueError):
+            pass
+
     forbid_new_buys = score < 0.4 or micro_regime == "liquidity_stress"
     info_map = info_completeness or {}
     earn_map = earnings_revisions or {}
+    ocf_map = ocf_quality or {}
 
     holding_by_code = {
         "".join(ch for ch in str(h.get("code") or "") if ch.isdigit())[-6:].zfill(6): h
@@ -150,6 +172,17 @@ def validate_recommendations(
             rec["action"] = "watch"
             rec["position_pct"] = 0.0
             rec["earnings_revision"] = earn
+
+        ocf = ocf_map.get(code) or {}
+        if (ocf.get("block_buy") or ocf.get("force_watch")) and action in ("buy", "add"):
+            overrides.append(
+                f"{code}: 现金流质量闸 → watch | "
+                + "; ".join(ocf.get("evidence") or [])[:80]
+            )
+            action = "watch"
+            rec["action"] = "watch"
+            rec["position_pct"] = 0.0
+            rec["ocf_quality"] = ocf
 
         conf = rec.get("confidence")
         try:

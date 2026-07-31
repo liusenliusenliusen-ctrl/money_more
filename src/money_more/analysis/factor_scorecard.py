@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from money_more.analysis.valuation import valuation_score_from_percentiles
+from money_more.analysis.valuation import (
+    blend_valuation_with_dividend,
+    valuation_score_from_percentiles,
+)
 
 
 DEFAULT_WEIGHTS = {
@@ -38,12 +41,17 @@ def build_stock_scorecard(
     scores: dict[str, float] = {}
     evidence: dict[str, list[str]] = {k: [] for k in w}
 
-    # --- valuation: 优先历史分位（中长线），回退绝对 PE/PB ---
+    # --- valuation: 优先历史分位（中长线），回退绝对 PE/PB；并入股息率 ---
     pe = _f(latest_val.get("pe") or latest_val.get("pe_ttm") or quote.get("市盈率-动态") or quote.get("市盈率"))
     pb = _f(latest_val.get("pb") or quote.get("市净率"))
     percentiles = valuation.get("percentiles") or {}
     pe_pct = _f(percentiles.get("pe_percentile"))
     pb_pct = _f(percentiles.get("pb_percentile"))
+    dv_ratio = _f(
+        percentiles.get("dv_ratio")
+        or latest_val.get("dv_ratio")
+        or latest_val.get("dv_ttm")
+    )
     pct_score = valuation_score_from_percentiles(pe_pct, pb_pct)
     val_score = 50.0
     if pct_score is not None:
@@ -76,6 +84,8 @@ def build_stock_scorecard(
             elif pb > 8:
                 val_score = max(0.0, val_score - 15)
             evidence["valuation"].append(f"PB={pb:.2f}")
+    val_score, dv_ev = blend_valuation_with_dividend(val_score, dv_ratio)
+    evidence["valuation"].extend(dv_ev)
     scores["valuation"] = _clamp(val_score)
 
     # --- momentum: 相对均线 + 涨跌幅 ---
@@ -186,7 +196,7 @@ def build_stock_scorecard(
         evidence["sentiment"].append(f"雪球成交Top{int(deal_rank)}")
     scores["sentiment"] = _clamp(sent)
 
-    # --- quality: 财务粗指标 ---
+    # --- quality: 财务粗指标 + 经营现金流覆盖 ---
     qual = 50.0
     fina = (tushare.get("financials") or {}).get("indicators") or []
     if fina:
@@ -212,6 +222,23 @@ def build_stock_scorecard(
         if abstract:
             evidence["quality"].append("有财务摘要")
             qual += 5
+    ocf = stock_snap.get("ocf_quality") or intel.get("ocf_quality") or {}
+    ocf_signal = str(ocf.get("signal") or "")
+    ocf_avg = _f(ocf.get("ocf_to_profit_avg") or ocf.get("ocf_to_profit"))
+    if ocf_signal == "strong":
+        qual += 12
+        evidence["quality"].append("现金流质量强")
+    elif ocf_signal == "adequate":
+        qual += 4
+        evidence["quality"].append("现金流质量尚可")
+    elif ocf_signal == "weak":
+        qual -= 18
+        evidence["quality"].append("现金流质量弱")
+        if ocf.get("ni_ocf_divergence"):
+            qual -= 8
+            evidence["quality"].append("利润与经营现金流背离")
+    if ocf_avg is not None:
+        evidence["quality"].append(f"OCF/净利润≈{ocf_avg:.2f}")
     scores["quality"] = _clamp(qual)
 
     # --- narrative: LLM research_rating ---

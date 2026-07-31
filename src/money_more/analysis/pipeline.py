@@ -5,10 +5,12 @@ from datetime import date
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from money_more.analysis.cashflow_quality import assess_ocf_quality
 from money_more.analysis.context_builder import compact_macro_intel, compact_stock_snap
 from money_more.analysis.cross_check import apply_hard_gates, cross_check_stock
 from money_more.analysis.debate import apply_debate_to_recommendations, run_buy_add_debates
 from money_more.analysis.decision_validator import enrich_holdings, validate_recommendations
+from money_more.analysis.equity_bond import build_equity_bond_from_macro
 from money_more.analysis.factor_ic import compute_factor_ic_from_db
 from money_more.analysis.factor_scorecard import build_stock_scorecard
 from money_more.analysis.invalidation import evaluate_invalidation
@@ -125,6 +127,18 @@ class DecisionPipeline:
 
         if intel_enabled:
             macro_intel = self.intelligence.fetch_macro_intelligence()
+            # 股债相对价值：约束 A1/风控总仓上限
+            eb_cfg = getattr(self.config, "equity_bond", None)
+            equity_bond = build_equity_bond_from_macro(
+                macro_intel.get("global_liquidity") or {},
+                as_of=run_date,
+                max_total_cap=float(self.config.trading.max_total_position_pct),
+                enabled=bool(getattr(eb_cfg, "enabled", True)),
+            )
+            if isinstance(macro_intel.get("global_liquidity"), dict):
+                macro_intel["global_liquidity"]["equity_bond"] = equity_bond
+            macro_intel["equity_bond"] = equity_bond
+            result["equity_bond"] = equity_bond
             # 叙事雷达：争议/尾部线索扫描（侧栏，非主剧本）
             narrative_radar = build_narrative_radar(
                 macro_intel, market_snapshot, microstructure=market_micro
@@ -312,12 +326,29 @@ class DecisionPipeline:
             ts_bundle = (stock_intel.get("tushare") or {}) if stock_intel else {}
             xcheck = cross_check_stock(snap, ts_bundle)
             gates = apply_hard_gates(code, snap, ts_bundle)
+            q_cfg = getattr(self.config, "quality", None)
+            if getattr(q_cfg, "ocf_gate_enabled", True):
+                ocf_q = assess_ocf_quality(
+                    ts_bundle,
+                    min_ocf_to_profit=float(getattr(q_cfg, "min_ocf_to_profit", 0.5)),
+                    require_periods=int(getattr(q_cfg, "require_periods", 2)),
+                    block_on_negative_ocf=bool(getattr(q_cfg, "block_on_negative_ocf", True)),
+                )
+            else:
+                ocf_q = {
+                    "signal": "unknown",
+                    "block_buy": False,
+                    "force_watch": False,
+                    "evidence": ["ocf_gate_enabled=false"],
+                    "note": "现金流闸关闭",
+                }
             info_comp = assess_info_completeness(code, snap, ts_bundle, xcheck, gates)
             earn_rev = assess_earnings_revision(ts_bundle, snap)
             snap["cross_check"] = xcheck
             snap["hard_gates"] = gates
             snap["info_completeness"] = info_comp
             snap["earnings_revision"] = earn_rev
+            snap["ocf_quality"] = ocf_q
 
             analysis = self.llm.analyze_json(
                 STOCK_SYSTEM,
@@ -329,6 +360,7 @@ class DecisionPipeline:
                     "hard_gates": gates,
                     "info_completeness": info_comp,
                     "earnings_revision": earn_rev,
+                    "ocf_quality": ocf_q,
                     "intelligence_digest": intel_digest,
                     "market_context": market_analysis,
                     "market_microstructure": market_micro,
@@ -350,6 +382,7 @@ class DecisionPipeline:
                 pass
             analysis["info_completeness"] = info_comp
             analysis["earnings_revision"] = earn_rev
+            analysis["ocf_quality"] = ocf_q
             # 盈利下修：研究评级偏保守（规则层，不替代 LLM）
             if earn_rev.get("signal") == "negative" and str(analysis.get("research_rating") or "").lower() in (
                 "strong_buy",
@@ -357,6 +390,12 @@ class DecisionPipeline:
             ):
                 analysis["research_rating"] = "hold"
                 analysis["earnings_revision_override"] = "盈利预期偏下修 → research_rating buy→hold"
+            if ocf_q.get("block_buy") and str(analysis.get("research_rating") or "").lower() in (
+                "strong_buy",
+                "buy",
+            ):
+                analysis["research_rating"] = "hold"
+                analysis["ocf_quality_override"] = "经营现金流质量闸 → research_rating buy→hold"
 
             scorecard = build_stock_scorecard(snap, analysis, stock_intel, weights=adapted_weights)
             analysis["factor_scorecard"] = scorecard
@@ -384,6 +423,7 @@ class DecisionPipeline:
                     "hard_gates": gates,
                     "info_completeness": info_comp,
                     "earnings_revision": earn_rev,
+                    "ocf_quality": ocf_q,
                 }
             )
         result["stocks"] = stock_analyses
@@ -393,6 +433,9 @@ class DecisionPipeline:
         }
         result["earnings_revisions"] = {
             s["code"]: s.get("earnings_revision") or {} for s in stock_analyses
+        }
+        result["ocf_quality"] = {
+            s["code"]: s.get("ocf_quality") or {} for s in stock_analyses
         }
 
         holdings_enriched = enrich_holdings(self.config.holdings, quotes)
@@ -422,8 +465,12 @@ class DecisionPipeline:
             "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
             "market_microstructure": market_micro,
             "global_liquidity": (macro_intel or {}).get("global_liquidity") or {},
+            "equity_bond": result.get("equity_bond")
+            or (macro_intel or {}).get("equity_bond")
+            or {},
             "info_completeness": result.get("info_completeness") or {},
             "earnings_revisions": result.get("earnings_revisions") or {},
+            "ocf_quality": result.get("ocf_quality") or {},
             "sector_analyses": [s["analysis"] for s in sector_analyses],
             "stock_analyses": stock_analyses,
             "factor_scorecards": scorecards,
@@ -597,6 +644,10 @@ class DecisionPipeline:
             microstructure=market_micro,
             earnings_revisions=result.get("earnings_revisions") or {},
             global_liquidity=(macro_intel or {}).get("global_liquidity") or {},
+            ocf_quality=result.get("ocf_quality") or {},
+            equity_bond=result.get("equity_bond")
+            or (macro_intel or {}).get("equity_bond")
+            or {},
         )
         overrides = debate_overrides + overrides
         result["validation_overrides"] = overrides
@@ -619,10 +670,20 @@ class DecisionPipeline:
         )
         from money_more.analysis.risk_check import risk_check_book
 
+        erp_cap = None
+        try:
+            eb = result.get("equity_bond") or {}
+            if eb.get("ok") and eb.get("implied_max_total_pct") is not None:
+                erp_cap = float(eb["implied_max_total_pct"])
+        except (TypeError, ValueError):
+            erp_cap = None
+        risk_max_total = float(self.config.trading.max_total_position_pct)
+        if erp_cap is not None:
+            risk_max_total = min(risk_max_total, erp_cap)
         result["risk_check"] = risk_check_book(
             validated,
             max_single=self.config.trading.max_single_position_pct,
-            max_total=self.config.trading.max_total_position_pct,
+            max_total=risk_max_total,
         )
         log.info("run_id=%s debates=%s overrides=%s risk=%s", run_id, list(debates.keys()), len(overrides), result["risk_check"].get("ok"))
 

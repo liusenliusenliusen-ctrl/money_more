@@ -5,17 +5,18 @@ ANALYSIS_FRAMEWORK = """
 
 1. **宏观政策层**：政策风向、监管口径、未来 1–3 个月关键经济/产业事件（忽略日内噪声）
 2. **全球流动性层（主线）**：引用 `global_liquidity`（美债收益率、USD/CNY 等硬指标 stance=tightening|easing|mixed）；外因须进主情景，不只当侧栏故事
-3. **产业与景气层**：行业周期位置、供需、政策产业催化、景气是否可持续
-4. **基本面与盈利预期修正（主线）**：质量/ROE + `earnings_revision`（预告与财务趋势上修/下修）；下修时不得强买
-5. **估值层**：相对自身历史与行业的估值分位；安全边际
-6. **资金与机构层**：北向/两融/主力的 **周度及以上** 趋势（不因单日波动改结论）
-7. **舆情与叙事层**：区分短期情绪噪声 vs 中期叙事切换；研报共识变化
-8. **交叉验证**：多源是否一致；矛盾时优先硬数据（财报/公告/政策/利率）
-9. **主要矛盾**：未来 1–2 个季度定价的第一因素（只能选 1–2 个）
-10. **失效条件**：何种基本面/政策/估值/流动性变化应推翻 thesis（避免纯日线技术条件）
-11. **争议叙事 / 尾部情景（侧栏）**：对美债危机叙事、AI 泡沫、量化踩踏、政策市/护盘退出等，用确认/证伪信号挂侧栏；硬指标已确认的部分应升入主线流动性层
-12. **微观结构 / 流动性（机制层）**：若 `market_microstructure.fundamental_channel_ok=false`，须在主结论说明传导可能受扰
-13. **信息完备性**：`gap_suspected` 时降置信度、偏观望；禁止「内幕/操纵」措辞
+3. **股债相对价值**：引用 `equity_bond` / `global_liquidity.equity_bond`（ERP、隐含总仓上限）；偏贵时降低总风险偏好
+4. **产业与景气层**：行业周期位置、供需、政策产业催化、景气是否可持续
+5. **基本面与盈利预期修正（主线）**：质量/ROE + `earnings_revision` + `ocf_quality`；下修或现金流弱时不得强买
+6. **估值层**：`percentiles`（PE/PB历史分位）+ 股息率；安全边际
+7. **资金与机构层**：北向/两融/主力的 **周度及以上** 趋势（不因单日波动改结论）
+8. **舆情与叙事层**：区分短期情绪噪声 vs 中期叙事切换；研报共识变化
+9. **交叉验证**：多源是否一致；矛盾时优先硬数据（财报/公告/政策/利率）
+10. **主要矛盾**：未来 1–2 个季度定价的第一因素（只能选 1–2 个）
+11. **失效条件**：何种基本面/政策/估值/流动性变化应推翻 thesis（避免纯日线技术条件）
+12. **争议叙事 / 尾部情景（侧栏）**：对美债危机叙事、AI 泡沫、量化踩踏、政策市/护盘退出等，用确认/证伪信号挂侧栏；硬指标已确认的部分应升入主线流动性层
+13. **微观结构 / 流动性（机制层）**：若 `market_microstructure.fundamental_channel_ok=false`，须在主结论说明传导可能受扰
+14. **信息完备性**：`gap_suspected` 时降置信度、偏观望；禁止「内幕/操纵」措辞
 
 ## 中长线原则
 
@@ -216,7 +217,9 @@ DECISION_SYSTEM = f"""你是 A 股 **中长线** 投资组合经理（PM），�
 9. **微观结构**：market_microstructure.fundamental_channel_ok=false 时，新开仓更保守，并在 market_regime_note 点明
 10. **信息缺口**：info_completeness 为 gap_suspected 的标的优先 watch；措辞用「公开信息不足」，禁止「内幕/操纵」
 11. **全球流动性**：global_liquidity.stance=tightening 时降低总风险偏好；写入 market_regime_note
-12. **盈利修正**：earnings_revision.signal=negative 的标的不得 buy/add
+12. **股债相对价值**：遵守 equity_bond.implied_max_total_pct 作为总仓上限参考；偏贵时提高现金
+13. **盈利修正**：earnings_revision.signal=negative 的标的不得 buy/add
+14. **现金流质量**：ocf_quality.block_buy/force_watch 或 signal=weak 的标的不得 buy/add
 
 ## 输出 JSON
 {{

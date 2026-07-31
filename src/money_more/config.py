@@ -18,6 +18,25 @@ class TradingConfig:
 
 
 @dataclass
+class QualityConfig:
+    """经营现金流质量闸（中长线防纸面富贵）。"""
+
+    ocf_gate_enabled: bool = True
+    min_ocf_to_profit: float = 0.5
+    require_periods: int = 2
+    block_on_negative_ocf: bool = True
+
+
+@dataclass
+class EquityBondConfig:
+    """股债相对价值 → A1 总仓上限。"""
+
+    enabled: bool = True
+    index_name: str = "沪深300"
+    index_code: str = "000300.SH"
+
+
+@dataclass
 class PathsConfig:
     db: str = "data/money_more.db"
     reports: str = "reports"
@@ -171,6 +190,8 @@ class AppConfig:
     watch_sectors: list[str] = field(default_factory=list)
     holdings: list[Holding] = field(default_factory=list)
     trading: TradingConfig = field(default_factory=TradingConfig)
+    quality: QualityConfig = field(default_factory=QualityConfig)
+    equity_bond: EquityBondConfig = field(default_factory=EquityBondConfig)
     screen: ScreenConfig = field(default_factory=ScreenConfig)
     intelligence: IntelligenceConfig = field(default_factory=IntelligenceConfig)
     tushare: TushareConfig = field(default_factory=TushareConfig)
@@ -253,6 +274,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         raw: dict[str, Any] = yaml.safe_load(f) or {}
 
     trading_raw = raw.get("trading") or {}
+    quality_raw = raw.get("quality") or {}
+    equity_bond_raw = raw.get("equity_bond") or {}
     intel_raw = raw.get("intelligence") or {}
     tushare_raw = raw.get("tushare") or {}
     rss_raw = raw.get("rss") or {}
@@ -300,6 +323,17 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             max_total_position_pct=float(trading_raw.get("max_total_position_pct", 80)),
             stop_loss_pct=float(trading_raw.get("stop_loss_pct", 15)),
             take_profit_pct=float(trading_raw.get("take_profit_pct", 40)),
+        ),
+        quality=QualityConfig(
+            ocf_gate_enabled=bool(quality_raw.get("ocf_gate_enabled", True)),
+            min_ocf_to_profit=float(quality_raw.get("min_ocf_to_profit", 0.5)),
+            require_periods=int(quality_raw.get("require_periods", 2)),
+            block_on_negative_ocf=bool(quality_raw.get("block_on_negative_ocf", True)),
+        ),
+        equity_bond=EquityBondConfig(
+            enabled=bool(equity_bond_raw.get("enabled", True)),
+            index_name=str(equity_bond_raw.get("index_name") or "沪深300"),
+            index_code=str(equity_bond_raw.get("index_code") or "000300.SH"),
         ),
         intelligence=IntelligenceConfig(
             enabled=bool(intel_raw.get("enabled", True)),

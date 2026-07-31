@@ -253,6 +253,10 @@ def _forbid_reason(overrides: list[str]) -> str:
         return "微观结构拥挤同步：收紧总仓"
     if "global_liquidity=tightening" in text:
         return "全球流动性收紧：降低风险偏好"
+    if "equity_bond=" in text or "ERP=" in text:
+        return "股债相对价值偏贵/中性：压低总仓上限"
+    if "现金流质量闸" in text:
+        return "经营现金流质量不足：禁止新买"
     if "空仓禁止" in text:
         return "声明持仓为空：hold/sell/add 不可用"
     return ""

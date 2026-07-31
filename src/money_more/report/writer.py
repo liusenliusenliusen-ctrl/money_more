@@ -502,6 +502,41 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
                 lines.append(f"- {_one_line(a.get('earnings_revision_note'), 100)}")
             if a.get("earnings_revision_override"):
                 lines.append(f"- ⚠ {a['earnings_revision_override']}")
+        ocf = st.get("ocf_quality") or a.get("ocf_quality") or {}
+        if ocf.get("signal") and ocf.get("signal") != "unknown":
+            lines.append(
+                f"- **现金流质量**: `{ocf.get('signal')}`"
+                + (
+                    f" · OCF/净利润≈{ocf.get('ocf_to_profit_avg')}"
+                    if ocf.get("ocf_to_profit_avg") is not None
+                    else ""
+                )
+                + f" — {_one_line(ocf.get('note'), 80)}"
+            )
+            if a.get("ocf_quality_override"):
+                lines.append(f"- ⚠ {a['ocf_quality_override']}")
+        # 估值分位 / 股息率（中长线定价锚）
+        ts_val = ((st.get("intelligence") or {}).get("tushare") or {}).get("valuation") or {}
+        pct = ts_val.get("percentiles") or {}
+        if pct.get("ok") or pct.get("pe_percentile") is not None or pct.get("dv_ratio") is not None:
+            bits = []
+            if pct.get("label"):
+                bits.append(f"锚=`{pct.get('label')}`")
+            if pct.get("pe_percentile") is not None:
+                bits.append(f"PE分位{pct.get('pe_percentile')}%")
+            if pct.get("pb_percentile") is not None:
+                bits.append(f"PB分位{pct.get('pb_percentile')}%")
+            dv = pct.get("dv_ratio")
+            if dv is not None:
+                try:
+                    dv_f = float(dv)
+                    if 0 < dv_f < 0.2:
+                        dv_f *= 100.0
+                    bits.append(f"股息率{dv_f:.2f}%")
+                except (TypeError, ValueError):
+                    bits.append(f"股息率={dv}")
+            if bits:
+                lines.append(f"- **估值定位**: {' · '.join(bits)}")
         sc = st.get("factor_scorecard") or a.get("factor_scorecard") or rec.get("factor_scorecard") or {}
         if sc.get("total_score") is not None:
             scores = sc.get("scores") or {}
@@ -509,6 +544,11 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
             lines.append(
                 f"- **因子分**: **{sc.get('total_score')}** ({sc.get('signal')}) | {parts}"
             )
+            val_ev = (sc.get("evidence") or {}).get("valuation") or []
+            if val_ev:
+                lines.append(
+                    "- 估值证据: " + "；".join(_one_line(x, 36) for x in val_ev[:3])
+                )
         if a.get("summary"):
             lines.append(f"- **研究小结**: {a.get('summary')}")
         if not a and not sc:
@@ -743,6 +783,17 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             + (f" · 美债10Y {us10}%" if us10 is not None else "")
             + f" — {_one_line(gl.get('a_share_implication') or gl.get('plain_note'), 90)}"
         )
+    eb = result.get("equity_bond") or gl.get("equity_bond") or {}
+    if eb.get("ok"):
+        lines.append(
+            f"- **股债相对价值**: ERP={eb.get('erp_bp')}bp"
+            f" · {eb.get('index') or '沪深300'} PE={eb.get('pe_ttm')}"
+            f" · 盈利收益率 {eb.get('earnings_yield_pct')}%"
+            f" · 隐含总仓上限 **{eb.get('implied_max_total_pct')}%**"
+            f"（regime=`{eb.get('regime')}`）"
+        )
+    elif eb.get("note"):
+        lines.append(f"- **股债相对价值**: {_one_line(eb.get('note'), 100)}")
     liq = market.get("liquidity_assessment") or {}
     if liq.get("global_liquidity_note"):
         lines.append(f"- **流动性解读**: {_one_line(liq.get('global_liquidity_note'), 100)}")
@@ -1096,6 +1147,13 @@ def render_daily_report(result: dict[str, Any]) -> str:
             lines.append(f"- **中国10Y**: {cn10.get('latest')}%")
         if gl.get("us_cn_10y_spread_bp") is not None:
             lines.append(f"- **中美10Y利差**: {gl.get('us_cn_10y_spread_bp')}bp（美-中）")
+        eb = result.get("equity_bond") or gl.get("equity_bond") or {}
+        if eb.get("ok"):
+            lines.append(
+                f"- **股债ERP**: {eb.get('erp_bp')}bp · PE={eb.get('pe_ttm')} · "
+                f"盈利收益率{eb.get('earnings_yield_pct')}% · "
+                f"总仓上限建议 {eb.get('implied_max_total_pct')}%（`{eb.get('regime')}`）"
+            )
         fx = gl.get("usd_cny") or {}
         if fx.get("latest") is not None:
             lines.append(
