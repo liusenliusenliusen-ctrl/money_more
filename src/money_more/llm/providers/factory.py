@@ -23,7 +23,7 @@ def build_provider(
     kind = (kind or "openai").strip().lower()
     label = name or kind
     agents = getattr(config, "agents", None)
-    llm_timeout = float(getattr(agents, "llm_timeout_seconds", 90) or 90)
+    llm_timeout = float(getattr(agents, "llm_timeout_seconds", 300) or 300)
     llm_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
     cursor_timeout = float(getattr(agents, "cursor_timeout_seconds", 180) or 180)
     cursor_retries = int(getattr(agents, "cursor_max_retries", 2) or 2)

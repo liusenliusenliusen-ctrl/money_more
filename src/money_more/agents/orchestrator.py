@@ -98,7 +98,7 @@ class MultiAgentOrchestrator:
         synthesizer: SynthesisAgent | None = None,
         *,
         parallel: bool = True,
-        agent_wait_seconds: float = 420.0,
+        agent_wait_seconds: float = 960.0,
     ) -> None:
         self.primary = primary
         self.secondary = secondary
@@ -251,7 +251,7 @@ def build_orchestrator(config: Any) -> MultiAgentOrchestrator | None:
     secondary_p = providers.get("secondary")
     synth_p = providers.get("synthesizer") or primary_p
     agents_cfg = getattr(config, "agents", None)
-    wait = float(getattr(agents_cfg, "agent_wait_seconds", 420) or 420)
+    wait = float(getattr(agents_cfg, "agent_wait_seconds", 960) or 960)
     return MultiAgentOrchestrator(
         primary=AnalystAgent(primary_p, role="primary"),
         secondary=AnalystAgent(secondary_p, role="secondary") if secondary_p else None,

@@ -7,7 +7,12 @@ from typing import Any, Iterable
 from money_more.data.fetcher import normalize_code
 from money_more.llm.client import LLMClient
 
-DEBATE_SYSTEM = """你是投资委员会裁判。给定一只股票的多空材料，输出简短辩论结论 JSON：
+DEBATE_SYSTEM = """你是投资委员会裁判。给定一只股票的多空材料，输出简短辩论结论 JSON。
+必填顶层键：code, referee, decision_hint, confidence_haircut
+EXAMPLE JSON OUTPUT:
+{"code":"600519","bull_case":"品牌与现金流稳。","bear_case":"估值偏贵。","referee":"draw","confidence_haircut":0.15,"key_contradiction":"质量高但赔率一般","decision_hint":"hold"}
+
+完整 schema：
 {
   "code": "6位代码",
   "bull_case": "看多要点（<=80字）",
@@ -17,7 +22,8 @@ DEBATE_SYSTEM = """你是投资委员会裁判。给定一只股票的多空材�
   "key_contradiction": "主要矛盾一句话",
   "decision_hint": "buy|add|hold|watch|sell"
 }
-原则：证据不足时选 draw 并提高 haircut；禁止编造未提供的数据。"""
+原则：证据不足时选 draw 并提高 haircut；禁止编造未提供的数据。
+最终 content 必须是合法 json 对象；允许内部思考，但不要把 JSON 只留在思考里。"""
 
 
 def _analysis_by_code(stock_analyses: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

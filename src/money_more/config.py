@@ -143,12 +143,13 @@ class AgentsConfig:
     synthesizer_model: str = ""
     cursor_model: str = "composer-2.5"
     # LLM / Cursor 超时与重试（秒）
-    llm_timeout_seconds: float = 90.0
+    # V4 Pro + thinking：大 payload 常见 60–120s，默认 300s
+    llm_timeout_seconds: float = 300.0
     llm_max_retries: int = 2
     cursor_timeout_seconds: float = 180.0
     cursor_max_retries: int = 2
     # 编排层等待单个分析师的上限（应略大于单次 timeout × (retries+1)）
-    agent_wait_seconds: float = 420.0
+    agent_wait_seconds: float = 960.0
 
 
 @dataclass
@@ -208,7 +209,7 @@ class AppConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com/v1"
-    llm_model: str = "deepseek-v4-flash"
+    llm_model: str = "deepseek-v4-pro"
     tushare_token: str = ""
     cursor_api_key: str = ""
     claude_api_key: str = ""
@@ -403,11 +404,11 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             synthesizer_provider=str(agents_raw.get("synthesizer_provider", "deepseek")),
             synthesizer_model=str(agents_raw.get("synthesizer_model") or ""),
             cursor_model=str(agents_raw.get("cursor_model") or "composer-2.5"),
-            llm_timeout_seconds=float(agents_raw.get("llm_timeout_seconds", 90)),
+            llm_timeout_seconds=float(agents_raw.get("llm_timeout_seconds", 300)),
             llm_max_retries=int(agents_raw.get("llm_max_retries", 2)),
             cursor_timeout_seconds=float(agents_raw.get("cursor_timeout_seconds", 180)),
             cursor_max_retries=int(agents_raw.get("cursor_max_retries", 2)),
-            agent_wait_seconds=float(agents_raw.get("agent_wait_seconds", 420)),
+            agent_wait_seconds=float(agents_raw.get("agent_wait_seconds", 960)),
         ),
         sim=SimTradingConfig(
             enabled=bool(sim_raw.get("enabled", True)),
@@ -440,7 +441,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         ),
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1"),
-        llm_model=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
+        llm_model=os.getenv("LLM_MODEL", "deepseek-v4-pro"),
         tushare_token=os.getenv("TUSHARE_TOKEN", ""),
         cursor_api_key=os.getenv("CURSOR_API_KEY", ""),
         claude_api_key=os.getenv("ANTHROPIC_API_KEY")

@@ -41,7 +41,7 @@ class LLMClient:
         resolved_timeout = float(
             timeout
             if timeout is not None
-            else (getattr(agents, "llm_timeout_seconds", 90) or 90)
+            else (getattr(agents, "llm_timeout_seconds", 300) or 300)
         )
         resolved_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
         self.provider = provider or OpenAICompatProvider(

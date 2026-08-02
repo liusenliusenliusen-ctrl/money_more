@@ -106,11 +106,12 @@ agents:
   secondary_model: composer-2.5
   synthesizer_provider: deepseek
   cursor_model: composer-2.5
-  llm_timeout_seconds: 90
+  llm_timeout_seconds: 300
   llm_max_retries: 2
   cursor_timeout_seconds: 180
   cursor_max_retries: 2
-  agent_wait_seconds: 420
+  # 略大于 llm_timeout × (retries+1)，避免编排层先掐断
+  agent_wait_seconds: 960
 
 intelligence:
   enabled: true

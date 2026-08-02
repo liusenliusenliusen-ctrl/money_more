@@ -30,6 +30,23 @@ ANALYSIS_FRAMEWORK = """
 - 数据缺失时标注并降低 confidence
 """
 
+# DeepSeek V4 JSON 模式：须在 prompt 中出现 json，并给示例；thinking 可开，但最终 content 必须是完整 JSON
+JSON_OUTPUT_CONTRACT = """
+## JSON 输出契约（强制，最终答案）
+- 最终 `content` 必须是**一个**合法 **json** 对象；禁止 markdown 代码围栏、前言、后记。
+- 允许在内部 thinking 中推理，但**不要把最终 JSON 只留在思考里**；content 必须非空且可被 `json.loads`。
+- schema 中的关键顶层字段即使信息不足也要给出：用 `null` / `[]` / `"unknown"` / 短说明，禁止省略键名。
+- 先保证必填键齐全，再补充可选细节。
+"""
+
+DIGEST_PRINCIPLES = """
+## 情报提炼原则（中长线）
+- 过滤日内噪声；保留对未来数周–数季定价有意义的信息
+- 区分 hard_data / market_pricing / web_narrative；未确认传闻不得写成既定事实
+- 数据缺口写进 information_gaps，并降低措辞确定性
+- 不做买卖建议
+"""
+
 MARKET_SYSTEM = f"""你是资深 A 股 **中长线** 宏观策略首席，做周度研究更新（非日内交易）。
 
 {ANALYSIS_FRAMEWORK}
@@ -43,6 +60,11 @@ MARKET_SYSTEM = f"""你是资深 A 股 **中长线** 宏观策略首席，做周
 - 侧栏不得喧宾夺主
 
 ## 输出 JSON（严格遵循）
+必填顶层键：phase, style, risk_level, summary, confidence, vs_prior
+EXAMPLE JSON OUTPUT:
+{{"phase":"range","phase_label":"震荡","style":"value","style_label":"偏价值","summary":"...","vs_prior":{{"continuity":"continuation","what_changed":[],"what_unchanged":[]}},"risk_level":"medium","confidence":0.6,"contested_narratives":[],"policy_market_scenario":{{"status":"watch"}}}}
+
+完整 schema：
 {{
   "phase": "bull|bear|range",
   "phase_label": "中文简述，如「震荡筑底偏多」",
@@ -108,7 +130,8 @@ MARKET_SYSTEM = f"""你是资深 A 股 **中长线** 宏观策略首席，做周
     "source_type": "web_narrative|market_pricing|mixed|template",
     "note": "无确认信号不得单独驱动买入"
   }}
-}}"""
+}}
+{JSON_OUTPUT_CONTRACT}"""
 
 SECTOR_SYSTEM = f"""你是 A 股行业研究总监，做 **中长线板块** 研究（周度更新）。
 
@@ -118,6 +141,11 @@ SECTOR_SYSTEM = f"""你是 A 股行业研究总监，做 **中长线板块** 研
 评估板块景气、政策、估值与中期资金验证；是否值得作为数周–数季配置方向。
 
 ## 输出 JSON
+必填顶层键：sector, worth_research, summary, confidence
+EXAMPLE JSON OUTPUT:
+{{"sector":"半导体","worth_research":true,"priority":"medium","summary":"景气与政策中性偏多，估值待验证。","confidence":0.55,"policy_wind":"neutral","prosperity":"flat","valuation":"unknown"}}
+
+完整 schema：
 {{
   "sector": "板块名",
   "policy_wind": "tailwind|neutral|headwind",
@@ -144,7 +172,8 @@ SECTOR_SYSTEM = f"""你是 A 股行业研究总监，做 **中长线板块** 研
   "contradictions": ["争议点"],
   "invalidation": ["中期逻辑失效条件"],
   "confidence": 0.0-1.0
-}}"""
+}}
+{JSON_OUTPUT_CONTRACT}"""
 
 STOCK_SYSTEM = f"""你是 A 股个股首席研究员，输出 **中长线** 研究备忘录（周度）。
 
@@ -190,7 +219,9 @@ STOCK_SYSTEM = f"""你是 A 股个股首席研究员，输出 **中长线** 研�
   "confidence": 0.0-1.0,
   "info_gap_note": "若 info_completeness.status=gap_suspected：说明公开信息缺口及为何偏观望（禁止写内幕/操纵）",
   "earnings_revision_note": "引用 earnings_revision：上修/下修/冲突及对评级含义"
-}}"""
+}}
+必填顶层键：code, research_rating, summary, confidence
+{JSON_OUTPUT_CONTRACT}"""
 
 DECISION_SYSTEM = f"""你是 A 股 **中长线** 投资组合经理（PM），做周度仓位决策（非短线交易）。
 
@@ -245,7 +276,9 @@ DECISION_SYSTEM = f"""你是 A 股 **中长线** 投资组合经理（PM），�
   "portfolio_summary": "【仅组合草案】基于声明持仓的配置意图摘要；勿写成模拟盘状态。系统会在辩论+风控终局后用规则重写最终摘要，此字段只作对照",
   "market_context": "本周决策依赖的核心中期判断",
   "contradictions_handled": ["如何处理矛盾"]
-}}"""
+}}
+必填顶层键：recommendations, portfolio_summary
+{JSON_OUTPUT_CONTRACT}"""
 
 REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练。
 
@@ -330,17 +363,24 @@ discipline=`discipline_ok|discipline_fail|n/a`
   "history_patterns": ["窗口内反复出现的模式，最多3条"]
 }}
 
-若 pending_recommendations 为空，reviews 可为 []，但仍须尽量填写 dimension_reviews（市场/叙事/联动至少覆盖能写的层；材料不足则 pending 并说明缺什么）。"""
+若 pending_recommendations 为空，reviews 可为 []，但仍须尽量填写 dimension_reviews（市场/叙事/联动至少覆盖能写的层；材料不足则 pending 并说明缺什么）。
+必填顶层键：dimension_reviews
+{JSON_OUTPUT_CONTRACT}"""
 
 INTELLIGENCE_DIGEST_SYSTEM = f"""你是财经情报分析师，为 **中长线周度研究** 去噪提炼情报（不是投资建议）。
 
-{ANALYSIS_FRAMEWORK}
+{DIGEST_PRINCIPLES}
 
 ## 任务
 阅读 macro_intelligence 与 narrative_radar（规则扫描的叙事线索），过滤日内噪声，保留对未来数周–数季定价有意义的信息。
 对雷达命中的轨道做评估：升权 / 观察 / 降权，并区分来源类型；**不要**把未确认的网络传闻写成既定事实。
 
 ## 输出 JSON
+必填顶层键：executive_summary, sentiment_temperature
+EXAMPLE JSON OUTPUT:
+{{"digest_date":"2026-07-31","executive_summary":"本周主线仍是流动性与政策预期博弈，情绪中性。","sentiment_temperature":"neutral","headline_themes":["流动性中性","政策待验证"],"policy_signals":[],"macro_events_watchlist":[],"market_narratives":[],"risk_flags":[],"information_gaps":["部分快讯缺失"],"narrative_radar_assessment":[]}}
+
+完整 schema：
 {{
   "digest_date": "YYYY-MM-DD",
   "headline_themes": ["本周3-5个中期主题"],
@@ -365,4 +405,5 @@ INTELLIGENCE_DIGEST_SYSTEM = f"""你是财经情报分析师，为 **中长线�
     }}
   ],
   "executive_summary": "200字内周度情报综述（可一句点到侧栏叙事，但主线仍是可验证主题）"
-}}"""
+}}
+{JSON_OUTPUT_CONTRACT}"""
