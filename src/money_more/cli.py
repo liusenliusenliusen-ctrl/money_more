@@ -27,6 +27,13 @@ def _ensure_src_on_path() -> None:
         sys.path.insert(0, str(src))
 
 
+def _run_completed(result: dict) -> bool:
+    """跑完（含 LLM 降级）为 True；aborted/partial 为 False。"""
+    if result.get("partial") or str(result.get("run_status") or "") == "aborted":
+        return False
+    return True
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     db = Database(config.resolve(config.paths.db))
@@ -50,98 +57,127 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
     )
 
+    # pipeline.run_daily 对分析异常返回 partial/degraded result，一般不抛
+    if getattr(args, "skip_debate", False):
+        pipeline.config.analysis.debate_top_k = 0
     try:
-        # 可选跳过辩论
-        if getattr(args, "skip_debate", False):
-            pipeline.config.analysis.debate_top_k = 0
         result = pipeline.run_daily(run_date)
-        report_path = save_report(result, config.resolve(config.paths.reports))
-        db.finish_run(result["run_id"], "success", str(report_path))
-        console.print("\n" + render_daily_report(result))
-        console.print(Panel(f"主报告已保存: {report_path}", style="green"))
-        paths = result.get("report_paths") or {}
-        if paths.get("review"):
-            console.print(Panel(f"复盘小报告: {paths['review']}", style="cyan"))
-        if paths.get("sim"):
-            console.print(Panel(f"模拟账本小报告: {paths['sim']}", style="cyan"))
-        if result.get("trend"):
-            console.print(Panel("滚动趋势已更新: reports/trend.md", style="cyan"))
-        dq = result.get("data_quality") or {}
-        if dq.get("degraded"):
-            console.print(Panel(dq.get("note", "数据降级"), title="数据质量", style="yellow"))
-
-        if config.email.enabled and config.email.send_analysis:
-            from money_more.notify import notify_analysis_report
-
-            mail = notify_analysis_report(config, report_path, run_date.isoformat())
-            if mail.get("skipped"):
-                console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
-            elif mail.get("ok"):
-                msg = f"分析报告已发邮件 → {mail.get('to')}"
-                if mail.get("guide_sent_to"):
-                    msg += f"\n首次附带解读文档 → {mail.get('guide_sent_to')}"
-                console.print(Panel(msg, style="green"))
-            else:
-                console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
-
-        # 周期流程可选：跑完后调用 Cursor 自优化并写优化报告
-        if getattr(args, "optimize", False) or (
-            config.schedule.optimize_after_run and getattr(args, "with_optimize", False)
-        ):
-            from money_more.optimize import run_cursor_optimize
-
-            console.print(Panel("开始 Cursor Agent 代码优化…", style="cyan"))
-            opt = run_cursor_optimize(config, run_date.isoformat())
-            console.print(Panel(str(opt), title="optimize", style="green" if not opt.get("error") else "red"))
-            if opt.get("report_path"):
-                console.print(Panel(f"优化报告已保存: {opt['report_path']}", style="cyan"))
-                if config.email.enabled and config.email.send_optimize:
-                    from money_more.notify import notify_optimize_report
-
-                    mail = notify_optimize_report(config, opt["report_path"], run_date.isoformat())
-                    if mail.get("skipped"):
-                        console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
-                    elif mail.get("ok"):
-                        console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
-                    else:
-                        console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
-        return 0
     except Exception as exc:
         console.print(Panel(str(exc), title="运行失败", style="red"))
-        # 硬失败仍尽量落盘并邮件通知，避免「跑了很久却无声」
-        try:
-            fail_result = {
-                "run_date": run_date.isoformat(),
-                "error": str(exc),
-                "recommendations": [],
-                "portfolio_summary": f"运行失败: {exc}",
-                "market": {},
-                "sectors": [],
-                "stocks": [],
-                "reviews": [],
-                "trend": {},
-                "data_quality": {
-                    "degraded": True,
-                    "llm_degraded": True,
-                    "note": f"运行异常中断，仍尝试发邮件通知。错误: {exc}",
-                },
-                "multi_agent": {"enabled": False, "meta": "hard_fail", "errors": [str(exc)]},
-            }
-            report_path = save_report(fail_result, config.resolve(config.paths.reports))
-            console.print(Panel(f"失败报告已保存: {report_path}", style="yellow"))
-            if config.email.enabled and config.email.send_analysis:
-                from money_more.notify import notify_analysis_report
+        result = {
+            "run_date": run_date.isoformat(),
+            "error": str(exc),
+            "partial": True,
+            "run_status": "aborted",
+            "recommendations": [],
+            "portfolio_summary": f"运行失败: {exc}",
+            "market": {},
+            "sectors": [],
+            "stocks": [],
+            "reviews": [],
+            "trend": {},
+            "intelligence": {},
+            "data_quality": {
+                "llm_degraded": True,
+                "llm_note": f"运行异常中断，仍尝试发邮件通知。错误: {exc}",
+                "note": "本轮在启动阶段中断；数据台账以已落盘内容为准",
+                "degraded": False,
+            },
+            "multi_agent": {"enabled": False, "meta": "hard_fail", "errors": [str(exc)]},
+            "llm_stage_errors": [str(exc)],
+        }
 
-                mail = notify_analysis_report(config, report_path, run_date.isoformat())
-                if mail.get("ok"):
-                    console.print(Panel(f"失败通知已发邮件 → {mail.get('to')}", style="yellow"))
-                elif mail.get("skipped"):
+    completed = _run_completed(result)
+    dq = result.get("data_quality") or {}
+    reports_dir = config.resolve(config.paths.reports)
+    try:
+        report_path = save_report(
+            result,
+            reports_dir,
+            preserve_existing_datasources=bool(result.get("partial")),
+        )
+    except Exception as save_exc:
+        console.print(Panel(f"报告保存失败: {save_exc}", style="red"))
+        if result.get("run_id") is not None:
+            db.finish_run(int(result["run_id"]), "failed")
+        return 1
+
+    if result.get("run_id") is not None:
+        db.finish_run(
+            int(result["run_id"]),
+            "success" if completed else "failed",
+            str(report_path),
+        )
+
+    console.print("\n" + render_daily_report(result))
+    paths = result.get("report_paths") or {}
+    if completed:
+        console.print(Panel(f"主报告已保存: {report_path}", style="green"))
+    else:
+        console.print(
+            Panel(
+                f"未完整跑完，已尽量保存已采集数据与报告: {report_path}\n"
+                f"run_status={result.get('run_status')} error={result.get('error')}",
+                style="yellow",
+            )
+        )
+    if paths.get("datasources"):
+        console.print(Panel(f"数据源小报告: {paths['datasources']}", style="cyan"))
+    if paths.get("review"):
+        console.print(Panel(f"复盘小报告: {paths['review']}", style="cyan"))
+    if paths.get("sim"):
+        console.print(Panel(f"模拟账本小报告: {paths['sim']}", style="cyan"))
+    if result.get("trend") and not (isinstance(result.get("trend"), dict) and result["trend"].get("error")):
+        console.print(Panel("滚动趋势已更新: reports/trend.md", style="cyan"))
+    if dq.get("llm_degraded"):
+        console.print(Panel(dq.get("llm_note") or "LLM 降级", title="分析降级", style="yellow"))
+    if dq.get("degraded"):
+        console.print(Panel(dq.get("note", "数据降级"), title="数据质量", style="yellow"))
+
+    if config.email.enabled and config.email.send_analysis:
+        from money_more.notify import notify_analysis_report
+
+        mail = notify_analysis_report(config, report_path, run_date.isoformat())
+        if mail.get("skipped"):
+            console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
+        elif mail.get("ok"):
+            tag = "分析报告"
+            if not completed:
+                tag = "中断通知（含已采集数据）"
+            elif dq.get("llm_degraded"):
+                tag = "降级分析报告"
+            msg = f"{tag}已发邮件 → {mail.get('to')}"
+            if mail.get("guide_sent_to"):
+                msg += f"\n首次附带解读文档 → {mail.get('guide_sent_to')}"
+            console.print(Panel(msg, style="green" if completed else "yellow"))
+        else:
+            console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
+
+    want_opt = getattr(args, "optimize", False) or (
+        config.schedule.optimize_after_run and getattr(args, "with_optimize", False)
+    )
+    if want_opt and completed and not dq.get("llm_degraded"):
+        from money_more.optimize import run_cursor_optimize
+
+        console.print(Panel("开始 Cursor Agent 代码优化…", style="cyan"))
+        opt = run_cursor_optimize(config, run_date.isoformat())
+        console.print(Panel(str(opt), title="optimize", style="green" if not opt.get("error") else "red"))
+        if opt.get("report_path"):
+            console.print(Panel(f"优化报告已保存: {opt['report_path']}", style="cyan"))
+            if config.email.enabled and config.email.send_optimize:
+                from money_more.notify import notify_optimize_report
+
+                mail = notify_optimize_report(config, opt["report_path"], run_date.isoformat())
+                if mail.get("skipped"):
                     console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
+                elif mail.get("ok"):
+                    console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
                 else:
                     console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
-        except Exception as mail_exc:
-            console.print(Panel(f"失败通知也未发出: {mail_exc}", style="red"))
-        return 1
+    elif want_opt:
+        console.print(Panel("本轮未完整成功或存在 LLM 降级，已跳过 Cursor 自优化", style="yellow"))
+
+    return 0 if completed else 1
 
 
 def cmd_optimize(args: argparse.Namespace) -> int:

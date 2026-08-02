@@ -12,7 +12,7 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 | 调度 | **每周二、周五 01:00** 自动跑一轮（含自优化）；也可手动 `--force` |
 | 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池（**自动筛选**；无独立「必跟股池」） |
 | 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；有持仓则强制进深度池 |
-| 产出 | 主报告（数据源→结论卡→详细论证→D 趋势）+ 复盘/模拟小报告、优化报告、滚动趋势 |
+| 产出 | 主报告（运行状态→结论卡→详细论证→D 趋势）+ 数据源/复盘/模拟小报告、优化报告、滚动趋势 |
 | 通知 | SMTP：正文=结论卡；附件=主报告 md |
 | 自进化 | 周期结束后 Cursor 优化代码；优先补数据源，再改分析 |
 | 多Agent | DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
@@ -27,7 +27,7 @@ money-more scheduled
   ├─ 决策链：①研究 → ②组合草案（双分析师 → 综合）→ ③辩论（凡 buy/add）→ ④风控终局
   ├─ 复盘（近 60 日；浮盈亏 ≠ 结案）→ 独立 *-review.md
   ├─ 模拟账本（回放④终局）→ 独立 *-sim.md
-  ├─ 报告 → 主报告.md + *-review.md + *-sim.md；趋势 reports/trend.md
+  ├─ 报告 → 主报告.md + *-datasources.md + *-review.md + *-sim.md；趋势 reports/trend.md
   ├─ （可选）邮件：正文结论卡 · 附件仅主报告
   ├─ （可选）Cursor 自优化
   └─ （可选）邮件发送优化报告
@@ -37,7 +37,7 @@ money-more scheduled
 全面性补充：**叙事雷达** + 结论卡侧栏；**政策市假说**；**微观结构/流动性断点**；个股**信息完备性**（缺口→观望）；报告 **A 主结论 / B 推理链 / C 侧栏 / D 趋势**。
 
 读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。  
-数据说明书（比报告文首更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。
+数据说明书（比 `*-datasources.md` 更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。
 
 ## 快速开始
 
@@ -120,7 +120,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 - **正文**：仅结论卡（HTML）
 - **附件**：仅主报告 `.md`（含详细论证与 D 趋势）
-- **不附**：`*-review.md`、`*-sim.md`、`trend.md`
+- **不附**：`*-datasources.md`、`*-review.md`、`*-sim.md`、`trend.md`
 - **首次发送**：每个收件人第一次收到邮件时，另附 `docs/how-to-read-report.md`
 
 ## 运行方式
@@ -190,7 +190,8 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 | 路径 | 说明 |
 |------|------|
 | `data/money_more.db` | SQLite |
-| `reports/YYYY-MM-DD.md` | 主报告：数据源 → 结论卡 A/B/C → 详细论证 A/B/C → D 趋势 |
+| `reports/YYYY-MM-DD.md` | 主报告：运行状态 → 结论卡 A/B/C → 详细论证 A/B/C → D 趋势 |
+| `reports/YYYY-MM-DD-datasources.md` | 数据源台账小报告（邮件不附） |
 | `reports/YYYY-MM-DD-review.md` | 复盘与经验小报告（邮件不附） |
 | `reports/YYYY-MM-DD-sim.md` | 模拟账本小报告（邮件不附） |
 | `reports/optimize-YYYY-MM-DD.md` | 自优化报告 |

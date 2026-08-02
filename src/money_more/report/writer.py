@@ -740,12 +740,27 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     )
     lines.append("")
 
+    from money_more.analysis.data_sources_ledger import is_pipeline_status_note
+
     dq = result.get("data_quality") or {}
     screen = result.get("screen") or {}
+    if result.get("partial") or str(result.get("run_status") or "") == "aborted":
+        lines.append(
+            "> ⚠️ **本轮未完整完成**：结论可能不完整；请先看文首「运行状态」，"
+            "数据是否采到以 `*-datasources.md` 为准。"
+        )
+        lines.append("")
+    elif dq.get("llm_degraded"):
+        lines.append(
+            f"> ⚠️ **分析降级**: {dq.get('llm_note') or '部分 LLM 阶段失败，已用占位继续'}。"
+            "动作与评级需人工复核。"
+        )
+        lines.append("")
     if dq.get("degraded") or dq.get("screen_degraded") or screen.get("degraded"):
         warn = dq.get("screen_note") or screen.get("plain_note") or dq.get("note") or "数据/遴选降级"
-        lines.append(f"> ⚠️ **可信度警告**: {warn}")
-        lines.append("")
+        if not is_pipeline_status_note(warn):
+            lines.append(f"> ⚠️ **数据/遴选警告**: {warn}")
+            lines.append("")
     if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
         lines.append(
             "> **持仓说明**: 本轮按**空仓**决策（`holdings` 未声明或为空）。"
@@ -995,6 +1010,79 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_run_status_section(result: dict[str, Any], *, run_date: str | None = None) -> list[str]:
+    """主报告文首：运行/LLM 状态；数据台账详见独立小报告。"""
+    from money_more.analysis.data_sources_ledger import is_pipeline_status_note
+
+    lines: list[str] = []
+    dq = result.get("data_quality") or {}
+    err = result.get("error")
+    note = str(dq.get("note") or "")
+    llm_note = str(dq.get("llm_note") or "")
+    ma = result.get("multi_agent") or {}
+    ma_errors = [str(e) for e in (ma.get("errors") or []) if e]
+    stage_errors = [str(e) for e in (result.get("llm_stage_errors") or []) if e]
+    aborted = bool(result.get("partial") or str(result.get("run_status") or "") == "aborted")
+    degraded = bool(dq.get("llm_degraded") or stage_errors)
+
+    pipeline_bits: list[str] = []
+    if err:
+        pipeline_bits.append(str(err))
+    if is_pipeline_status_note(note):
+        pipeline_bits.append(note)
+    if dq.get("llm_degraded") and llm_note:
+        pipeline_bits.append(llm_note)
+    for e in stage_errors + ma_errors:
+        if e not in pipeline_bits:
+            pipeline_bits.append(e)
+
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for b in pipeline_bits:
+        b = b.strip()
+        if not b or b in seen:
+            continue
+        seen.add(b)
+        uniq.append(b)
+
+    day = run_date or result.get("run_date") or date.today().isoformat()
+    ds_link = f"[`{day}-datasources.md`]({day}-datasources.md)"
+
+    if aborted or uniq:
+        lines.append("## 运行状态")
+        lines.append("")
+        if aborted:
+            lines.append(
+                "⚠️ **本轮分析中断**（`run_status=aborted`）。"
+                "下列为运行/模型问题；**下方数据台账仍反映已采集内容**，勿解读为「所有数据源都连不上」。"
+            )
+        elif degraded:
+            lines.append(
+                "⚠️ **本轮部分 LLM 阶段已降级**（仍尽量跑完并落盘）。"
+                "下列为模型/阶段问题，**不是**数据源台账本身："
+            )
+        else:
+            lines.append("⚠️ **运行提示**：")
+        lines.append("")
+        for b in uniq[:12]:
+            lines.append(f"- {b}")
+        if len(uniq) > 12:
+            lines.append(f"- …另有 {len(uniq) - 12} 条阶段错误见 JSON")
+        lines.append("")
+        lines.append(f"_数据连接明细见独立小报告 {ds_link}（邮件不附）。_")
+        lines.append("")
+        return lines
+
+    score = dq.get("score")
+    if score is not None:
+        flag = "⚠️ 数据降级" if dq.get("degraded") else "数据完整度尚可"
+        lines.append(f"**数据台账**: {flag}（分 {score}）· 明细见 {ds_link}")
+    else:
+        lines.append(f"**数据台账**: 明细见 {ds_link}")
+    lines.append("")
+    return lines
+
+
 def render_daily_report(result: dict[str, Any]) -> str:
     lines: list[str] = []
     run_date = result.get("run_date", date.today().isoformat())
@@ -1006,9 +1094,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append(f"**取向**: 中长线（{horizon}）" + (f" · 节奏 `{cadence}`" if cadence else ""))
     lines.append("")
 
-    from money_more.analysis.data_sources_ledger import render_data_sources_section
-
-    lines.extend(render_data_sources_section(result))
+    lines.extend(render_run_status_section(result, run_date=run_date))
 
     ma = result.get("multi_agent") or {}
     if ma.get("enabled"):
@@ -1036,7 +1122,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
     lines.append(
         "_按结论卡 **A→B→C** 展开证据（不是第二份结论）。"
         "下列 A/B/C 为子节；其后 **D 趋势更新**。"
-        "复盘与模拟账本见同日 `*-review.md` / `*-sim.md`。_"
+        "数据源 / 复盘 / 模拟见同日 `*-datasources.md` / `*-review.md` / `*-sim.md`。_"
     )
     lines.append("")
 
@@ -1459,10 +1545,11 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append("")
 
     dq = result.get("data_quality") or {}
-    if dq:
+    if dq and dq.get("score") is not None:
         lines.append(
-            f"**数据质量分**: {dq.get('score', '-')} · {dq.get('note', '')}"
-            "（明细见文首「数据源说明」）"
+            f"**数据质量分**: {dq.get('score')}"
+            f"（明细见 [`{result.get('run_date', date.today().isoformat())}-datasources.md`]"
+            f"({result.get('run_date', date.today().isoformat())}-datasources.md)）"
         )
         lines.append("")
 
@@ -1477,7 +1564,8 @@ def render_daily_report(result: dict[str, Any]) -> str:
 
     run_date = result.get("run_date", date.today().isoformat())
     lines.append(
-        f"_同日独立报告：[`{run_date}-review.md`]({run_date}-review.md)（复盘与经验）· "
+        f"_同日独立报告：[`{run_date}-datasources.md`]({run_date}-datasources.md)（数据源）· "
+        f"[`{run_date}-review.md`]({run_date}-review.md)（复盘与经验）· "
         f"[`{run_date}-sim.md`]({run_date}-sim.md)（模拟账本）。_"
     )
     lines.append("")
@@ -1787,16 +1875,63 @@ def render_trend_report(trend: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def save_report(result: dict[str, Any], reports_dir: Path) -> Path:
-    """写入主报告 + 复盘/模拟小报告；返回主报告路径。"""
+def save_report(
+    result: dict[str, Any],
+    reports_dir: Path,
+    *,
+    preserve_existing_datasources: bool = False,
+) -> Path:
+    """写入主报告 + 数据源/复盘/模拟小报告；返回主报告路径。
+
+    preserve_existing_datasources:
+        若为 True 且已有 datasources 文件「更丰满」（行数更多），则不覆盖——
+        避免空失败骨架把已采台账抹掉。
+    """
+    from money_more.analysis.data_sources_ledger import render_data_sources_report
+
     reports_dir.mkdir(parents=True, exist_ok=True)
     run_date = result.get("run_date", date.today().isoformat())
     md_path = reports_dir / f"{run_date}.md"
     json_path = reports_dir / f"{run_date}.json"
+    datasources_path = reports_dir / f"{run_date}-datasources.md"
     review_path = reports_dir / f"{run_date}-review.md"
     sim_path = reports_dir / f"{run_date}-sim.md"
 
+    # partial 时先合并已有 JSON，再渲染——避免空骨架盖掉已采数据
+    if preserve_existing_datasources and json_path.is_file():
+        try:
+            import json as _json
+
+            prev = _json.loads(json_path.read_text(encoding="utf-8"))
+            for key in ("intelligence", "screen", "market", "sectors", "stocks", "data_sources"):
+                cur = result.get(key)
+                empty = cur in (None, {}, [], "")
+                if empty and prev.get(key):
+                    result[key] = prev[key]
+            prev_dq = prev.get("data_quality") or {}
+            cur_dq = dict(result.get("data_quality") or {})
+            if prev_dq:
+                merged_dq = dict(prev_dq)
+                merged_dq.update({k: v for k, v in cur_dq.items() if v not in (None, "")})
+                result["data_quality"] = merged_dq
+            if prev.get("llm_stage_errors"):
+                errs = list(result.get("llm_stage_errors") or [])
+                for e in prev["llm_stage_errors"]:
+                    if e not in errs:
+                        errs.append(e)
+                result["llm_stage_errors"] = errs
+        except Exception:
+            pass
+
     md_path.write_text(render_daily_report(result), encoding="utf-8")
+    new_ds = render_data_sources_report(result)
+    write_ds = True
+    if preserve_existing_datasources and datasources_path.is_file():
+        old_ds = datasources_path.read_text(encoding="utf-8")
+        if len(old_ds) > len(new_ds) + 200 and ("| ✅ |" in old_ds or "**数据完整度**" in old_ds):
+            write_ds = False
+    if write_ds:
+        datasources_path.write_text(new_ds, encoding="utf-8")
     review_path.write_text(render_review_report(result), encoding="utf-8")
     sim_path.write_text(render_sim_report(result), encoding="utf-8")
     json_path.write_text(dumps_json(result, indent=2), encoding="utf-8")
@@ -1813,6 +1948,7 @@ def save_report(result: dict[str, Any], reports_dir: Path) -> Path:
 
     result["report_paths"] = {
         "main": str(md_path),
+        "datasources": str(datasources_path),
         "review": str(review_path),
         "sim": str(sim_path),
     }

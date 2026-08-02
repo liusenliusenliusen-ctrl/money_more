@@ -444,8 +444,29 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_PIPELINE_STATUS_MARKERS = (
+    "运行异常",
+    "运行失败",
+    "分析失败",
+    "仍尝试发邮件",
+    "Connection error",
+    "Connection Error",
+    "timeout=",
+    "硬失败",
+)
+
+
+def is_pipeline_status_note(note: str | None) -> bool:
+    """运行/LLM 中断类说明，不应出现在数据源台账总评里。"""
+    text = str(note or "")
+    return any(m in text for m in _PIPELINE_STATUS_MARKERS)
+
+
 def render_data_sources_section(result: dict[str, Any]) -> list[str]:
-    """报告开头的数据源详细说明（Markdown 行）。"""
+    """数据源详细说明（Markdown 行；供独立小报告使用）。
+
+    只描述「连了谁、拿到什么」；运行中断 / LLM 超时等见主报告「运行状态」。
+    """
     ledger = result.get("data_sources") or build_data_sources_ledger(result)
     rows = ledger.get("rows") or []
     summary = ledger.get("summary") or {}
@@ -454,10 +475,27 @@ def render_data_sources_section(result: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     lines.append("## 数据源说明（本轮）")
     lines.append("")
-    flag = "⚠️ DEGRADED" if (summary.get("dq_degraded") or dq.get("degraded")) else "OK"
-    score = summary.get("dq_score", dq.get("score", "-"))
-    note = summary.get("dq_note") or dq.get("note") or ""
-    lines.append(f"**总评**: {score} ({flag})" + (f" — {note}" if note else ""))
+    # 数据完整度：score 缺失时用台账成败统计，避免把 LLM 中断写成「总评: None」
+    score = summary.get("dq_score", dq.get("score"))
+    data_degraded = bool(summary.get("dq_degraded") or dq.get("degraded"))
+    # 若 note 是流水线故障，不据此把数据台账标成 DEGRADED
+    raw_note = str(summary.get("dq_note") or dq.get("note") or "")
+    if is_pipeline_status_note(raw_note):
+        data_note = ""
+        if score is None and not (dq.get("missing") or dq.get("screen_note")):
+            data_degraded = False
+    else:
+        data_note = raw_note
+    if score is None:
+        fail_n = int(summary.get("fail_or_empty") or 0)
+        total_n = int(summary.get("total") or len(rows) or 0)
+        score_disp = "—" if total_n == 0 else f"台账失败 {fail_n}/{total_n}"
+        if total_n > 0 and fail_n >= max(1, total_n // 2):
+            data_degraded = True
+    else:
+        score_disp = score
+    flag = "⚠️ DEGRADED" if data_degraded else "OK"
+    lines.append(f"**数据完整度**: {score_disp} ({flag})" + (f" — {data_note}" if data_note else ""))
     lines.append(
         f"- 统计: ✅成功 {summary.get('ok', 0)} · "
         f"⚠️降级/备源 {summary.get('fallback_or_degraded', 0)} · "
@@ -469,8 +507,6 @@ def render_data_sources_section(result: dict[str, Any]) -> list[str]:
         lines.append(f"- 质量检查缺失项: {', '.join(dq['missing'])}")
     if dq.get("screen_note"):
         lines.append(f"- 遴选备注: {dq['screen_note']}")
-    if dq.get("llm_degraded"):
-        lines.append(f"- 决策降级: {dq.get('llm_note') or 'LLM/多Agent 降级'}")
     lines.append("")
     lines.append("| 状态 | 数据源 | 尝试连接 / 提供方 | 获取什么 | 是否拿到 | 后面怎么用 |")
     lines.append("|------|--------|-------------------|----------|----------|------------|")
@@ -490,7 +526,31 @@ def render_data_sources_section(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append(
         "_图例：✅ 主源成功并已应用 · ⚠️ 备源/降级仍可用 · ❌ 未获取 · ➖ 本轮未启用。"
-        "详细论证中的引用应能在上表找到对应来源。_"
+        "主报告详细论证中的引用应能在上表找到对应来源。_"
     )
     lines.append("")
     return lines
+
+
+def render_data_sources_report(result: dict[str, Any]) -> str:
+    """独立小报告：本轮数据源台账（邮件不附送）。"""
+    run_date = result.get("run_date") or ""
+    lines: list[str] = [
+        "# money_more 数据源说明",
+        "",
+        f"**日期**: {run_date or '—'}",
+        "",
+        "_与主报告分离；邮件不附送。此处只记录数据连接与完整度，不含 LLM/运行中断说明。_",
+        "",
+    ]
+    lines.extend(render_data_sources_section(result))
+    if run_date:
+        lines.append(
+            f"_同日主报告：[`{run_date}.md`]({run_date}.md) · "
+            f"复盘 [`{run_date}-review.md`]({run_date}-review.md) · "
+            f"模拟 [`{run_date}-sim.md`]({run_date}-sim.md)。_"
+        )
+        lines.append("")
+    lines.append("---")
+    lines.append("*数据台账由系统自动生成，仅供核对本轮输入是否完备。*")
+    return "\n".join(lines)

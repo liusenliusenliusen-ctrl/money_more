@@ -1,12 +1,14 @@
-"""数据源台账与报告文首渲染。"""
+"""数据源台账与独立小报告渲染。"""
 
 from __future__ import annotations
 
 from money_more.analysis.data_sources_ledger import (
     build_data_sources_ledger,
+    is_pipeline_status_note,
+    render_data_sources_report,
     render_data_sources_section,
 )
-from money_more.report.writer import render_daily_report
+from money_more.report.writer import render_daily_report, save_report
 
 
 def test_ledger_marks_sina_spot_fallback():
@@ -81,9 +83,69 @@ def test_ledger_marks_sina_spot_fallback():
     assert "## 数据源说明（本轮）" in md
     assert "全 A 现货快照" in md
     assert "后面怎么用" in md or "应用" in md or "怎么用" in md
+    assert "**数据完整度**" in md
+    assert "**总评**" not in md
 
 
-def test_report_starts_with_data_sources_section():
+def test_pipeline_error_not_in_datasources_but_in_main_run_status():
+    assert is_pipeline_status_note(
+        "运行异常中断，仍尝试发邮件通知。错误: deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error."
+    )
+    result = {
+        "run_date": "2026-08-02",
+        "error": "deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error.",
+        "investment_horizon": "medium_long",
+        "data_quality": {
+            "llm_degraded": True,
+            "llm_note": "运行异常中断，仍尝试发邮件通知。错误: Connection error.",
+            "note": "本轮在分析阶段中断，数据台账可能不完整",
+            "degraded": False,
+            "missing": [],
+        },
+        "screen": {"enabled": False},
+        "intelligence": {"macro_raw": {}, "digest": {}},
+        "market": {},
+        "sectors": [],
+        "stocks": [],
+        "recommendations": [],
+        "decision_summary": {"holdings_basis": {"is_empty": True}},
+    }
+    ds = render_data_sources_report(result)
+    assert "Connection error" not in ds
+    assert "deepseek 分析失败" not in ds
+    assert "数据完整度" in ds
+
+    main = render_daily_report(result)
+    assert "## 运行状态" in main
+    assert "Connection error" in main or "deepseek" in main
+    assert "## 数据源说明（本轮）" not in main
+    assert "2026-08-02-datasources.md" in main
+    assert main.index("## 运行状态") < main.index("## 结论卡（速读）")
+
+
+def test_save_report_writes_datasources_sidecar(tmp_path):
+    result = {
+        "run_date": "2026-08-02",
+        "investment_horizon": "medium_long",
+        "data_quality": {"score": 0.9, "degraded": False, "note": "ok", "missing": []},
+        "screen": {"enabled": False},
+        "intelligence": {"macro_raw": {}, "digest": {}},
+        "market": {"analysis": {"phase_label": "震荡", "style_label": "价值", "risk_level": "medium"}},
+        "sectors": [],
+        "stocks": [],
+        "recommendations": [],
+        "decision_summary": {"holdings_basis": {"is_empty": True}},
+    }
+    main = save_report(result, tmp_path)
+    ds = tmp_path / "2026-08-02-datasources.md"
+    assert main.name == "2026-08-02.md"
+    assert ds.is_file()
+    text = ds.read_text(encoding="utf-8")
+    assert text.startswith("# money_more 数据源说明")
+    assert result["report_paths"]["datasources"] == str(ds)
+
+
+def test_main_report_points_to_datasources_not_inline():
     result = {
         "run_date": "2026-07-19",
         "investment_horizon": "medium_long",
@@ -104,9 +166,9 @@ def test_report_starts_with_data_sources_section():
         "decision_summary": {"holdings_basis": {"is_empty": True}},
     }
     md = render_daily_report(result)
-    assert md.index("## 数据源说明（本轮）") < md.index("## 结论卡（速读）")
-    assert "全 A 现货快照" in md
-    assert "❌" in md
+    assert "## 数据源说明（本轮）" not in md
+    assert "2026-07-19-datasources.md" in md
+    assert "## 结论卡（速读）" in md
 
 
 def test_ledger_policy_rss_extract_not_degraded() -> None:

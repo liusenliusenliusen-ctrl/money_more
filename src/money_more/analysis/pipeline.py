@@ -71,6 +71,7 @@ class DecisionPipeline:
                 log.warning("multi-agent orchestrator init failed: %s", exc)
 
     def run_daily(self, run_date: date | None = None) -> dict[str, Any]:
+        """跑完整周期。LLM/中途异常尽量降级继续；未捕获异常也返回 partial result（不抛给 CLI）。"""
         run_date = run_date or date.today()
         self.db.fail_stuck_runs(max_hours=6)
         self.fetcher.set_as_of(run_date)
@@ -80,19 +81,7 @@ class DecisionPipeline:
         self.intelligence.reset_run_cache()
 
         run_id = self.db.start_run(run_date)
-        try:
-            result = self._run_daily_body(run_id, run_date)
-            return result
-        except Exception:
-            self.db.finish_run(run_id, "failed")
-            raise
-
-    def _run_daily_body(self, run_id: int, run_date: date) -> dict[str, Any]:
         prior_context = self.db.get_prior_context(limit=5)
-        existing_trend = self.db.get_trend_report()
-        if existing_trend:
-            existing_trend.pop("_meta", None)
-
         result: dict[str, Any] = {
             "run_id": run_id,
             "run_date": run_date.isoformat(),
@@ -111,7 +100,35 @@ class DecisionPipeline:
             "prompt_version": self.config.analysis.prompt_version,
             "investment_horizon": self.config.analysis.investment_horizon,
             "schedule_cadence": self.config.schedule.cadence,
+            "llm_stage_errors": [],
+            "run_status": "running",
         }
+        try:
+            self._run_daily_body(run_id, run_date, result)
+            if result.get("data_quality", {}).get("llm_degraded") or result.get("llm_stage_errors"):
+                result["run_status"] = "degraded"
+            else:
+                result["run_status"] = "success"
+            return result
+        except Exception as exc:
+            log.exception("run_daily aborted run_id=%s: %s", run_id, exc)
+            result["error"] = str(exc)
+            result["partial"] = True
+            result["run_status"] = "aborted"
+            self._note_llm_degraded(result, f"运行异常中断: {exc}")
+            try:
+                from money_more.analysis.data_sources_ledger import build_data_sources_ledger
+
+                result["data_sources"] = build_data_sources_ledger(result)
+            except Exception as ledger_exc:
+                log.warning("partial data_sources ledger failed: %s", ledger_exc)
+            return result
+
+    def _run_daily_body(self, run_id: int, run_date: date, result: dict[str, Any]) -> None:
+        prior_context = result.get("prior_context") or self.db.get_prior_context(limit=5)
+        existing_trend = self.db.get_trend_report()
+        if existing_trend:
+            existing_trend.pop("_meta", None)
 
         intel_enabled = self.config.intelligence.enabled
         macro_intel: dict[str, Any] = {}
@@ -149,21 +166,29 @@ class DecisionPipeline:
             result["data_quality"] = self._assess_data_quality(macro_intel)
 
             if self.config.intelligence.digest_before_analysis:
-                intel_digest = self.llm.analyze_json(
-                    INTELLIGENCE_DIGEST_SYSTEM,
-                    {
-                        "date": run_date.isoformat(),
-                        "macro_intelligence": compact_macro_intel(macro_intel),
-                        "narrative_radar": narrative_radar,
-                        "market_microstructure": market_micro,
-                        "past_lessons": result["lessons_used"],
-                        "prior_context": prior_context,
-                        "data_quality": result["data_quality"],
-                    },
-                    required_keys=["executive_summary", "sentiment_temperature"],
-                )
+                try:
+                    intel_digest = self.llm.analyze_json(
+                        INTELLIGENCE_DIGEST_SYSTEM,
+                        {
+                            "date": run_date.isoformat(),
+                            "macro_intelligence": compact_macro_intel(macro_intel),
+                            "narrative_radar": narrative_radar,
+                            "market_microstructure": market_micro,
+                            "past_lessons": result["lessons_used"],
+                            "prior_context": prior_context,
+                            "data_quality": result["data_quality"],
+                        },
+                        required_keys=["executive_summary", "sentiment_temperature"],
+                    )
+                except Exception as exc:
+                    log.error("intelligence digest LLM failed, degrading: %s", exc)
+                    intel_digest = self._degraded_digest(str(exc))
+                    self._note_llm_degraded(result, f"情报digest降级: {exc}")
                 result["intelligence"]["digest"] = intel_digest
-                self.db.save_intelligence_digest(run_id, intel_digest)
+                try:
+                    self.db.save_intelligence_digest(run_id, intel_digest)
+                except Exception as db_exc:
+                    log.warning("save_intelligence_digest: %s", db_exc)
         else:
             narrative_radar = build_narrative_radar(
                 {}, market_snapshot, microstructure=market_micro
@@ -173,24 +198,29 @@ class DecisionPipeline:
         if intel_enabled:
             market_snapshot["intelligence"] = macro_intel
 
-        market_analysis = self.llm.analyze_json(
-            MARKET_SYSTEM,
-            {
-                "date": run_date.isoformat(),
-                "market_data": {
-                    **{k: v for k, v in market_snapshot.items() if k != "intelligence"},
-                    "intelligence": compact_macro_intel(macro_intel) if intel_enabled else {},
+        try:
+            market_analysis = self.llm.analyze_json(
+                MARKET_SYSTEM,
+                {
+                    "date": run_date.isoformat(),
+                    "market_data": {
+                        **{k: v for k, v in market_snapshot.items() if k != "intelligence"},
+                        "intelligence": compact_macro_intel(macro_intel) if intel_enabled else {},
+                    },
+                    "intelligence_digest": intel_digest,
+                    "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
+                    "market_microstructure": market_micro,
+                    "past_lessons": result["lessons_used"],
+                    "prior_context": prior_context,
+                    "trend_report_summary": self._trend_summary_for_llm(existing_trend),
+                    "data_quality": result["data_quality"],
                 },
-                "intelligence_digest": intel_digest,
-                "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
-                "market_microstructure": market_micro,
-                "past_lessons": result["lessons_used"],
-                "prior_context": prior_context,
-                "trend_report_summary": self._trend_summary_for_llm(existing_trend),
-                "data_quality": result["data_quality"],
-            },
-            required_keys=["phase", "style", "risk_level", "summary", "confidence", "vs_prior"],
-        )
+                required_keys=["phase", "style", "risk_level", "summary", "confidence", "vs_prior"],
+            )
+        except Exception as exc:
+            log.error("market LLM failed, degrading: %s", exc)
+            market_analysis = self._degraded_market_analysis(str(exc), market_micro)
+            self._note_llm_degraded(result, f"市场分析降级: {exc}")
         market_analysis["market_microstructure"] = market_micro
         # 侧栏：争议叙事 / 政策市假说（LLM 优先，雷达回退）
         radar = result.get("intelligence", {}).get("narrative_radar") or {}
@@ -203,7 +233,10 @@ class DecisionPipeline:
             market_analysis.get("policy_market_scenario"),
             radar,
         )
-        self.db.save_market_snapshot(run_id, market_snapshot, market_analysis)
+        try:
+            self.db.save_market_snapshot(run_id, market_snapshot, market_analysis)
+        except Exception as db_exc:
+            log.warning("save_market_snapshot: %s", db_exc)
         result["market"] = {"snapshot": market_snapshot, "analysis": market_analysis}
 
         watch_sectors = list(self.config.watch_sectors)
@@ -221,29 +254,47 @@ class DecisionPipeline:
             ),
         }
         sector_analyses: list[dict[str, Any]] = []
+        result["sectors"] = sector_analyses
         for sector, src in [(s, "watch") for s in watch_sectors] + [(s, "auto_flow") for s in auto_sectors]:
-            snap = self.fetcher.fetch_sector_data(sector)
+            try:
+                snap = self.fetcher.fetch_sector_data(sector)
+            except Exception as exc:
+                log.warning("fetch_sector_data %s failed: %s", sector, exc)
+                snap = {"sector": sector, "errors": [str(exc)]}
             sector_intel: dict[str, Any] = {}
             if intel_enabled:
-                sector_intel = self.intelligence.fetch_sector_intelligence(sector)
-                snap["intelligence"] = sector_intel
+                try:
+                    sector_intel = self.intelligence.fetch_sector_intelligence(sector)
+                    snap["intelligence"] = sector_intel
+                except Exception as exc:
+                    log.warning("fetch_sector_intelligence %s failed: %s", sector, exc)
+                    sector_intel = {"errors": [str(exc)]}
+                    snap["intelligence"] = sector_intel
 
-            analysis = self.llm.analyze_json(
-                SECTOR_SYSTEM,
-                {
-                    "date": run_date.isoformat(),
-                    "sector_data": snap,
-                    "sector_intelligence": sector_intel,
-                    "intelligence_digest": intel_digest,
-                    "market_context": market_analysis,
-                    "past_lessons": result["lessons_used"],
-                    "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
-                    "sector_source": src,
-                },
-                required_keys=["sector", "worth_research", "summary", "confidence"],
-            )
+            try:
+                analysis = self.llm.analyze_json(
+                    SECTOR_SYSTEM,
+                    {
+                        "date": run_date.isoformat(),
+                        "sector_data": snap,
+                        "sector_intelligence": sector_intel,
+                        "intelligence_digest": intel_digest,
+                        "market_context": market_analysis,
+                        "past_lessons": result["lessons_used"],
+                        "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
+                        "sector_source": src,
+                    },
+                    required_keys=["sector", "worth_research", "summary", "confidence"],
+                )
+            except Exception as exc:
+                log.error("sector LLM failed sector=%s, degrading: %s", sector, exc)
+                analysis = self._degraded_sector_analysis(sector, str(exc))
+                self._note_llm_degraded(result, f"板块分析降级[{sector}]: {exc}")
             analysis["sector_source"] = src
-            self.db.save_sector_snapshot(run_id, sector, snap, analysis)
+            try:
+                self.db.save_sector_snapshot(run_id, sector, snap, analysis)
+            except Exception as db_exc:
+                log.warning("save_sector_snapshot %s: %s", sector, db_exc)
             sector_analyses.append(
                 {
                     "sector": sector,
@@ -253,7 +304,7 @@ class DecisionPipeline:
                     "analysis": analysis,
                 }
             )
-        result["sectors"] = sector_analyses
+            result["sectors"] = list(sector_analyses)
 
         # 遴选漏斗：板块/全市场 → 量化 → 深度名单（声明持仓强制进池）
         from money_more.analysis.screen import run_stock_screen
@@ -308,20 +359,31 @@ class DecisionPipeline:
                 snap["intelligence"] = intel
             return code, snap, intel
 
-        with ThreadPoolExecutor(max_workers=min(4, max(1, len(stock_codes)))) as pool:
-            futs = [pool.submit(_fetch_one, c) for c in stock_codes]
-            for fut in as_completed(futs):
-                code, snap, intel = fut.result()
-                prefetched[code] = (snap, intel)
+        if stock_codes:
+            with ThreadPoolExecutor(max_workers=min(4, max(1, len(stock_codes)))) as pool:
+                futs = [pool.submit(_fetch_one, c) for c in stock_codes]
+                for fut in as_completed(futs):
+                    try:
+                        code, snap, intel = fut.result()
+                        prefetched[code] = (snap, intel)
+                    except Exception as exc:
+                        log.warning("stock prefetch failed: %s", exc)
 
+        # 先挂上已采集个股包，再跑 LLM——中途失败时台账仍能看到数据
+        result["stocks"] = stock_analyses
         for code in stock_codes:
             snap, stock_intel = prefetched.get(code, ({}, {}))
             if not snap:
-                snap = self.fetcher.fetch_stock_data(code)
-                stock_intel = {}
-                if intel_enabled:
-                    stock_intel = self.intelligence.fetch_stock_intelligence(code)
-                    snap["intelligence"] = stock_intel
+                try:
+                    snap = self.fetcher.fetch_stock_data(code)
+                    stock_intel = {}
+                    if intel_enabled:
+                        stock_intel = self.intelligence.fetch_stock_intelligence(code)
+                        snap["intelligence"] = stock_intel
+                except Exception as exc:
+                    log.warning("stock fetch %s failed: %s", code, exc)
+                    snap = {"code": code, "errors": [str(exc)]}
+                    stock_intel = {}
 
             ts_bundle = (stock_intel.get("tushare") or {}) if stock_intel else {}
             xcheck = cross_check_stock(snap, ts_bundle)
@@ -350,28 +412,66 @@ class DecisionPipeline:
             snap["earnings_revision"] = earn_rev
             snap["ocf_quality"] = ocf_q
 
-            analysis = self.llm.analyze_json(
-                STOCK_SYSTEM,
-                {
-                    "date": run_date.isoformat(),
-                    "stock_data": compact_stock_snap(snap),
-                    "stock_intelligence": compact_stock_snap(snap).get("intelligence"),
-                    "cross_check": xcheck,
-                    "hard_gates": gates,
-                    "info_completeness": info_comp,
-                    "earnings_revision": earn_rev,
-                    "ocf_quality": ocf_q,
-                    "intelligence_digest": intel_digest,
-                    "market_context": market_analysis,
-                    "market_microstructure": market_micro,
-                    "sector_context": [
-                        {"sector": s.get("sector"), "analysis": s.get("analysis")} for s in sector_analyses
-                    ],
-                    "past_lessons": result["lessons_used"],
-                    "prior_stock_series": self.db.get_stock_analysis_series(code, limit=5),
-                },
-                required_keys=["code", "research_rating", "summary", "confidence"],
-            )
+            px = _safe_float((snap.get("history") or {}).get("close"))
+            if px is None:
+                px = _safe_float((snap.get("quote") or {}).get("最新价"))
+            quotes[code] = px
+            quotes_meta[code] = {
+                "atr_pct_20d": (snap.get("history") or {}).get("atr_pct_20d"),
+            }
+
+            # 先写入 snapshot，保证异常时 result 仍有采集数据
+            entry: dict[str, Any] = {
+                "code": code,
+                "snapshot": snap,
+                "intelligence": stock_intel,
+                "analysis": {"code": code, "research_rating": "hold", "summary": "分析中…", "confidence": 0.0},
+                "cross_check": xcheck,
+                "hard_gates": gates,
+                "info_completeness": info_comp,
+                "earnings_revision": earn_rev,
+                "ocf_quality": ocf_q,
+            }
+            stock_analyses.append(entry)
+            result["stocks"] = list(stock_analyses)
+            result["info_completeness"] = {
+                s["code"]: s.get("info_completeness") or {} for s in stock_analyses
+            }
+            result["earnings_revisions"] = {
+                s["code"]: s.get("earnings_revision") or {} for s in stock_analyses
+            }
+            result["ocf_quality"] = {
+                s["code"]: s.get("ocf_quality") or {} for s in stock_analyses
+            }
+
+            try:
+                analysis = self.llm.analyze_json(
+                    STOCK_SYSTEM,
+                    {
+                        "date": run_date.isoformat(),
+                        "stock_data": compact_stock_snap(snap),
+                        "stock_intelligence": compact_stock_snap(snap).get("intelligence"),
+                        "cross_check": xcheck,
+                        "hard_gates": gates,
+                        "info_completeness": info_comp,
+                        "earnings_revision": earn_rev,
+                        "ocf_quality": ocf_q,
+                        "intelligence_digest": intel_digest,
+                        "market_context": market_analysis,
+                        "market_microstructure": market_micro,
+                        "sector_context": [
+                            {"sector": s.get("sector"), "analysis": s.get("analysis")} for s in sector_analyses
+                        ],
+                        "past_lessons": result["lessons_used"],
+                        "prior_stock_series": self.db.get_stock_analysis_series(code, limit=5),
+                    },
+                    required_keys=["code", "research_rating", "summary", "confidence"],
+                )
+            except Exception as exc:
+                log.error("stock LLM failed code=%s, degrading: %s", code, exc)
+                analysis = self._degraded_stock_analysis(code, str(exc))
+                self._note_llm_degraded(result, f"个股分析降级[{code}]: {exc}")
+
             # 双源不一致 / 信息缺口 → 下调 LLM 置信度
             try:
                 conf = float(analysis.get("confidence") or 0.5)
@@ -403,40 +503,14 @@ class DecisionPipeline:
             analysis["hard_gates"] = gates
             scorecards[code] = scorecard
 
-            px = _safe_float((snap.get("history") or {}).get("close"))
-            if px is None:
-                px = _safe_float((snap.get("quote") or {}).get("最新价"))
-            quotes[code] = px
-            quotes_meta[code] = {
-                "atr_pct_20d": (snap.get("history") or {}).get("atr_pct_20d"),
-            }
-
-            self.db.save_stock_snapshot(run_id, code, snap, analysis)
-            stock_analyses.append(
-                {
-                    "code": code,
-                    "snapshot": snap,
-                    "intelligence": stock_intel,
-                    "analysis": analysis,
-                    "factor_scorecard": scorecard,
-                    "cross_check": xcheck,
-                    "hard_gates": gates,
-                    "info_completeness": info_comp,
-                    "earnings_revision": earn_rev,
-                    "ocf_quality": ocf_q,
-                }
-            )
-        result["stocks"] = stock_analyses
-        result["factor_scorecards"] = scorecards
-        result["info_completeness"] = {
-            s["code"]: s.get("info_completeness") or {} for s in stock_analyses
-        }
-        result["earnings_revisions"] = {
-            s["code"]: s.get("earnings_revision") or {} for s in stock_analyses
-        }
-        result["ocf_quality"] = {
-            s["code"]: s.get("ocf_quality") or {} for s in stock_analyses
-        }
+            entry["analysis"] = analysis
+            entry["factor_scorecard"] = scorecard
+            try:
+                self.db.save_stock_snapshot(run_id, code, snap, analysis)
+            except Exception as db_exc:
+                log.warning("save_stock_snapshot %s: %s", code, db_exc)
+            result["stocks"] = list(stock_analyses)
+            result["factor_scorecards"] = scorecards
 
         holdings_enriched = enrich_holdings(self.config.holdings, quotes)
         holdings_basis = {
@@ -521,6 +595,7 @@ class DecisionPipeline:
         except Exception as exc:
             log.error("decision LLM/agent failed after retries: %s", exc)
             decision = self._degraded_decision(holdings_enriched, str(exc))
+            self._note_llm_degraded(result, f"组合决策降级: {exc}")
 
         # 两侧都失败时 orchestrator 返回 all_failed；补持仓 hold，便于报告可读
         if decision.get("_multi_agent_fallback") == "all_failed" and not (
@@ -532,6 +607,10 @@ class DecisionPipeline:
                 or str(decision.get("portfolio_summary") or "all_failed"),
                 base=decision,
             )
+            self._note_llm_degraded(
+                result,
+                "组合决策多Agent全失败，已降级为持仓 hold / 空仓观望",
+            )
 
         result["multi_agent"] = {
             "enabled": use_multi,
@@ -539,11 +618,10 @@ class DecisionPipeline:
             "errors": decision.get("_multi_agent_errors") or [],
         }
         if decision.get("_multi_agent_fallback"):
-            result.setdefault("data_quality", {})
-            result["data_quality"]["llm_degraded"] = True
-            result["data_quality"]["llm_note"] = (
+            self._note_llm_degraded(
+                result,
                 f"决策降级: {decision.get('_multi_agent_fallback')}; "
-                + "; ".join(decision.get("_multi_agent_errors") or [])
+                + "; ".join(decision.get("_multi_agent_errors") or []),
             )
         # 草稿较大，只保留摘要键，避免报告爆炸
         drafts = decision.pop("_analyst_drafts", None)
@@ -776,16 +854,25 @@ class DecisionPipeline:
 
         attach_sim_round_explanation(result)
 
-        review_result = self.run_review(
-            run_id,
-            run_date,
-            current_view={
-                "market": market_analysis,
-                "sectors": sector_analyses,
-                "intelligence_digest": intel_digest,
-                "recommendations": recommendations,
-            },
-        )
+        try:
+            review_result = self.run_review(
+                run_id,
+                run_date,
+                current_view={
+                    "market": market_analysis,
+                    "sectors": sector_analyses,
+                    "intelligence_digest": intel_digest,
+                    "recommendations": recommendations,
+                },
+            )
+        except Exception as exc:
+            log.error("run_review failed, continuing without review: %s", exc)
+            review_result = {
+                "reviews": [],
+                "dimension_reviews": [],
+                "error": str(exc),
+            }
+            self._note_llm_degraded(result, f"复盘失败(主结论已保留): {exc}")
         result["reviews"] = review_result.get("reviews", [])
         result["dimension_reviews"] = review_result.get("dimension_reviews", [])
         result["history_patterns"] = review_result.get("history_patterns", [])
@@ -796,18 +883,27 @@ class DecisionPipeline:
         result["action_lifecycles"] = review_result.get("action_lifecycles")
 
         # 更新纸面持仓盯市
-        self._mark_paper_trades(run_date)
+        try:
+            self._mark_paper_trades(run_date)
+        except Exception as exc:
+            log.warning("mark_paper_trades failed: %s", exc)
 
         if self.config.trend.enabled:
-            trend_report = self.trend_builder.update(run_date.isoformat(), result)
-            result["trend"] = trend_report
+            try:
+                trend_report = self.trend_builder.update(run_date.isoformat(), result)
+                result["trend"] = trend_report
+            except Exception as exc:
+                log.warning("trend update failed: %s", exc)
+                result["trend"] = {"error": str(exc)}
 
         from money_more.analysis.decision_digest import build_decision_digest
         from money_more.analysis.data_sources_ledger import build_data_sources_ledger
 
-        result["decision_digest"] = build_decision_digest(result)
+        try:
+            result["decision_digest"] = build_decision_digest(result)
+        except Exception as exc:
+            log.warning("build_decision_digest failed: %s", exc)
         result["data_sources"] = build_data_sources_ledger(result)
-        return result
 
     def run_review(
         self,
@@ -1352,6 +1448,76 @@ class DecisionPipeline:
             "executive_summary": trend.get("executive_summary"),
             "recent_narrative": (trend.get("narrative_log") or [])[-5:],
             "open_questions": (trend.get("open_questions") or [])[:5],
+        }
+
+    @staticmethod
+    def _note_llm_degraded(result: dict[str, Any], message: str) -> None:
+        dq = result.setdefault("data_quality", {})
+        dq["llm_degraded"] = True
+        prev = str(dq.get("llm_note") or "").strip()
+        msg = str(message or "").strip()
+        if not msg:
+            return
+        dq["llm_note"] = f"{prev}; {msg}".strip("; ") if prev and msg not in prev else (prev or msg)
+        errors = result.setdefault("llm_stage_errors", [])
+        if msg not in errors:
+            errors.append(msg)
+
+    @staticmethod
+    def _degraded_digest(error: str) -> dict[str, Any]:
+        return {
+            "executive_summary": f"（情报消化降级）模型失败，已保留宏观原始情报供后续使用。错误: {error[:300]}",
+            "sentiment_temperature": "neutral",
+            "headline_themes": [],
+            "policy_signals": [],
+            "macro_events_watchlist": [],
+            "market_narratives": [],
+            "risk_flags": ["intelligence_digest_degraded"],
+            "information_gaps": ["digest_llm_failed"],
+            "degraded": True,
+            "error": error[:500],
+        }
+
+    @staticmethod
+    def _degraded_market_analysis(error: str, microstructure: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "phase": "unknown",
+            "style": "unknown",
+            "risk_level": "high",
+            "summary": f"市场分析 LLM 失败已降级；微观结构等硬数据仍可用。错误: {error[:300]}",
+            "confidence": 0.15,
+            "vs_prior": "unknown",
+            "primary_driver": "模型不可用",
+            "sector_allocation_hint": "提高现金、推迟新开仓，待下轮恢复",
+            "degraded": True,
+            "error": error[:500],
+            "market_microstructure": microstructure or {},
+        }
+
+    @staticmethod
+    def _degraded_sector_analysis(sector: str, error: str) -> dict[str, Any]:
+        return {
+            "sector": sector,
+            "worth_research": False,
+            "summary": f"板块分析降级: {error[:200]}",
+            "confidence": 0.1,
+            "priority": "low",
+            "degraded": True,
+            "error": error[:500],
+        }
+
+    @staticmethod
+    def _degraded_stock_analysis(code: str, error: str) -> dict[str, Any]:
+        return {
+            "code": code,
+            "research_rating": "hold",
+            "summary": f"个股分析 LLM 失败已降级；行情/公告等采集数据仍保留。错误: {error[:200]}",
+            "confidence": 0.1,
+            "quality": "unknown",
+            "valuation": "unknown",
+            "degraded": True,
+            "analysis_failed": True,
+            "error": error[:500],
         }
 
     @staticmethod
