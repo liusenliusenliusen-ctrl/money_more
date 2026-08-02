@@ -3,7 +3,7 @@
 > 状态：实施对照文档（先定语义，再改代码）  
 > 日期：2026-08-02  
 > 原则：**认清本质 → 精准使用**。名字只能指一种本质；混装必须拆开或改名。  
-> 相关：[`data-sources-guide.md`](data-sources-guide.md)（采什么/从哪来）· [`midlong-desensitize-draft.md`](midlong-desensitize-draft.md)（去短线灵敏度）
+> 相关：[`data-sources-guide.md`](data-sources-guide.md)（采什么/从哪来）· [`data-interfaces-catalog.md`](data-interfaces-catalog.md)（精确接口名）· [`midlong-desensitize-draft.md`](midlong-desensitize-draft.md)（去短线灵敏度）
 
 本文件回答三问：
 

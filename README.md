@@ -38,6 +38,7 @@ money-more scheduled
 
 读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。  
 数据说明书（比 `*-datasources.md` 更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。  
+数据接口目录（精确到接口名）：[`docs/data-interfaces-catalog.md`](docs/data-interfaces-catalog.md)。  
 数据语义（本质·用途·禁区）：[`docs/data-semantics-guide.md`](docs/data-semantics-guide.md)。
 
 ## 快速开始

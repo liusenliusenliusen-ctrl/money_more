@@ -5,7 +5,8 @@
 
 依据仓库当前代码梳理。主链路：**AkShare**；可选增强：**Tushare Pro**、**RSS/快讯**。
 
-各字段的**本质 / 用途 / 禁区**见 [`data-semantics-guide.md`](data-semantics-guide.md)。
+- **精确到接口名的完整目录**（接口 / 数据说明 / 用途）：[`data-interfaces-catalog.md`](data-interfaces-catalog.md)  
+- 各字段的**本质 / 用途 / 禁区**：[`data-semantics-guide.md`](data-semantics-guide.md)
 
 ---
 
@@ -57,7 +58,7 @@
 | 两融 | 融资余额及变化 | A1 杠杆情绪 | 沪/深两融序列 | 同上 |
 | 国内硬指标 | PMI / CPI / M2 | A1 中长线背景；日历备源 | AkShare 宏观 | 同上 |
 | 全球流动性 | 美债、美元兑人民币、收紧/宽松 stance | A1 主驱动；收紧时压总仓 | 利率 + 中行汇率 | 同上 |
-| 经济日历 | 未来数据发布窗口 | A2 关注提醒 | 百度 → 备源 → 硬指标合成 | 同上 |
+| 经济日历 | 未来数据发布窗口 | A2 关注提醒 | 百度 → 备源；硬指标另见 `macro_hard_echo`（≠日历） | 同上 |
 
 ---
 
@@ -130,7 +131,7 @@
 | 北向 stale | 外资维度弱化 |
 | 政策联播过旧 | 标降级或快讯抽取；政策假说降权 |
 | Tushare 权限不足 | 财务/预告/估值增强变薄 |
-| 经济日历合成 | 只有提醒窗口，精度低于官方 |
+| 经济日历空 + 仅有 echo | 只有已公布硬指标回看，不是未来日程 |
 | 关 intelligence/screen | 情报或海选变窄，报告会说明降级 |
 
 ---
