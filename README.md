@@ -37,7 +37,8 @@ money-more scheduled
 全面性补充：**叙事雷达** + 结论卡侧栏；**政策市假说**；**微观结构/流动性断点**；个股**信息完备性**（缺口→观望）；报告 **A 主结论 / B 推理链 / C 侧栏 / D 趋势**。
 
 读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。  
-数据说明书（比 `*-datasources.md` 更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。
+数据说明书（比 `*-datasources.md` 更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。  
+数据语义（本质·用途·禁区）：[`docs/data-semantics-guide.md`](docs/data-semantics-guide.md)。
 
 ## 快速开始
 

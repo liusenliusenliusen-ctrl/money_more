@@ -53,8 +53,10 @@ def build_stock_scorecard(
         or latest_val.get("dv_ttm")
     )
     pct_score = valuation_score_from_percentiles(pe_pct, pb_pct)
-    val_score = 50.0
+    val_score = 40.0  # 缺失时低置信，不用 50 伪装中性（S6）
+    valuation_known = False
     if pct_score is not None:
+        valuation_known = True
         val_score = pct_score
         if pe_pct is not None:
             evidence["valuation"].append(f"PE历史分位{pe_pct:.0f}%")
@@ -63,6 +65,7 @@ def build_stock_scorecard(
         if percentiles.get("label"):
             evidence["valuation"].append(f"估值锚={percentiles['label']}")
     elif pe is not None:
+        valuation_known = True
         if pe <= 0:
             val_score = 25.0
             evidence["valuation"].append(f"PE={pe} 亏损/异常")
@@ -84,33 +87,24 @@ def build_stock_scorecard(
             elif pb > 8:
                 val_score = max(0.0, val_score - 15)
             evidence["valuation"].append(f"PB={pb:.2f}")
+    else:
+        evidence["valuation"].append("估值数据缺失，低置信")
     val_score, dv_ev = blend_valuation_with_dividend(val_score, dv_ratio)
+    if dv_ev:
+        valuation_known = True
     evidence["valuation"].extend(dv_ev)
     scores["valuation"] = _clamp(val_score)
 
-    # --- momentum: 相对均线 + 涨跌幅 ---
+    # --- momentum: 中长线用 MA20 / 20d 区间 / 相对强度（去掉日涨跌与 MA5，S10）---
     mom = 50.0
     above = hist.get("above_ma20")
-    chg = _f(hist.get("change_pct") or quote.get("涨跌幅"))
     close = _f(hist.get("close") or quote.get("最新价"))
-    ma20 = _f(hist.get("ma20"))
-    ma5 = _f(hist.get("ma5"))
     if above is True:
         mom += 15
         evidence["momentum"].append("站上MA20")
     elif above is False:
         mom -= 15
         evidence["momentum"].append("跌破MA20")
-    if ma5 and ma20:
-        if ma5 > ma20:
-            mom += 10
-            evidence["momentum"].append("MA5>MA20")
-        else:
-            mom -= 10
-            evidence["momentum"].append("MA5<MA20")
-    if chg is not None:
-        mom += max(-20, min(20, chg * 2))
-        evidence["momentum"].append(f"日涨跌{chg}%")
     high20 = _f(hist.get("high_20d"))
     low20 = _f(hist.get("low_20d"))
     if close and high20 and low20 and high20 > low20:
@@ -155,32 +149,34 @@ def build_stock_scorecard(
                 evidence["fund_flow"].append("北向减持")
     scores["fund_flow"] = _clamp(flow)
 
-    # --- sentiment ---
+    # --- sentiment: 拥挤惩罚为主；新闻语调/热度不抬分（S3）；分列供报告（S13）---
     sent = 50.0
     sa = intel.get("sentiment_analysis") or {}
     agg = sa.get("aggregate") or {}
     s100 = _f(agg.get("score_100"))
+    news_tone: float | None = s100
     if s100 is not None:
-        sent = s100
-        evidence["sentiment"].append(f"规则舆情分{s100}")
+        evidence["sentiment"].append(f"新闻语调{s100}(不抬分)")
+        if s100 < 30:
+            sent -= min(10.0, (30.0 - s100) * 0.25)
+            evidence["sentiment"].append("语调偏冷轻量减分")
     rating = _f((intel.get("sentiment_scores") or {}).get("latest_rating"))
     if rating is not None:
-        # 东财评分常见 0-5 或百分制
-        if rating <= 5:
-            sent = (sent + rating / 5 * 100) / 2
-        else:
-            sent = (sent + rating) / 2
-        evidence["sentiment"].append(f"市场评分{rating}")
-    if agg.get("extreme"):
-        sent = min(sent, 35) if sent < 50 else max(sent, 65)
-        evidence["sentiment"].append(f"极端情绪:{agg.get('extreme')}")
+        evidence["sentiment"].append(f"市场评分{rating}(旁证不抬分)")
+    extreme = str(agg.get("extreme") or "").lower()
+    if extreme in ("greed", "euphoria", "过热", "贪婪"):
+        sent -= 12
+        evidence["sentiment"].append(f"极端情绪:{agg.get('extreme')}→拥挤惩罚")
+    elif extreme in ("fear", "panic", "恐慌"):
+        evidence["sentiment"].append(f"极端情绪:{agg.get('extreme')}(不抄底加分)")
     crowding = intel.get("crowding_signal") or {}
-    cr = str(crowding.get("crowding_risk") or "")
+    cr = str(crowding.get("crowding_risk") or "") or "unknown"
+    crowding_score = crowding.get("crowding_score")
     if cr == "high":
-        sent = max(0.0, sent - 8)
+        sent -= 18
         evidence["sentiment"].append("量化拥挤度高")
     elif cr == "medium":
-        sent = max(0.0, sent - 3)
+        sent -= 8
         evidence["sentiment"].append("量化拥挤度中")
     elif cr == "low":
         evidence["sentiment"].append("量化拥挤度低")
@@ -188,13 +184,23 @@ def build_stock_scorecard(
     if pd_list and isinstance(pd_list[-1], dict):
         desire = _f(pd_list[-1].get("参与意愿"))
         if desire is not None:
-            sent = (sent + desire) / 2
-            evidence["sentiment"].append(f"参与意愿{desire:.0f}")
+            evidence["sentiment"].append(f"参与意愿{desire:.0f}(拥挤旁证)")
+            if desire >= 70:
+                sent -= 6
+                evidence["sentiment"].append("参与意愿偏高→减分")
     xq = intel.get("xueqiu_hot") or {}
     deal_rank = _f((xq.get("deal") or {}).get("排名"))
     if deal_rank is not None and deal_rank <= 20:
-        evidence["sentiment"].append(f"雪球成交Top{int(deal_rank)}")
+        sent -= 5
+        evidence["sentiment"].append(f"雪球成交Top{int(deal_rank)}→拥挤减分")
     scores["sentiment"] = _clamp(sent)
+    sentiment_breakdown = {
+        "news_tone": round(news_tone, 1) if news_tone is not None else None,
+        "crowding_risk": cr,
+        "crowding_score": crowding_score,
+        "factor_score": round(scores["sentiment"], 1),
+        "note": "拥挤惩罚进因子分；新闻语调不抬分",
+    }
 
     # --- quality: 财务粗指标 + 经营现金流覆盖 ---
     qual = 50.0
@@ -270,13 +276,20 @@ def build_stock_scorecard(
         evidence["narrative"].append(f"LLM置信度{conf}")
     scores["narrative"] = _clamp(narr)
 
-    # 加权总分
-    wsum = sum(w.values()) or 1.0
-    total = sum(scores[k] * w.get(k, 0) for k in scores) / wsum
+    # 加权总分：估值未知时半权，避免中性伪装挤进前列（S6）
+    effective_w = dict(w)
+    if not valuation_known:
+        effective_w["valuation"] = effective_w.get("valuation", 0) * 0.5
+        evidence["valuation"].append("估值权重减半")
+    wsum = sum(effective_w.values()) or 1.0
+    total = sum(scores[k] * effective_w.get(k, 0) for k in scores) / wsum
 
     return {
         "scores": {k: round(v, 1) for k, v in scores.items()},
         "weights": w,
+        "effective_weights": {k: round(v, 4) for k, v in effective_w.items()},
+        "valuation_known": valuation_known,
+        "sentiment_breakdown": sentiment_breakdown,
         "total_score": round(total, 1),
         "evidence": evidence,
         "signal": _signal_from_total(total),

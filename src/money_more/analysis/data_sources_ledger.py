@@ -131,8 +131,11 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="东财沪深港通",
             fetches="北向成交/净流入摘要",
             status="ok",
-            detail=f"最新日 {nb_f.get('latest_date') or '-'}，滞后约 {nb_f.get('staleness_days', '?')} 天",
-            used_in="A1 流动性与风险偏好；与全球流动性交叉",
+            detail=(
+                f"最新日 {nb_f.get('latest_date') or '-'}，滞后约 {nb_f.get('staleness_days', '?')} 天"
+                "；北向为痕迹非聪明钱"
+            ),
+            used_in="A1 流动性背景；不得单独驱动加减仓",
         )
     elif nb:
         add(
@@ -178,16 +181,19 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
         stale = bool(macro.get("policy_news_stale"))
         detail = "使用了偏旧缓存回退" if stale else f"约 {len(macro.get('policy_news') or [])} 条"
         if policy_src == "rss_global_extract":
-            detail = f"联播陈旧，已从快讯/RSS 抽取 {len(macro.get('policy_news') or [])} 条"
-            stale = False
+            detail = (
+                f"快讯/RSS 政策抽取 {len(macro.get('policy_news') or [])} 条"
+                "（≠正式联播；policy_news_source=rss_global_extract）"
+            )
+            stale = True  # 语义降级：抽取≠联播
         add(
             name="政策/联播类新闻",
             provider="Tushare CCTV → AkShare news_cctv"
             + (" → 快讯/RSS 政策抽取" if policy_src == "rss_global_extract" else ""),
-            fetches="政策导向、联播要点",
-            status="degraded" if stale else "ok",
+            fetches="政策导向、联播要点（抽取源须明示）",
+            status="degraded" if stale or policy_src == "rss_global_extract" else "ok",
             detail=detail,
-            used_in="A1 情报主题 / 政策市侧栏假说",
+            used_in="A1 情报主题 / 政策市侧栏假说；抽取源不得写成正式联播",
         )
     else:
         add(
@@ -248,7 +254,8 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
 
     # —— 宏观日历 / 硬指标 / 全球流动性 ——
     cal_primary = bool(macro.get("economic_calendar"))
-    cal_alt = bool(macro.get("economic_calendar_alt") or macro.get("economic_calendar_synthetic"))
+    cal_alt = bool(macro.get("economic_calendar_alt"))
+    echo = bool(macro.get("macro_hard_echo"))
     if cal_primary and not _err_has(errors, "economic_calendar_primary_empty"):
         add(
             name="经济日历",
@@ -258,23 +265,34 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             detail=f"约 {len(macro.get('economic_calendar') or [])} 条",
             used_in="A1/A2 事件观察清单",
         )
-    elif cal_alt or cal_primary:
+    elif cal_alt:
         add(
             name="经济日历",
-            provider="百度主源 → 备用/由 PMI·CPI·M2 合成",
-            fetches="宏观数据日程或近月硬指标快照",
+            provider="百度主源 → 备用日历",
+            fetches="宏观数据日程",
             status="fallback",
-            detail="主源空，已用备用或合成日历",
+            detail="主源空，已用备用日历（不含已公布硬指标回看）",
             used_in="仍可提示关注窗口，精度低于官方日历",
         )
     else:
         add(
             name="经济日历",
-            provider="百度 / 备用合成",
+            provider="百度 / 备用",
             fetches="宏观数据日程",
             status="fail",
-            detail="主源与备用皆空",
+            detail="主源与备用皆空"
+            + ("；已另附 macro_hard_echo（已公布回看≠未来日程）" if echo else ""),
             used_in="缺少明确数据日催化提醒",
+        )
+
+    if echo:
+        add(
+            name="已公布硬指标回看",
+            provider="macro_hard → macro_hard_echo",
+            fetches="近月 PMI/CPI/M2 等已发布快照",
+            status="ok",
+            detail=f"约 {len(macro.get('macro_hard_echo') or [])} 条；禁止当作未来经济日历",
+            used_in="宏观背景，不得写入「即将公布」清单",
         )
 
     if macro.get("macro_hard"):
@@ -314,6 +332,30 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             status="fail",
             detail="；".join(str(e) for e in (gl.get("errors") or [])[:2]) or "stance=unknown",
             used_in="缺少海外流动性主线时，A 股风险偏好判断更依赖内资",
+        )
+
+    # —— 数库市场情绪指数（旁路）——
+    scope = macro.get("market_news_sentiment_scope") or {}
+    if scope.get("ok"):
+        add(
+            name="数库新闻情绪指数",
+            provider="AkShare index_news_sentiment_scope（ChinaScope）",
+            fetches="全市场新闻情绪温度计",
+            status="ok",
+            detail=(
+                f"index={scope.get('index')} label={scope.get('label')} "
+                f"分位={scope.get('percentile_1y')}% date={scope.get('latest_date')}"
+            ),
+            used_in="A1 市场温度旁路；不进个股打分、不抬买入分",
+        )
+    elif scope or _err_has(errors, "market_news_sentiment_scope"):
+        add(
+            name="数库新闻情绪指数",
+            provider="AkShare index_news_sentiment_scope（ChinaScope）",
+            fetches="全市场新闻情绪温度计",
+            status="fail",
+            detail=str(scope.get("error") or "未取到")[:120],
+            used_in="旁路缺失不影响主链",
         )
 
     # —— 情绪 ——

@@ -12,6 +12,7 @@ from money_more.analysis.sentiment import (
     assess_stock_crowding,
     build_industry_sentiment_index,
     build_macro_event_signals,
+    build_market_news_sentiment_scope,
 )
 from money_more.config import AppConfig
 from money_more.data.as_of import (
@@ -92,6 +93,10 @@ class IntelligenceFetcher:
         self._xueqiu_follow_df: pd.DataFrame | None = None
         self._xueqiu_deal_df: pd.DataFrame | None = None
         self._sector_summary_cache: tuple[pd.DataFrame, str, list[str]] | None = None
+        self._pledge_ratio_df: pd.DataFrame | None = None
+        self._pledge_ratio_error: str | None = None
+        self._northbound_hold_df: pd.DataFrame | None = None
+        self._northbound_hold_error: str | None = None
 
     def set_as_of(self, as_of: date | str | None) -> None:
         self.as_of = parse_as_of(as_of)
@@ -109,6 +114,10 @@ class IntelligenceFetcher:
         self._xueqiu_follow_df = None
         self._xueqiu_deal_df = None
         self._sector_summary_cache = None
+        self._pledge_ratio_df = None
+        self._pledge_ratio_error = None
+        self._northbound_hold_df = None
+        self._northbound_hold_error = None
 
     def _get_comment_df(self) -> pd.DataFrame:
         if self._comment_df is not None:
@@ -163,6 +172,61 @@ class IntelligenceFetcher:
         self._sector_summary_cache = fetch_sector_board_summary()
         return self._sector_summary_cache
 
+    def _get_pledge_ratio_df(self) -> pd.DataFrame:
+        """全市场质押比例表（按日），单次拉取多股复用。"""
+        if self._pledge_ratio_df is not None:
+            return self._pledge_ratio_df
+        self._pledge_ratio_error = None
+        last_err = ""
+        for date_str in recent_weekdays(self.as_of, 5):
+            try:
+                df = ak.stock_gpzy_pledge_ratio_em(date=date_str)
+                if df is not None and not df.empty and "股票代码" in df.columns:
+                    self._pledge_ratio_df = df
+                    return self._pledge_ratio_df
+                last_err = f"pledge_ratio_empty:{date_str}"
+            except Exception as exc:
+                last_err = str(exc)
+                continue
+        self._pledge_ratio_df = pd.DataFrame()
+        self._pledge_ratio_error = last_err or "pledge_ratio_unavailable"
+        return self._pledge_ratio_df
+
+    def _get_northbound_hold_df(self) -> pd.DataFrame:
+        """北向个股持股排行（东财）；单次拉取多股复用。
+
+        AkShare 合法 market 为 {北向, 沪股通, 深股通}，旧代码误传「北向持股」会导致
+        filter 为空且易触发 result=None → TypeError。
+        """
+        if self._northbound_hold_df is not None:
+            return self._northbound_hold_df
+        self._northbound_hold_error = None
+        last_err = ""
+        # 今日排行在周末/节假日常空，回退 5 日
+        for market, indicator in (
+            ("北向", "今日排行"),
+            ("北向", "5日排行"),
+            ("沪股通", "今日排行"),
+            ("深股通", "今日排行"),
+        ):
+            try:
+                df = ak.stock_hsgt_hold_stock_em(market=market, indicator=indicator)
+                if df is not None and not df.empty:
+                    self._northbound_hold_df = df
+                    return self._northbound_hold_df
+                last_err = f"northbound_hold_empty:{market}/{indicator}"
+            except TypeError as exc:
+                # AkShare 在 data_json['result'] is None 时裸下标
+                last_err = (
+                    f"northbound_hold_api_null_result:{market}/{indicator}: {exc} "
+                    "（东财常返回「服务器繁忙」或页面日期陈旧）"
+                )
+            except Exception as exc:
+                last_err = f"northbound_hold:{market}/{indicator}: {exc}"
+        self._northbound_hold_df = pd.DataFrame()
+        self._northbound_hold_error = last_err or "northbound_hold_unavailable"
+        return self._northbound_hold_df
+
     def _get_rss_bundle(self) -> dict[str, Any]:
         if self._rss_cache is not None:
             return self._rss_cache
@@ -177,7 +241,10 @@ class IntelligenceFetcher:
         if self._tushare_macro_cache is not None:
             return self._tushare_macro_cache
         if not self.tushare or not self.tushare.available:
-            self._tushare_macro_cache = {"items": [], "errors": ["Tushare 未配置"]}
+            reason = "Tushare 未启用或无 token"
+            if self.tushare and getattr(self.tushare, "_probe_error", None):
+                reason = f"Tushare 不可用: {self.tushare._probe_error}"
+            self._tushare_macro_cache = {"items": [], "errors": [reason]}
             return self._tushare_macro_cache
         try:
             self._tushare_macro_cache = self.tushare.fetch_macro_news(limit=self.max_items)
@@ -312,11 +379,12 @@ class IntelligenceFetcher:
             result["errors"].append(f"global_liquidity: {exc}")
             result["global_liquidity"] = {"stance": "unknown", "errors": [str(exc)]}
 
+        # 语义：已公布硬指标 ≠ 未来经济日历。禁止写入 economic_calendar。
         if not result["economic_calendar"] and macro_hard:
-            synth = _synthetic_calendar_from_macro_hard(macro_hard, self.as_of)
-            if synth:
-                result["economic_calendar"] = synth[: self.max_items]
-                result["economic_calendar_synthetic"] = True
+            echo = _macro_hard_echo_from_macro(macro_hard, self.as_of)
+            if echo:
+                result["macro_hard_echo"] = echo[: self.max_items]
+                result["errors"].append("economic_calendar_empty_macro_hard_echo_only")
 
         try:
             margin = ak.macro_china_market_margin_sh()
@@ -432,6 +500,24 @@ class IntelligenceFetcher:
         if self.config.sentiment.enabled:
             result["sentiment_overview"] = self.scorer.score_news_items(macro_news_pool)
 
+        # S11：数库新闻情绪指数（市场温度旁路，失败不阻断）
+        try:
+            scope_df = ak.index_news_sentiment_scope()
+            scope_recs = _records(scope_df.tail(260), 260) if scope_df is not None and not scope_df.empty else []
+            result["market_news_sentiment_scope"] = build_market_news_sentiment_scope(
+                scope_recs, as_of=self.as_of
+            )
+            if not result["market_news_sentiment_scope"].get("ok"):
+                result["errors"].append("market_news_sentiment_scope_empty")
+        except Exception as exc:
+            result["market_news_sentiment_scope"] = {
+                "ok": False,
+                "source": "chinascope_akshare",
+                "plain_note": "全市场新闻情绪温度计；仅作 A1 旁路，不进个股打分/不抬买入分",
+                "error": str(exc)[:200],
+            }
+            result["errors"].append(f"market_news_sentiment_scope: {exc}")
+
         sector_names = list(
             dict.fromkeys(
                 list(self.config.watch_sectors or [])
@@ -501,12 +587,18 @@ class IntelligenceFetcher:
             matched_board = _match_board_name(summary_df["板块"], sector_name)
             if matched_board:
                 row = summary_df[summary_df["板块"] == matched_board].iloc[0]
-                ranked = summary_df.sort_values("涨跌幅", ascending=False).reset_index(drop=True)
-                rank_pos = ranked.index[ranked["板块"] == matched_board][0] + 1
+                ranked_chg = summary_df.sort_values("涨跌幅", ascending=False).reset_index(drop=True)
+                rank_chg = int(ranked_chg.index[ranked_chg["板块"] == matched_board][0] + 1)
+                rank_inflow = None
+                if "净流入" in summary_df.columns:
+                    ranked_flow = summary_df.sort_values("净流入", ascending=False).reset_index(drop=True)
+                    rank_inflow = int(ranked_flow.index[ranked_flow["板块"] == matched_board][0] + 1)
                 result["sector_flow_rank"] = {
                     "board": matched_board,
-                    "rank_by_change": int(rank_pos),
+                    "rank_by_change": rank_chg,
+                    "rank_by_inflow": rank_inflow,
                     "total_sectors": len(summary_df),
+                    "note": "涨跌幅排名≠资金流入确认",
                     "snapshot": _df_row_to_dict(row),
                 }
 
@@ -619,12 +711,15 @@ class IntelligenceFetcher:
         except Exception as exc:
             result["errors"].append(f"融资融券: {exc}")
 
-        # 北向持股（若接口可用）
+        # 北向持股个股排行（合法 market=北向；失败写入可读原因，不抛裸 TypeError）
         try:
-            hk = ak.stock_hsgt_hold_stock_em(market="北向持股")
-            matched = _filter_df(hk, code)
-            if not matched.empty:
-                result["northbound_hold"] = _df_row_to_dict(matched.iloc[0])
+            hk = self._get_northbound_hold_df()
+            if not hk.empty:
+                matched = _filter_df(hk, code, ("代码", "股票代码"))
+                if not matched.empty:
+                    result["northbound_hold"] = _df_row_to_dict(matched.iloc[0])
+            elif self._northbound_hold_error:
+                result["errors"].append(f"北向持股: {self._northbound_hold_error}")
         except Exception as exc:
             result["errors"].append(f"北向持股: {exc}")
 
@@ -637,6 +732,50 @@ class IntelligenceFetcher:
             ts_bundle = self.tushare.fetch_stock_bundle(code, limit=self.max_items)
             result["tushare"] = ts_bundle
             result["errors"].extend(ts_bundle.get("errors") or [])
+
+        # 股权质押比例（东财全市场表缓存查询）
+        try:
+            pledge_df = self._get_pledge_ratio_df()
+            if not pledge_df.empty:
+                matched = _filter_df(pledge_df, code, ("股票代码", "代码"))
+                if not matched.empty:
+                    row = _df_row_to_dict(matched.iloc[0])
+                    result["pledge_ratio"] = {
+                        "ratio": _safe_float(row.get("质押比例")),
+                        "shares": row.get("质押股数"),
+                        "market_value": row.get("质押市值"),
+                        "trade_date": row.get("交易日期"),
+                        "industry": row.get("所属行业"),
+                        "source": "em_gpzy_pledge_ratio",
+                    }
+            elif self._pledge_ratio_error:
+                result["errors"].append(f"股权质押: {self._pledge_ratio_error}")
+        except Exception as exc:
+            result["errors"].append(f"股权质押: {exc}")
+
+        # 股东增减持（同花顺）；近窗减持进硬门禁
+        try:
+            holder_df = ak.stock_shareholder_change_ths(symbol=code)
+            if holder_df is not None and not holder_df.empty:
+                recs = _records(holder_df.head(12), 12)
+                result["shareholder_changes"] = recs
+                as_cutoff = self.as_of - timedelta(days=90)
+                recent_reduce: list[dict[str, Any]] = []
+                for item in recs:
+                    if not isinstance(item, dict):
+                        continue
+                    text = str(item.get("变动数量") or "") + str(item.get("变动途径") or "")
+                    if "减持" not in text:
+                        continue
+                    d = parse_record_date(
+                        item, date_keys=("公告日期", "date", "日期", "变动期间")
+                    )
+                    if d is None or d >= as_cutoff:
+                        recent_reduce.append(item)
+                if recent_reduce:
+                    result["recent_share_reduce"] = recent_reduce[:5]
+        except Exception as exc:
+            result["errors"].append(f"股东增减持: {exc}")
 
         if self.config.sentiment.enabled:
             pool: list[dict[str, Any]] = []
@@ -755,8 +894,8 @@ def _pick_latest_macro_record(records: list[dict[str, Any]]) -> dict[str, Any] |
     return None
 
 
-def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
-    """主经济日历为空时，用 PMI/CPI/M2 最新发布构造宏观事件锚。"""
+def _macro_hard_echo_from_macro(macro_hard: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
+    """已公布 PMI/CPI/M2 快照（背景），不得当作未来经济日历。"""
     events: list[dict[str, Any]] = []
     for key, label in _MACRO_CAL_LABELS.items():
         records = macro_hard.get(key) or []
@@ -779,10 +918,17 @@ def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date)
                 "event": label,
                 "period_label": period_label or None,
                 "snapshot": latest,
-                "source": "macro_hard",
+                "source": "macro_hard_echo",
+                "kind": "published_background",
+                "note": "已公布硬指标回看，不是未来发布日程",
             }
         )
     return events
+
+
+# 兼容旧测试/调用名
+def _synthetic_calendar_from_macro_hard(macro_hard: dict[str, Any], as_of: date) -> list[dict[str, Any]]:
+    return _macro_hard_echo_from_macro(macro_hard, as_of)
 
 
 def _trading_days_between(start: date, end: date) -> int:

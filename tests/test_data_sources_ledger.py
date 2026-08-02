@@ -171,7 +171,7 @@ def test_main_report_points_to_datasources_not_inline():
     assert "## 结论卡（速读）" in md
 
 
-def test_ledger_policy_rss_extract_not_degraded() -> None:
+def test_ledger_policy_rss_extract_marked_degraded() -> None:
     result = {
         "data_quality": {"score": 1.0, "degraded": False},
         "screen": {"enabled": False},
@@ -191,5 +191,7 @@ def test_ledger_policy_rss_extract_not_degraded() -> None:
     }
     ledger = build_data_sources_ledger(result)
     row = next(r for r in ledger["rows"] if r["name"] == "政策/联播类新闻")
-    assert row["status"] == "ok"
+    # 抽取≠联播：语义降级，避免报告写成「已是正式联播」
+    assert row["status"] == "degraded"
     assert "快讯/RSS" in row["provider"]
+    assert "≠正式联播" in row["detail"]

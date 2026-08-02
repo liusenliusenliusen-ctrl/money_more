@@ -11,15 +11,25 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
     out = {
         "as_of": macro.get("as_of"),
         "sentiment_overview": macro.get("sentiment_overview"),
+        "market_news_sentiment_scope": _compact_market_news_sentiment(
+            macro.get("market_news_sentiment_scope") or {}
+        ),
         "margin_trend": _keep_keys(macro.get("margin_trend") or {}, ("financing_balance_change_5d_pct", "latest")),
         "northbound_summary": (macro.get("northbound_summary") or [])[:3],
         "sector_money_flow": _compact_sector_flow(macro.get("sector_money_flow") or {}),
         "macro_hard": _tail_macro_hard(macro.get("macro_hard") or {}),
         "global_liquidity": _compact_global_liquidity(macro.get("global_liquidity") or {}),
         "economic_calendar": (macro.get("economic_calendar") or [])[:5],
-        "economic_calendar_synthetic": macro.get("economic_calendar_synthetic"),
+        "macro_hard_echo": (macro.get("macro_hard_echo") or [])[:5],
         "northbound_freshness": macro.get("northbound_freshness"),
+        "northbound_caveat": "北向为成交/持仓痕迹，非聪明钱信号；stale 时仅作背景",
         "policy_news": (macro.get("policy_news") or [])[:max_news],
+        "policy_news_source": macro.get("policy_news_source"),
+        "policy_news_caveat": (
+            "快讯/RSS 政策抽取≠正式联播"
+            if macro.get("policy_news_source") == "rss_global_extract"
+            else None
+        ),
         "global_news": (macro.get("global_news") or [])[:max_news],
         "rss_important": (macro.get("rss_important") or [])[:max_news],
         "rss_telegraph": (macro.get("rss_telegraph") or [])[:max_news],
@@ -34,6 +44,22 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
     return out
 
 
+def _compact_market_news_sentiment(scope: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(scope, dict) or not scope:
+        return {}
+    return {
+        "ok": scope.get("ok"),
+        "source": scope.get("source"),
+        "latest_date": scope.get("latest_date"),
+        "index": scope.get("index"),
+        "label": scope.get("label"),
+        "percentile_1y": scope.get("percentile_1y"),
+        "vs_ma20": scope.get("vs_ma20"),
+        "plain_note": scope.get("plain_note"),
+        "error": scope.get("error"),
+    }
+
+
 def _compact_macro_events(signals: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(signals, dict) or not signals:
         return {}
@@ -41,6 +67,7 @@ def _compact_macro_events(signals: dict[str, Any]) -> dict[str, Any]:
         "extreme": signals.get("extreme"),
         "dominant_tags": (signals.get("dominant_tags") or [])[:5],
         "watchlist": (signals.get("watchlist") or [])[:6],
+        "background_published": (signals.get("background_published") or [])[:4],
     }
 
 
@@ -123,6 +150,8 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             "market_comment": intel.get("market_comment"),
             "xueqiu_hot": intel.get("xueqiu_hot"),
             "participation_desire": (intel.get("participation_desire") or [])[-2:],
+            "pledge_ratio": intel.get("pledge_ratio"),
+            "recent_share_reduce": (intel.get("recent_share_reduce") or [])[:3],
             "research_reports": (intel.get("research_reports") or [])[:3],
             "rss_matches": (intel.get("rss_matches") or [])[:4],
             "tushare": {
@@ -155,6 +184,9 @@ def _compact_sector_flow(flow: dict[str, Any]) -> dict[str, Any]:
         "top_gainers": (flow.get("top_gainers") or [])[:5],
         "top_losers": (flow.get("top_losers") or [])[:5],
         "top_inflow": (flow.get("top_inflow") or [])[:5],
+        "rank_by_change": (flow.get("rank_by_change") or [])[:5],
+        "rank_by_inflow": (flow.get("rank_by_inflow") or [])[:5],
+        "caveat": "涨跌幅排名≠资金流入确认；二者请分列阅读",
     }
 
 

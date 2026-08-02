@@ -12,7 +12,7 @@ from money_more.analysis.debate import apply_debate_to_recommendations, run_buy_
 from money_more.analysis.decision_validator import enrich_holdings, validate_recommendations
 from money_more.analysis.equity_bond import build_equity_bond_from_macro
 from money_more.analysis.factor_ic import compute_factor_ic_from_db
-from money_more.analysis.factor_scorecard import build_stock_scorecard
+from money_more.analysis.factor_scorecard import DEFAULT_WEIGHTS, build_stock_scorecard
 from money_more.analysis.invalidation import evaluate_invalidation
 from money_more.analysis.earnings_revision import assess_earnings_revision
 from money_more.analysis.info_completeness import assess_info_completeness
@@ -343,9 +343,13 @@ class DecisionPipeline:
         quotes_meta: dict[str, dict[str, Any]] = {}
         scorecards: dict[str, Any] = {}
         ic_report = compute_factor_ic_from_db(self.db)
-        adapted_weights = weights_from_ic(ic_report)
+        adapted_weights = weights_from_ic(
+            ic_report,
+            investment_horizon=self.config.analysis.investment_horizon,
+        )
         result["factor_ic"] = ic_report
         result["factor_weights_adapted"] = adapted_weights
+        result["factor_weights_ic_adapted"] = adapted_weights != dict(DEFAULT_WEIGHTS)
         log.info("run_id=%s adapted_weights=%s", run_id, adapted_weights)
 
         # 并行拉取行情/情报，缩短墙钟时间（LLM 仍串行以保证上下文一致）
@@ -1404,10 +1408,9 @@ class DecisionPipeline:
             and (macro_intel.get("northbound_freshness") or {}).get("stale") is not True,
             "sentiment_overview": bool((macro_intel.get("sentiment_overview") or {}).get("aggregate")),
             "economic_calendar": bool(
-                macro_intel.get("economic_calendar")
-                or macro_intel.get("economic_calendar_alt")
-                or macro_intel.get("economic_calendar_synthetic")
+                macro_intel.get("economic_calendar") or macro_intel.get("economic_calendar_alt")
             ),
+            "macro_hard_echo": bool(macro_intel.get("macro_hard_echo")),
             "tushare_macro": has_macro_news,
             "sector_money_flow": sector_money_flow_present(macro_intel.get("sector_money_flow")),
             "macro_hard": bool(macro_intel.get("macro_hard")),

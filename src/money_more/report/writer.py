@@ -540,10 +540,27 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
         sc = st.get("factor_scorecard") or a.get("factor_scorecard") or rec.get("factor_scorecard") or {}
         if sc.get("total_score") is not None:
             scores = sc.get("scores") or {}
-            parts = " · ".join(f"{k}={v}" for k, v in scores.items())
+            # 因子卡：sentiment 分列拥挤/语调，避免误读为「情绪看好」（S13）
+            display_scores = {k: v for k, v in scores.items() if k != "sentiment"}
+            parts = " · ".join(f"{k}={v}" for k, v in display_scores.items())
             lines.append(
                 f"- **因子分**: **{sc.get('total_score')}** ({sc.get('signal')}) | {parts}"
             )
+            sb = sc.get("sentiment_breakdown") or {}
+            if sb:
+                tone = sb.get("news_tone")
+                tone_s = f"{tone}" if tone is not None else "—"
+                crowd = sb.get("crowding_risk") or "unknown"
+                crowd_sc = sb.get("crowding_score")
+                crowd_extra = f"/{crowd_sc}" if crowd_sc is not None else ""
+                factor_s = sb.get("factor_score")
+                lines.append(
+                    f"- **拥挤风险**: `{crowd}`{crowd_extra}"
+                    f" · **新闻语调**: {tone_s}（不抬分）"
+                    + (f" · 舆情因子分={factor_s}" if factor_s is not None else "")
+                )
+            elif scores.get("sentiment") is not None:
+                lines.append(f"- **舆情因子分**: {scores.get('sentiment')}（拥挤惩罚口径）")
             val_ev = (sc.get("evidence") or {}).get("valuation") or []
             if val_ev:
                 lines.append(
@@ -1144,6 +1161,17 @@ def render_daily_report(result: dict[str, Any]) -> str:
                 f"**量化舆情分**: {agg.get('score_100')}/100 ({agg.get('label', 'neutral')}) "
                 f"· 样本 {agg.get('count', 0)} 条"
             )
+        scope = macro_intel.get("market_news_sentiment_scope") or {}
+        if scope.get("ok"):
+            lines.append(
+                f"**数库新闻情绪指数（市场温度旁路）**: {scope.get('index')} "
+                f"({scope.get('label')}) · 近一年分位 {scope.get('percentile_1y')}% "
+                f"· 日期 {scope.get('latest_date') or '—'}"
+            )
+            if scope.get("plain_note"):
+                lines.append(f"_（{scope.get('plain_note')}）_")
+        elif scope.get("error"):
+            lines.append(f"**数库新闻情绪指数**: 未取到（{_one_line(scope.get('error'), 60)}）")
         if digest.get("quant_sentiment_score_100") is not None:
             lines.append(f"**LLM 确认舆情分**: {digest.get('quant_sentiment_score_100')}")
         if digest.get("telegraph_highlights"):

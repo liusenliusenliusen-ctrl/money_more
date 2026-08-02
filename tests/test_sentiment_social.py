@@ -101,16 +101,27 @@ def test_build_macro_event_signals_merges_calendar() -> None:
     assert any(w.get("event") == "业绩预增/扭亏" for w in out["watchlist"])
 
 
-def test_scorecard_blends_participation_desire() -> None:
-    card = build_stock_scorecard(
+def test_scorecard_participation_desire_is_crowding_penalty() -> None:
+    """参与意愿/雪球热度不抬舆情分，高拥挤应压分（S3）。"""
+    base = build_stock_scorecard(
+        {"history": {}, "quote": {}},
+        {},
+        {
+            "sentiment_analysis": {"aggregate": {"score_100": 60}},
+            "crowding_signal": {"crowding_risk": "low"},
+        },
+    )
+    hot = build_stock_scorecard(
         {"history": {}, "quote": {}},
         {},
         {
             "sentiment_analysis": {"aggregate": {"score_100": 60}},
             "participation_desire": [{"参与意愿": 80}],
             "xueqiu_hot": {"deal": {"排名": 5}},
-            "crowding_signal": {"crowding_risk": "low"},
+            "crowding_signal": {"crowding_risk": "high"},
         },
     )
-    assert card["scores"]["sentiment"] > 60
-    assert any("参与意愿" in e for e in card["evidence"]["sentiment"])
+    assert hot["scores"]["sentiment"] < base["scores"]["sentiment"]
+    assert hot["scores"]["sentiment"] <= 50
+    assert any("参与意愿" in e for e in hot["evidence"]["sentiment"])
+    assert any("拥挤" in e for e in hot["evidence"]["sentiment"])

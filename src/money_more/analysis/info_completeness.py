@@ -80,7 +80,7 @@ def assess_info_completeness(
         reasons.append("硬门禁已触发: " + "; ".join((gates.get("reasons") or [])[:2]))
 
     # 研报/龙虎等「市场侧」信息有时反而说明交易拥挤，不算完备解释
-    lhb = intel.get("lhb") or intel.get("dragon_tiger") or []
+    lhb = intel.get("lhb_records") or intel.get("lhb") or intel.get("dragon_tiger") or []
     if lhb and big_move and news_n + ann_n == 0:
         unexplained.append("有龙虎/席位痕迹但缺少公司层公开说明（信息缺口，非指控）")
         haircut += 0.06

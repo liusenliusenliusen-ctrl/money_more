@@ -48,7 +48,11 @@ class TushareSource:
         self.as_of = parse_as_of(as_of)
 
     def probe(self) -> bool:
-        """验证 token；失败时置 available=False。"""
+        """验证 token；失败时置 available=False。
+
+        注意：勿用 trade_cal 做探测——部分套餐对该接口限频极严（如 1 次/分钟或 1 次/小时），
+        探测本身就会把整轮 Tushare 误判为不可用。优先 stock_basic。
+        """
         if not self.token:
             self.available = False
             self._probe_error = "未配置 TUSHARE_TOKEN"
@@ -58,18 +62,30 @@ class TushareSource:
 
             ts.set_token(self.token)
             pro = ts.pro_api()
-            pro.trade_cal(
-                exchange="SSE",
-                start_date=ymd(self.as_of),
-                end_date=ymd(self.as_of),
-            )
+            # stock_basic 额度通常远宽于 trade_cal；limit 字段部分环境忽略，取 head 即可
+            df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,name")
+            if df is None or getattr(df, "empty", True):
+                raise RuntimeError("stock_basic 返回空，token 可能无效或无权限")
             self._pro = pro
             self.available = True
             self._probe_error = None
             return True
         except Exception as exc:
+            msg = str(exc)
+            # 频次限制 ≠ token 无效：保留 client，允许业务接口继续尝试
+            if "频率超限" in msg or "频次" in msg or "每天" in msg:
+                try:
+                    import tushare as ts
+
+                    ts.set_token(self.token)
+                    self._pro = ts.pro_api()
+                    self.available = True
+                    self._probe_error = f"probe 撞限但 token 保留可用: {msg}"
+                    return True
+                except Exception as exc2:
+                    msg = f"{msg}; 重建 client 失败: {exc2}"
             self.available = False
-            self._probe_error = str(exc)
+            self._probe_error = msg
             self._pro = None
             return False
 

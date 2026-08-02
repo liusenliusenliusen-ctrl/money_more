@@ -125,13 +125,33 @@ def build_sector_money_flow(summary: pd.DataFrame, limit: int = 10) -> dict[str,
     payload: dict[str, list[dict[str, Any]]] = {
         "top_gainers": _df_records(by_change.head(limit), limit),
         "top_losers": _df_records(by_change.tail(limit), limit),
+        "rank_by_change": _sector_rank_list(by_change, "涨跌幅", limit),
     }
     if "净流入" in summary.columns:
         by_inflow = summary.sort_values("净流入", ascending=False)
         payload["top_inflow"] = _df_records(by_inflow.head(limit), limit)
+        payload["rank_by_inflow"] = _sector_rank_list(by_inflow, "净流入", limit)
     else:
         payload["top_inflow"] = []
+        payload["rank_by_inflow"] = []
     return payload
+
+
+def _sector_rank_list(ranked: pd.DataFrame, metric: str, limit: int) -> list[dict[str, Any]]:
+    """涨跌/净流入分列排名，避免把涨幅当成资金确认。"""
+    out: list[dict[str, Any]] = []
+    if ranked is None or ranked.empty or "板块" not in ranked.columns:
+        return out
+    for i, (_, row) in enumerate(ranked.head(limit).iterrows(), start=1):
+        item: dict[str, Any] = {
+            "rank": i,
+            "板块": row.get("板块"),
+            "metric": metric,
+        }
+        if metric in row.index:
+            item[metric] = row.get(metric)
+        out.append(item)
+    return out
 
 
 def sector_money_flow_present(flow: Any) -> bool:

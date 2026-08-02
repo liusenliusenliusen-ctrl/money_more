@@ -368,6 +368,12 @@ def build_macro_event_signals(macro_intel: dict[str, Any]) -> dict[str, Any]:
     for item in macro_intel.get("economic_calendar") or []:
         if not isinstance(item, dict):
             continue
+        # 禁止把已公布硬指标回看当成未来日程
+        if item.get("kind") == "published_background" or item.get("source") in (
+            "macro_hard",
+            "macro_hard_echo",
+        ):
+            continue
         title = str(item.get("event") or item.get("事件") or item.get("title") or "").strip()
         if not title or title in seen_events:
             continue
@@ -384,8 +390,25 @@ def build_macro_event_signals(macro_intel: dict[str, Any]) -> dict[str, Any]:
         if len(watchlist) >= 10:
             break
 
+    background = []
+    for item in macro_intel.get("macro_hard_echo") or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("event") or item.get("事件") or item.get("title") or "").strip()
+        if not title:
+            continue
+        background.append(
+            {
+                "event": title,
+                "date": str(item.get("日期") or item.get("date") or "") or None,
+                "source": "macro_hard_echo",
+                "note": item.get("note") or "已公布硬指标回看，不是未来发布日程",
+            }
+        )
+
     return {
         "watchlist": watchlist[:10],
+        "background_published": background[:6],
         "dominant_tags": list(event_dist.keys())[:5],
         "extreme": agg.get("extreme"),
         "event_distribution": dict(event_dist),
@@ -474,6 +497,67 @@ def assess_stock_crowding(
         level = "low"
 
     return {"crowding_risk": level, "crowding_score": score, "signals": signals}
+
+
+def build_market_news_sentiment_scope(
+    records: list[dict[str, Any]] | None,
+    *,
+    as_of: Any = None,
+) -> dict[str, Any]:
+    """数库 A 股新闻情绪指数 → 市场温度旁路（不进个股打分）。
+
+    records 为 AkShare `index_news_sentiment_scope` 行（含 日期/市场情绪指数/沪深300指数）。
+    """
+    note = "全市场新闻情绪温度计；仅作 A1 旁路，不进个股打分/不抬买入分"
+    if not records:
+        return {"ok": False, "source": "chinascope_akshare", "plain_note": note, "error": "empty"}
+
+    rows: list[tuple[Any, float, float | None]] = []
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        idx = _safe_float(item.get("市场情绪指数") or item.get("maIndex1") or item.get("index"))
+        if idx is None:
+            continue
+        hs = _safe_float(item.get("沪深300指数") or item.get("marketClose") or item.get("hs300"))
+        d = item.get("日期") or item.get("tradeDate") or item.get("date")
+        rows.append((d, idx, hs))
+    if not rows:
+        return {"ok": False, "source": "chinascope_akshare", "plain_note": note, "error": "no_numeric"}
+
+    # 按日期排序，取最新
+    def _sort_key(r: tuple[Any, float, float | None]) -> str:
+        return str(r[0] or "")
+
+    rows.sort(key=_sort_key)
+    latest_date, latest_idx, latest_hs = rows[-1]
+    vals = [r[1] for r in rows[-250:]]
+    below = sum(1 for v in vals if v < latest_idx)
+    pct = round(below / max(len(vals), 1) * 100.0, 1)
+    if pct >= 80:
+        label = "hot"
+    elif pct <= 20:
+        label = "cold"
+    else:
+        label = "neutral"
+    mean20 = sum(vals[-20:]) / max(len(vals[-20:]), 1)
+    delta20 = round(latest_idx - mean20, 4)
+    return {
+        "ok": True,
+        "source": "chinascope_akshare",
+        "as_of_query": str(as_of) if as_of is not None else None,
+        "latest_date": str(latest_date) if latest_date is not None else None,
+        "index": round(latest_idx, 4),
+        "hs300": round(latest_hs, 2) if latest_hs is not None else None,
+        "percentile_1y": pct,
+        "vs_ma20": delta20,
+        "label": label,
+        "plain_note": note,
+        "series_tail": [
+            {"日期": str(d) if d is not None else None, "市场情绪指数": round(i, 4)}
+            for d, i, _ in rows[-5:]
+        ],
+    }
 
 
 def assess_sector_crowding(

@@ -145,21 +145,37 @@ def test_scorecard_bullish_bias():
         {
             "history": {
                 "above_ma20": True,
-                "change_pct": 2.0,
                 "close": 100,
-                "ma5": 102,
                 "ma20": 98,
                 "high_20d": 105,
                 "low_20d": 90,
+                "rs_vs_hs300_20d": 8.0,
             },
             "quote": {},
             "fund_flow": {"net_5d": 20000},
         },
         {"research_rating": "buy", "confidence": 0.8},
-        {"sentiment_analysis": {"aggregate": {"score_100": 70}}},
+        {
+            "sentiment_analysis": {"aggregate": {"score_100": 70}},
+            "crowding_signal": {"crowding_risk": "low"},
+            "tushare": {
+                "valuation": {
+                    "latest": {"pe_ttm": 12.0, "pb": 1.2},
+                    "percentiles": {
+                        "ok": True,
+                        "pe_percentile": 15.0,
+                        "pb_percentile": 18.0,
+                        "label": "cheap",
+                    },
+                }
+            },
+        },
     )
     assert sc["total_score"] >= 55
     assert sc["signal"] in ("bullish", "constructive", "neutral")
+    # 日涨跌/语调高分不再抬动量与舆情
+    assert not any("日涨跌" in e for e in sc["evidence"]["momentum"])
+    assert any("不抬分" in e for e in sc["evidence"]["sentiment"])
 
 
 def test_valuation_percentiles():
@@ -202,6 +218,7 @@ def test_scorecard_uses_percentiles():
 
 def test_synthetic_calendar_and_northbound_freshness():
     from money_more.data.intelligence import (
+        _macro_hard_echo_from_macro,
         _macro_records_from_df,
         _northbound_freshness,
         _synthetic_calendar_from_macro_hard,
@@ -212,8 +229,10 @@ def test_synthetic_calendar_and_northbound_freshness():
     assert len(events) == 1
     assert events[0]["event"] == "中国制造业PMI"
     assert events[0]["日期"] == "2026-06"
+    assert events[0]["source"] == "macro_hard_echo"
+    assert events[0]["kind"] == "published_background"
 
-    # AkShare 宏观序列降序：head 取最新，合成日历不得落到 2008
+    # AkShare 宏观序列降序：head 取最新，echo 不得落到 2008
     import pandas as pd
 
     pmi_df = pd.DataFrame(
@@ -224,9 +243,9 @@ def test_synthetic_calendar_and_northbound_freshness():
         ]
     )
     records = _macro_records_from_df(pmi_df, 6)
-    synth = _synthetic_calendar_from_macro_hard({"pmi": records}, date(2026, 7, 23))
-    assert synth[0]["日期"] == "2026-06"
-    assert "2008" not in synth[0]["日期"]
+    echo = _macro_hard_echo_from_macro({"pmi": records}, date(2026, 7, 23))
+    assert echo[0]["日期"] == "2026-06"
+    assert "2008" not in echo[0]["日期"]
 
     fresh = _northbound_freshness([{"日期": "2026-07-10"}], date(2026, 7, 12))
     assert fresh["stale"] is False
@@ -271,13 +290,15 @@ def test_macro_news_backfill_and_quality():
         "northbound_summary": [{"日期": "2026-07-10"}],
         "northbound_freshness": {"stale": False},
         "sentiment_overview": {"aggregate": {"score": 50}},
-        "economic_calendar_synthetic": True,
+        "macro_hard_echo": [{"event": "中国制造业PMI", "source": "macro_hard_echo"}],
         "sector_money_flow": {"top_inflow": [{"板块": "半导体", "净流入": 1.0e8}]},
         "macro_hard": {"pmi": []},
         "errors": ["Tushare 未配置", "tushare_macro_backfill_from_alt_sources"],
     }
     dq = DecisionPipeline._assess_data_quality(intel)
     assert dq["checks"]["tushare_macro"] is True
+    assert dq["checks"]["macro_hard_echo"] is True
+    assert dq["checks"]["economic_calendar"] is False
     assert "tushare_available" not in dq["missing"]
     assert dq["tushare_macro_backfill"] is True
     assert dq["score"] >= 0.7
@@ -339,6 +360,14 @@ def test_cross_check_mismatch():
         {},
     )
     assert g["block_buy"] is True
+
+    unlock = apply_hard_gates(
+        "600519",
+        {"as_of": "2026-07-01", "quote": {"名称": "贵州茅台"}, "history": {"volume": 100}},
+        {"share_float": [{"float_date": "20260715", "float_share": 1e7}]},
+    )
+    assert unlock["force_watch"] is True
+    assert any("解禁临近" in r for r in unlock["reasons"])
 
 
 def test_hard_gate_in_validator():
@@ -420,7 +449,21 @@ def test_pearson_ic():
 
 
 def test_weights_from_ic():
+    from money_more.analysis.factor_scorecard import DEFAULT_WEIGHTS
     from money_more.analysis.weight_adapt import weights_from_ic
+
+    # 中长线默认不改权
+    mid = weights_from_ic(
+        {
+            "ok": True,
+            "ics": {
+                "momentum": {"ic": -0.2, "n": 20},
+                "valuation": {"ic": 0.2, "n": 20},
+            },
+        },
+        investment_horizon="medium_long",
+    )
+    assert mid == dict(DEFAULT_WEIGHTS)
 
     w = weights_from_ic(
         {
@@ -429,7 +472,8 @@ def test_weights_from_ic():
                 "momentum": {"ic": -0.2, "n": 20},
                 "valuation": {"ic": 0.2, "n": 20},
             },
-        }
+        },
+        investment_horizon="short",
     )
     assert w["momentum"] < w["valuation"]
 
@@ -687,6 +731,8 @@ def test_normalize_sector_summary_em_columns():
     assert flow["top_gainers"][0]["板块"] == "半导体"
     assert flow["top_losers"][-1]["板块"] == "银行"
     assert flow["top_inflow"][0]["净流入"] == 1200000000.0
+    assert flow["rank_by_change"][0]["板块"] == "半导体"
+    assert flow["rank_by_inflow"][0]["板块"] == "半导体"
     assert sector_money_flow_present(flow) is True
     assert sector_money_flow_present({"top_inflow": []}) is False
 
@@ -735,7 +781,8 @@ def test_sector_money_flow_quality_gate():
         "northbound_summary": [{"日期": "2026-07-10"}],
         "northbound_freshness": {"stale": False},
         "sentiment_overview": {"aggregate": {"score": 50}},
-        "economic_calendar_synthetic": True,
+        "economic_calendar": [{"event": "美国PCE", "日期": "2026-07-25"}],
+        "macro_hard_echo": [{"event": "中国制造业PMI", "source": "macro_hard_echo"}],
         "macro_hard": {"pmi": [{}]},
         "global_liquidity": {"stance": "mixed", "us_10y": {"latest": 4.5}},
         "errors": [],
