@@ -136,9 +136,10 @@ class AgentsConfig:
     parallel: bool = True
     primary_provider: str = "deepseek"  # openai_compat / deepseek
     primary_model: str = ""
-    secondary_provider: str = "cursor"  # cursor | claude | none
-    secondary_model: str = "composer-2.5"
-    # 综合用 DeepSeek：便宜、JSON 稳；Cursor 更适合当独立分析师
+    # 默认同模型异 prompt；Cursor secondary 见 docs/TODO_optimizations.md
+    secondary_provider: str = "deepseek"  # deepseek | cursor | claude | none
+    secondary_model: str = ""  # 空则跟 llm_model；cursor 时可填 composer-2.5
+    # 综合用 DeepSeek：便宜、JSON 稳
     synthesizer_provider: str = "deepseek"
     synthesizer_model: str = ""
     cursor_model: str = "composer-2.5"
@@ -395,12 +396,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             parallel=bool(agents_raw.get("parallel", True)),
             primary_provider=str(agents_raw.get("primary_provider", "deepseek")),
             primary_model=str(agents_raw.get("primary_model") or ""),
-            secondary_provider=str(agents_raw.get("secondary_provider", "cursor")),
-            secondary_model=str(
-                agents_raw.get("secondary_model")
-                or agents_raw.get("cursor_model")
-                or "composer-2.5"
-            ),
+            secondary_provider=str(agents_raw.get("secondary_provider", "deepseek")),
+            secondary_model=str(agents_raw.get("secondary_model") or "").strip(),
             synthesizer_provider=str(agents_raw.get("synthesizer_provider", "deepseek")),
             synthesizer_model=str(agents_raw.get("synthesizer_model") or ""),
             cursor_model=str(agents_raw.get("cursor_model") or "composer-2.5"),

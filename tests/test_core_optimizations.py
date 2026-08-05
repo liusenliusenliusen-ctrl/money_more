@@ -613,8 +613,10 @@ def test_multi_agent_orchestrator_fallback():
             self.name = name
             self.payload = payload
             self.fail = fail
+            self.last_system_prompt: str | None = None
 
         def complete_json(self, system_prompt, user_payload, **kwargs):
+            self.last_system_prompt = system_prompt
             if self.fail:
                 raise RuntimeError("boom")
             out = dict(self.payload)
@@ -625,7 +627,7 @@ def test_multi_agent_orchestrator_fallback():
         role="primary",
     )
     secondary = AnalystAgent(
-        FakeProvider("cursor", {"recommendations": [{"code": "300750"}], "portfolio_summary": "b"}),
+        FakeProvider("deepseek", {"recommendations": [{"code": "300750"}], "portfolio_summary": "b"}),
         role="secondary",
     )
     synth = SynthesisAgent(
@@ -646,7 +648,7 @@ def test_multi_agent_orchestrator_fallback():
     # secondary fail → primary only
     orch2 = MultiAgentOrchestrator(
         primary,
-        AnalystAgent(FakeProvider("cursor", {}, fail=True), role="secondary"),
+        AnalystAgent(FakeProvider("deepseek", {}, fail=True), role="secondary"),
         synth,
         parallel=False,
     )
@@ -654,12 +656,52 @@ def test_multi_agent_orchestrator_fallback():
     assert out2["_multi_agent_fallback"] == "primary_only"
 
 
+def test_multi_agent_secondary_uses_different_system_prompt():
+    from money_more.agents.orchestrator import AnalystAgent, MultiAgentOrchestrator, SynthesisAgent
+    from money_more.llm.prompts import DECISION_SECONDARY_SYSTEM, DECISION_SYSTEM
+    from money_more.llm.providers.base import LLMProvider
+
+    class FakeProvider(LLMProvider):
+        def __init__(self, name: str, payload: dict):
+            self.name = name
+            self.payload = payload
+            self.last_system_prompt: str | None = None
+
+        def complete_json(self, system_prompt, user_payload, **kwargs):
+            self.last_system_prompt = system_prompt
+            return dict(self.payload)
+
+    primary_p = FakeProvider("deepseek", {"recommendations": [], "portfolio_summary": "a"})
+    secondary_p = FakeProvider("deepseek", {"recommendations": [], "portfolio_summary": "b"})
+    orch = MultiAgentOrchestrator(
+        AnalystAgent(primary_p, role="primary"),
+        AnalystAgent(secondary_p, role="secondary"),
+        SynthesisAgent(
+            FakeProvider(
+                "synth",
+                {
+                    "recommendations": [],
+                    "portfolio_summary": "z",
+                    "multi_agent": {"agreement": 0.5},
+                },
+            )
+        ),
+        parallel=False,
+    )
+    orch.analyze_json(DECISION_SYSTEM, {"x": 1}, required_keys=["recommendations", "portfolio_summary"])
+    assert primary_p.last_system_prompt == DECISION_SYSTEM
+    assert secondary_p.last_system_prompt == DECISION_SECONDARY_SYSTEM
+    assert primary_p.last_system_prompt != secondary_p.last_system_prompt
+    assert "唱反调" in (secondary_p.last_system_prompt or "")
+
+
 def test_agents_config_defaults():
     from money_more.config import load_config
 
     c = load_config()
     assert c.agents.enabled is True
-    assert c.agents.secondary_provider == "cursor"
+    assert c.agents.secondary_provider == "deepseek"
+    assert c.agents.secondary_model == ""
     assert c.agents.synthesizer_provider == "deepseek"
 
 

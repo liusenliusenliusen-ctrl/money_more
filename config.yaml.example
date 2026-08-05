@@ -102,8 +102,9 @@ agents:
   decision_multi: true
   parallel: true
   primary_provider: deepseek
-  secondary_provider: cursor
-  secondary_model: composer-2.5
+  # 默认同模型异 prompt；Cursor secondary 见 docs/TODO_optimizations.md
+  secondary_provider: deepseek
+  secondary_model: ""  # 空则跟 llm_model
   synthesizer_provider: deepseek
   cursor_model: composer-2.5
   llm_timeout_seconds: 300

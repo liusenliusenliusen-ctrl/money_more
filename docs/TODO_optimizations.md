@@ -3,7 +3,7 @@
 记录讨论中认可、但**暂不实施**的优化项。  
 按性价比排序；动手前先勾选范围，避免一次铺太开。
 
-最后更新：2026-07-19
+最后更新：2026-08-05
 
 ---
 
@@ -54,6 +54,16 @@
 ### 9. Token / 成本收紧
 - **目标**：在效果不明显下降的前提下省调用：低优先级板块缩写、维持「仅决策多 Agent」等。
 - **涉及**：pipeline 分支；`agents` / `analysis` 配置。
+
+### 9b. Cursor SDK 作副分析师：大 payload 挂死（2026-08 记下）
+- **现象**：`secondary_provider: cursor` 时，决策阶段把完整 payload（可达数 MB）塞进 `Agent.prompt`；本地 `cursor-sdk-bridge` 易长时间 `poll` 不返回。旧超时封装 `ThreadPoolExecutor(wait=True)` + 编排 `as_completed` 无总超时，会导致整轮决策拖死（超时侧已部分修复：`timeout_util` `wait=False`、编排 `wait_futures`+deadline）。
+- **现状（临时）**：主/副均用同一 DeepSeek（`llm_model`），靠 `DECISION_SYSTEM` vs `DECISION_SECONDARY_SYSTEM`（风控/唱反调）拉开角度；Cursor 不作决策 secondary。
+- **后续专项（恢复 Cursor 前必做）**：
+  1. 决策 payload **压缩/摘要**后再交给 Cursor（勿整包 dump）；
+  2. 超时后主动杀掉 bridge 子进程，避免残留；
+  3. 评估 cloud runtime vs local；
+  4. 再决定是否把 `secondary_provider` 改回 `cursor`。
+- **涉及**：`cursor_provider.py`、`orchestrator.py`、`timeout_util.py`、决策 payload 裁剪。
 
 ---
 

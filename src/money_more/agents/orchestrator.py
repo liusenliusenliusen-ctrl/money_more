@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
+import time
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    ThreadPoolExecutor,
+    TimeoutError as FuturesTimeout,
+    wait as wait_futures,
+)
 from typing import Any
 
 from money_more.llm.providers.base import LLMProvider
+from money_more.llm.prompts import DECISION_SECONDARY_SYSTEM
 from money_more.utils.logging_util import setup_logging
 
 log = setup_logging()
@@ -129,7 +136,9 @@ class MultiAgentOrchestrator:
         required_keys: list[str] | None = None,
         temperature: float = 0.3,
         multi: bool = True,
+        secondary_system_prompt: str | None = None,
     ) -> dict[str, Any]:
+        secondary_prompt = secondary_system_prompt or DECISION_SECONDARY_SYSTEM
         if not multi or self.secondary is None or self.synthesizer is None:
             try:
                 return self.primary.analyze(
@@ -148,38 +157,56 @@ class MultiAgentOrchestrator:
         wait = self.agent_wait_seconds
 
         if self.parallel:
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                futs = {
-                    pool.submit(
-                        self.primary.analyze,
-                        system_prompt,
-                        user_payload,
-                        required_keys=required_keys,
-                        temperature=temperature,
-                    ): "primary",
-                    pool.submit(
-                        self.secondary.analyze,
-                        system_prompt,
-                        user_payload,
-                        required_keys=required_keys,
-                        temperature=min(0.5, temperature + 0.1),
-                    ): "secondary",
-                }
-                for fut in as_completed(futs):
-                    role = futs[fut]
-                    try:
-                        out = fut.result(timeout=wait)
-                        if role == "primary":
-                            a_out = out
-                        else:
-                            b_out = out
-                    except FuturesTimeout:
-                        errors.append(f"{role}: 编排等待超时（>{wait:.0f}s）")
-                        log.warning("multi-agent %s wait timeout >%.0fs", role, wait)
-                        fut.cancel()
-                    except Exception as exc:
-                        errors.append(f"{role}: {exc}")
-                        log.warning("multi-agent %s failed: %s", role, exc)
+            # 不用 as_completed：副分析师（Cursor）挂死时会永远等不到下一个 future。
+            # 也不用 with ThreadPoolExecutor：默认 shutdown(wait=True) 会在超时后继续卡死。
+            pool = ThreadPoolExecutor(max_workers=2)
+            futs = {
+                pool.submit(
+                    self.primary.analyze,
+                    system_prompt,
+                    user_payload,
+                    required_keys=required_keys,
+                    temperature=temperature,
+                ): "primary",
+                pool.submit(
+                    self.secondary.analyze,
+                    secondary_prompt,
+                    user_payload,
+                    required_keys=required_keys,
+                    temperature=min(0.5, temperature + 0.1),
+                ): "secondary",
+            }
+            pending = set(futs)
+            deadline = time.monotonic() + wait
+            try:
+                while pending:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        for fut in pending:
+                            role = futs[fut]
+                            errors.append(f"{role}: 编排等待超时（>{wait:.0f}s）")
+                            log.warning("multi-agent %s wait timeout >%.0fs", role, wait)
+                            fut.cancel()
+                        break
+                    done, pending = wait_futures(
+                        pending, timeout=remaining, return_when=FIRST_COMPLETED
+                    )
+                    for fut in done:
+                        role = futs[fut]
+                        try:
+                            out = fut.result(timeout=0)
+                            if role == "primary":
+                                a_out = out
+                            else:
+                                b_out = out
+                        except FuturesTimeout:
+                            errors.append(f"{role}: 编排等待超时（>{wait:.0f}s）")
+                            log.warning("multi-agent %s wait timeout >%.0fs", role, wait)
+                        except Exception as exc:
+                            errors.append(f"{role}: {exc}")
+                            log.warning("multi-agent %s failed: %s", role, exc)
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
         else:
             try:
                 a_out = self.primary.analyze(
@@ -189,7 +216,7 @@ class MultiAgentOrchestrator:
                 errors.append(f"primary: {exc}")
             try:
                 b_out = self.secondary.analyze(
-                    system_prompt,
+                    secondary_prompt,
                     user_payload,
                     required_keys=required_keys,
                     temperature=min(0.5, temperature + 0.1),
