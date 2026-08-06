@@ -658,7 +658,7 @@ def test_multi_agent_orchestrator_fallback():
 
 def test_multi_agent_secondary_uses_different_system_prompt():
     from money_more.agents.orchestrator import AnalystAgent, MultiAgentOrchestrator, SynthesisAgent
-    from money_more.llm.prompts import DECISION_SECONDARY_SYSTEM, DECISION_SYSTEM
+    from money_more.llm.prompts import ADVICE_SECONDARY_SYSTEM, ADVICE_SYSTEM
     from money_more.llm.providers.base import LLMProvider
 
     class FakeProvider(LLMProvider):
@@ -688,11 +688,13 @@ def test_multi_agent_secondary_uses_different_system_prompt():
         ),
         parallel=False,
     )
-    orch.analyze_json(DECISION_SYSTEM, {"x": 1}, required_keys=["recommendations", "portfolio_summary"])
-    assert primary_p.last_system_prompt == DECISION_SYSTEM
-    assert secondary_p.last_system_prompt == DECISION_SECONDARY_SYSTEM
+    orch.analyze_json(ADVICE_SYSTEM, {"x": 1}, required_keys=["recommendations", "portfolio_summary"])
+    assert primary_p.last_system_prompt == ADVICE_SYSTEM
+    assert secondary_p.last_system_prompt == ADVICE_SECONDARY_SYSTEM
     assert primary_p.last_system_prompt != secondary_p.last_system_prompt
+    assert "建议段" in (primary_p.last_system_prompt or "")
     assert "唱反调" in (secondary_p.last_system_prompt or "")
+    assert "research_book" in (primary_p.last_system_prompt or "")
 
 
 def test_agents_config_defaults():
@@ -936,13 +938,15 @@ def test_render_conclusion_card_and_cross_links():
     card = "\n".join(render_conclusion_card(result))
     assert "## 结论卡（速读）" in card
     assert "### A. 主结论" in card
-    assert "#### A1. 分析：现在怎么看" in card
+    assert "#### A1. 研究：现在怎么看" in card
+    assert "##### 主线" in card
+    assert "##### 争议与未验证假说" in card
     assert "#### A2. 预测：接下来怎么预期" in card
-    assert "#### A3. 动作：怎么做（④风控终局）" in card
+    assert "#### A3. 建议：怎么做（④风控终局）" in card
     assert "### B. 推理链" in card
     assert "#### B1. 宏观 → 板块" in card
     assert "#### B2. 个股决策链" in card
-    assert "### C. 侧栏" in card
+    assert "### C. 侧栏" not in card
     assert "【侧栏语气】" not in card
     assert "阅读顺序" in card
     assert "观察" in card and "300750" in card
@@ -950,21 +954,23 @@ def test_render_conclusion_card_and_cross_links():
     assert "回避追高" in card  # 半导体 expensive+crowding
     assert long_why in card  # 动作理由全文
     assert "理由: " + long_why in card
-    # A3 动作应在 B / C 之前
-    assert card.index("#### A3. 动作") < card.index("### C. 侧栏")
-    assert card.index("#### A3. 动作") < card.index("### B. 推理链")
+    # A1 争议区在 A2/A3/B 之前；A3 在 B 之前
+    assert card.index("##### 争议与未验证假说") < card.index("#### A2. 预测")
+    assert card.index("#### A3. 建议") < card.index("### B. 推理链")
 
     md = render_daily_report(result)
     assert "## 结论卡（速读）" in md
     assert "## 详细论证" in md
     assert "### A. 展开主结论" in md
     assert "### B. 展开推理链" in md
-    assert "### C. 展开侧栏" in md
+    assert "### C. 展开侧栏" not in md
+    assert "#### A1. 现在怎么看（展开）" in md
+    assert "##### 争议与未验证假说" in md
     assert "**落到动作**" in md
     assert "#### B2. 个股决策链" in md
     assert "###### ① 研究" in md
     assert "###### ④ 风控终局" in md
-    assert "#### A3. 动作：怎么做（索引" in md
+    assert "#### A3. 建议：怎么做（索引" in md
     assert "## D. 复盘与经验" not in md
     assert "## 附录：模拟账本" not in md
     assert "**板块**: 新能源" in md or "板块:新能源" in md

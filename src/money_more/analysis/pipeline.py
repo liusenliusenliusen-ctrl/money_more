@@ -29,7 +29,7 @@ from money_more.config import AppConfig
 from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code, sector_money_flow_present
 from money_more.data.intelligence import IntelligenceFetcher
 from money_more.llm.client import (
-    DECISION_SYSTEM,
+    ADVICE_SYSTEM,
     INTELLIGENCE_DIGEST_SYSTEM,
     LLMClient,
     MARKET_SYSTEM,
@@ -522,7 +522,7 @@ class DecisionPipeline:
             "is_empty": len(holdings_enriched) == 0,
             "codes": [h.get("code") for h in holdings_enriched],
             "note": (
-                "用户声明真实持仓为空：按空仓给出 buy/watch，禁止写「当前持有」。"
+                "用户声明真实持仓为空：建议段仅 buy/watch，禁止写「当前持有」。"
                 if not holdings_enriched
                 else "以下为用户声明的真实持仓；hold/add/sell 仅针对这些代码。"
             ),
@@ -534,10 +534,31 @@ class DecisionPipeline:
             "take_profit_pct": self.config.trading.take_profit_pct,
         }
 
+        from money_more.analysis.decision_stages import build_research_book
+
+        hard_gates_map = {s["code"]: s.get("hard_gates") or {} for s in stock_analyses}
+        cross_checks_map = {s["code"]: s.get("cross_check") or {} for s in stock_analyses}
+        research_book = build_research_book(
+            stock_analyses=stock_analyses,
+            force_codes=force_codes,
+            deep_codes=stock_codes,
+            market_analysis=market_analysis,
+            sector_analyses=[s["analysis"] for s in sector_analyses],
+            factor_scorecards=scorecards,
+            hard_gates=hard_gates_map,
+            cross_checks=cross_checks_map,
+            info_completeness=result.get("info_completeness") or {},
+            earnings_revisions=result.get("earnings_revisions") or {},
+            ocf_quality=result.get("ocf_quality") or {},
+        )
+        result["research_book"] = research_book
+
+        # 建议段 payload：研究只读 + holdings 唯一起源（不再把「持仓动作」混进研究叙述）
         decision_payload = {
+            "module": "advice",
             "date": run_date.isoformat(),
+            "research_book": research_book,
             "intelligence_digest": intel_digest,
-            "market_analysis": market_analysis,
             "contested_narratives": market_analysis.get("contested_narratives") or [],
             "policy_market_scenario": market_analysis.get("policy_market_scenario") or {},
             "narrative_radar": result.get("intelligence", {}).get("narrative_radar") or {},
@@ -546,14 +567,6 @@ class DecisionPipeline:
             "equity_bond": result.get("equity_bond")
             or (macro_intel or {}).get("equity_bond")
             or {},
-            "info_completeness": result.get("info_completeness") or {},
-            "earnings_revisions": result.get("earnings_revisions") or {},
-            "ocf_quality": result.get("ocf_quality") or {},
-            "sector_analyses": [s["analysis"] for s in sector_analyses],
-            "stock_analyses": stock_analyses,
-            "factor_scorecards": scorecards,
-            "hard_gates": {s["code"]: s.get("hard_gates") or {} for s in stock_analyses},
-            "cross_checks": {s["code"]: s.get("cross_check") or {} for s in stock_analyses},
             "holdings": holdings_enriched,
             "holdings_basis": holdings_basis,
             "screen_summary": {
@@ -579,27 +592,27 @@ class DecisionPipeline:
         try:
             if use_multi:
                 log.info(
-                    "decision via multi-agent primary=%s secondary=%s synth=%s",
+                    "advice via multi-agent primary=%s secondary=%s synth=%s",
                     self._orchestrator.primary.name,
                     self._orchestrator.secondary.name if self._orchestrator.secondary else None,
                     self._orchestrator.synthesizer.name if self._orchestrator.synthesizer else None,
                 )
                 decision = self._orchestrator.analyze_json(
-                    DECISION_SYSTEM,
+                    ADVICE_SYSTEM,
                     decision_payload,
                     required_keys=["recommendations", "portfolio_summary"],
                     multi=True,
                 )
             else:
                 decision = self.llm.analyze_json(
-                    DECISION_SYSTEM,
+                    ADVICE_SYSTEM,
                     decision_payload,
                     required_keys=["recommendations", "portfolio_summary"],
                 )
         except Exception as exc:
-            log.error("decision LLM/agent failed after retries: %s", exc)
+            log.error("advice LLM/agent failed after retries: %s", exc)
             decision = self._degraded_decision(holdings_enriched, str(exc))
-            self._note_llm_degraded(result, f"组合决策降级: {exc}")
+            self._note_llm_degraded(result, f"建议段降级: {exc}")
 
         # 两侧都失败时 orchestrator 返回 all_failed；补持仓 hold，便于报告可读
         if decision.get("_multi_agent_fallback") == "all_failed" and not (
@@ -613,7 +626,7 @@ class DecisionPipeline:
             )
             self._note_llm_degraded(
                 result,
-                "组合决策多Agent全失败，已降级为持仓 hold / 空仓观望",
+                "建议段多Agent全失败，已降级为持仓 hold / 空仓观望",
             )
 
         result["multi_agent"] = {
@@ -624,7 +637,7 @@ class DecisionPipeline:
         if decision.get("_multi_agent_fallback"):
             self._note_llm_degraded(
                 result,
-                f"决策降级: {decision.get('_multi_agent_fallback')}; "
+                f"建议段降级: {decision.get('_multi_agent_fallback')}; "
                 + "; ".join(decision.get("_multi_agent_errors") or []),
             )
         # 草稿较大，只保留摘要键，避免报告爆炸
@@ -643,7 +656,7 @@ class DecisionPipeline:
             snapshot_recommendations,
         )
 
-        research_stage = build_research_stage(stock_analyses)
+        research_stage = build_research_stage(stock_analyses, force_codes=force_codes)
         draft_recs_snap = snapshot_recommendations(deep_copy_recs(raw_recs))
         draft_portfolio_summary = str(decision.get("portfolio_summary") or "")
         synthesis_audit = build_synthesis_audit(

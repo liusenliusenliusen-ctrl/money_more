@@ -6,6 +6,8 @@ from money_more.config import AppConfig
 from money_more.llm.providers.base import LLMProvider
 from money_more.llm.providers.openai_compat import OpenAICompatProvider
 from money_more.llm.prompts import (
+    ADVICE_SECONDARY_SYSTEM,
+    ADVICE_SYSTEM,
     DECISION_SECONDARY_SYSTEM,
     DECISION_SYSTEM,
     INTELLIGENCE_DIGEST_SYSTEM,
@@ -20,6 +22,8 @@ __all__ = [
     "MARKET_SYSTEM",
     "SECTOR_SYSTEM",
     "STOCK_SYSTEM",
+    "ADVICE_SYSTEM",
+    "ADVICE_SECONDARY_SYSTEM",
     "DECISION_SYSTEM",
     "DECISION_SECONDARY_SYSTEM",
     "REVIEW_SYSTEM",

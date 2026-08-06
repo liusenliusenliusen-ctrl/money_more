@@ -5,10 +5,58 @@ from __future__ import annotations
 from money_more.analysis.decision_stages import (
     build_decision_stages,
     build_final_portfolio_summary,
+    build_research_book,
     build_research_stage,
     snapshot_recommendations,
 )
 from money_more.report.writer import render_conclusion_card, render_decision_stages_section
+
+
+def test_research_stage_marks_force_holding():
+    stocks = [
+        {"code": "600519", "analysis": {"name": "茅台", "research_rating": "buy", "summary": "a"}},
+        {"code": "300750", "analysis": {"name": "宁德", "research_rating": "hold", "summary": "b"}},
+    ]
+    rows = build_research_stage(stocks, force_codes=["600519"])
+    by = {r["code"]: r for r in rows}
+    assert by["600519"]["force_holding"] is True
+    assert by["300750"]["force_holding"] is False
+
+
+def test_research_book_is_readonly_module():
+    book = build_research_book(
+        stock_analyses=[
+            {
+                "code": "300059",
+                "analysis": {
+                    "name": "东方财富",
+                    "research_rating": "buy",
+                    "summary": "券商",
+                    "confidence": 0.5,
+                    "investment_thesis": "流量变现与经纪弹性",
+                    "quality": "medium",
+                    "valuation": "fair",
+                    "catalysts": [{"event": "成交额回升", "timeframe": "1-2季", "impact": "positive"}],
+                    "downside_risks": [{"risk": "市场成交萎缩", "severity": "high"}],
+                    "invalidation": ["成交额持续低迷"],
+                },
+                "factor_scorecard": {"total_score": 60},
+            }
+        ],
+        force_codes=["300059"],
+        deep_codes=["300059", "300750"],
+        market_analysis={"phase": "repair"},
+    )
+    assert book["module"] == "research"
+    assert "holdings" not in book
+    assert book["force_codes"] == ["300059"]
+    row = book["stocks"][0]
+    assert row["force_holding"] is True
+    assert row["investment_thesis"]
+    assert row["quality"] == "medium"
+    assert row["catalysts"][0]["event"]
+    assert row["downside_risks"][0]["risk"]
+    assert "只读" in book["note"]
 
 
 def test_complete_coverage_and_synthesis_audit():
@@ -225,7 +273,7 @@ def test_decision_stages_payload_and_report_render():
     assert "分批建仓茅台" in card
     assert card.index("②草案摘要") < card.index("④终局组合摘要")
     # 动作区应体现终局 watch，而非把草案当主指令标题
-    assert "#### A3. 动作：怎么做（④风控终局）" in card
+    assert "#### A3. 建议：怎么做（④风控终局）" in card
 
 
 def test_stock_decision_chain_and_slim_recommendations():
@@ -327,7 +375,8 @@ def test_stock_decision_chain_and_slim_recommendations():
     assert "## 详细论证" in md
     assert "### A. 展开主结论" in md
     assert "### B. 展开推理链" in md
-    assert "### C. 展开侧栏" in md
+    assert "### C. 展开侧栏" not in md
+    assert "##### 争议与未验证假说" in md
     assert "#### B2. 个股决策链" in md
     assert "###### ① 研究（基本面 / 赔率 / 叙事）" in md
     assert "###### ② 组合草案" in md
@@ -337,7 +386,7 @@ def test_stock_decision_chain_and_slim_recommendations():
     assert "分批建仓" in md
     assert "裁判" in md and "bull" in md
     assert "微观结构liquidity_stress禁止新买" in md
-    assert "#### A3. 动作：怎么做（索引" in md
+    assert "#### A3. 建议：怎么做（索引" in md
     assert "## 4. 买卖建议" not in md
     assert "## D. 复盘与经验" not in md
     assert "## 附录：模拟账本" not in md
@@ -349,9 +398,61 @@ def test_stock_decision_chain_and_slim_recommendations():
     sim_md = render_sim_report(result)
     assert "# money_more 模拟账本" in sim_md
     # A3 只做索引，不堆辩论；失效/纪律在 B2④
-    idx_a3 = md.index("#### A3. 动作：怎么做（索引")
+    idx_a3 = md.index("#### A3. 建议：怎么做（索引")
     idx_b = md.index("### B. 展开推理链")
     section_a3 = md[idx_a3:idx_b]
     assert "多头" not in section_a3
     assert "终局一览" in section_a3
     assert "**失效条件**: 装机份额显著下滑" in md
+
+
+def test_conclusion_card_splits_research_and_advice():
+    result = {
+        "decision_stages": {
+            "research": [
+                {
+                    "code": "600519",
+                    "name": "贵州茅台",
+                    "research_rating": "buy",
+                    "factor_score": 70,
+                    "force_holding": True,
+                },
+                {
+                    "code": "300059",
+                    "name": "东方财富",
+                    "research_rating": "hold",
+                    "factor_score": 55,
+                    "force_holding": False,
+                },
+            ],
+            "flow": [],
+            "portfolio_draft": [],
+            "after_debate": [],
+            "after_risk": [],
+        },
+        "decision_summary": {
+            "holdings_basis": {"is_empty": False, "codes": ["600519"]},
+            "market_context": "修复",
+            "portfolio_summary": "持有茅台",
+        },
+        "recommendations": [
+            {
+                "code": "600519",
+                "action": "hold",
+                "confidence": 0.6,
+                "position_pct": 10,
+                "rationale": "继续持有",
+            }
+        ],
+        "market": {"analysis": {"phase": "repair", "style_bias": "balanced", "risk_level": "medium"}},
+        "intelligence": {"digest": {}},
+        "sectors": [],
+        "stocks": [],
+    }
+    card = "\n".join(render_conclusion_card(result))
+    assert "A1. 研究" in card
+    assert "深度池研究评级" in card
+    assert "持仓强制覆盖" in card
+    assert "A3. 建议" in card
+    assert "针对声明持仓" in card
+    assert "600519" in card

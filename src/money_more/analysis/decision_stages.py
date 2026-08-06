@@ -23,6 +23,36 @@ def _one_line(text: Any, limit: int = 72) -> str:
     return s[: limit - 1] + "…"
 
 
+def _str_list(items: Any, *, limit: int = 3, line: int = 80) -> list[str]:
+    out: list[str] = []
+    for x in items or []:
+        if len(out) >= limit:
+            break
+        s = _one_line(x, line)
+        if s:
+            out.append(s)
+    return out
+
+
+def _event_list(items: Any, *, key: str, limit: int = 3, line: int = 72) -> list[dict[str, Any]]:
+    """保留催化/风险结构，截断条数与文案。"""
+    out: list[dict[str, Any]] = []
+    for x in items or []:
+        if len(out) >= limit:
+            break
+        if not isinstance(x, dict):
+            s = _one_line(x, line)
+            if s:
+                out.append({key: s})
+            continue
+        row = {k: v for k, v in x.items() if v is not None and v != ""}
+        if key in row:
+            row[key] = _one_line(row[key], line)
+        if row:
+            out.append(row)
+    return out
+
+
 def slim_recommendation(rec: dict[str, Any]) -> dict[str, Any]:
     """可序列化的建议快照（避免把整份辩论/因子卡塞进轨迹）。"""
     code = normalize_code(str(rec.get("code") or ""))
@@ -46,7 +76,12 @@ def snapshot_recommendations(recs: list[dict[str, Any]] | None) -> list[dict[str
     return [slim_recommendation(r) for r in (recs or []) if r]
 
 
-def build_research_stage(stock_analyses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_research_stage(
+    stock_analyses: list[dict[str, Any]],
+    force_codes: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """个股研究压缩快照：建议段决策相关字段加厚，仍非整份 analysis 原文。"""
+    force = {normalize_code(c) for c in (force_codes or []) if c}
     rows: list[dict[str, Any]] = []
     for s in stock_analyses or []:
         a = s.get("analysis") or {}
@@ -54,18 +89,91 @@ def build_research_stage(stock_analyses: list[dict[str, Any]]) -> list[dict[str,
         if not code:
             continue
         sc = s.get("factor_scorecard") or {}
-        rows.append(
-            {
-                "code": code,
-                "name": a.get("name") or "",
-                "research_rating": str(a.get("research_rating") or "-").lower(),
-                "confidence": a.get("confidence"),
-                "factor_score": sc.get("total_score"),
-                "summary": _one_line(a.get("summary"), 90),
-            }
+        sentiment = a.get("sentiment") if isinstance(a.get("sentiment"), dict) else {}
+        highlights = (
+            a.get("tushare_highlights") if isinstance(a.get("tushare_highlights"), dict) else {}
         )
+        risks = a.get("downside_risks") or a.get("key_risks") or a.get("risks") or []
+        row: dict[str, Any] = {
+            "code": code,
+            "name": a.get("name") or "",
+            "research_rating": str(a.get("research_rating") or "-").lower(),
+            "confidence": a.get("confidence"),
+            "factor_score": sc.get("total_score"),
+            "investment_thesis": _one_line(a.get("investment_thesis"), 120),
+            "summary": _one_line(a.get("summary"), 160),
+            "quality": a.get("quality"),
+            "valuation": a.get("valuation"),
+            "technical_view": a.get("technical_view"),
+            "primary_driver": _one_line(a.get("primary_driver"), 80),
+            "expectation_gap": _one_line(a.get("expectation_gap"), 100),
+            "catalysts": _event_list(a.get("catalysts"), key="event", limit=3),
+            "downside_risks": _event_list(risks, key="risk", limit=3),
+            "contradictions": _str_list(a.get("contradictions"), limit=2, line=90),
+            "invalidation": _str_list(a.get("invalidation"), limit=3, line=90),
+            "force_holding": code in force,
+        }
+        if sentiment:
+            row["sentiment"] = {
+                "overall": sentiment.get("overall"),
+                "quant_label": sentiment.get("quant_label"),
+                "research_consensus": sentiment.get("research_consensus"),
+                "institutional_signal": sentiment.get("institutional_signal"),
+            }
+        if highlights:
+            row["financial_trend"] = highlights.get("financial_trend")
+            snap = highlights.get("valuation_snapshot")
+            if snap:
+                row["valuation_snapshot"] = _one_line(snap, 80)
+        gap = _one_line(a.get("info_gap_note"), 100)
+        if gap:
+            row["info_gap_note"] = gap
+        rev = _one_line(a.get("earnings_revision_note"), 100)
+        if rev:
+            row["earnings_revision_note"] = rev
+        # 去掉空值，保持建议段 payload 干净
+        rows.append({k: v for k, v in row.items() if v not in (None, "", [], {})})
     rows.sort(key=lambda r: (-float(r.get("factor_score") or 0), r["code"]))
     return rows
+
+
+def build_research_book(
+    *,
+    stock_analyses: list[dict[str, Any]],
+    force_codes: list[str] | None = None,
+    deep_codes: list[str] | None = None,
+    market_analysis: dict[str, Any] | None = None,
+    sector_analyses: list[dict[str, Any]] | None = None,
+    factor_scorecards: dict[str, Any] | None = None,
+    hard_gates: dict[str, Any] | None = None,
+    cross_checks: dict[str, Any] | None = None,
+    info_completeness: dict[str, Any] | None = None,
+    earnings_revisions: dict[str, Any] | None = None,
+    ocf_quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """建议段只读的研究快照（不含 holdings 动作语义）。"""
+    force = list(dict.fromkeys(normalize_code(c) for c in (force_codes or []) if c))
+    deep = list(dict.fromkeys(normalize_code(c) for c in (deep_codes or []) if c))
+    stocks = build_research_stage(stock_analyses, force_codes=force)
+    return {
+        "module": "research",
+        "note": (
+            "个股/市场/板块研究只读。"
+            "force_codes=声明持仓强制进深度池（覆盖标记，≠已持有语义）；"
+            "可执行动作只看建议段 holdings。"
+        ),
+        "force_codes": force,
+        "deep_codes": deep or [r["code"] for r in stocks],
+        "stocks": stocks,
+        "market_analysis": market_analysis or {},
+        "sector_analyses": sector_analyses or [],
+        "factor_scorecards": factor_scorecards or {},
+        "hard_gates": hard_gates or {},
+        "cross_checks": cross_checks or {},
+        "info_completeness": info_completeness or {},
+        "earnings_revisions": earnings_revisions or {},
+        "ocf_quality": ocf_quality or {},
+    }
 
 
 def _buy_add_codes(recs: list[dict[str, Any]] | None) -> list[str]:
@@ -221,8 +329,8 @@ def build_decision_stages(
         )
     out: dict[str, Any] = {
         "flow": [
-            "① 个股研究（逐票 research_rating，≠开仓）",
-            "② 组合草案（双分析师独立草案 → 综合委员合并）",
+            "① 个股研究（逐票 research_rating，≠开仓；持仓强制进池仅覆盖）",
+            "② 建议段组合草案（双分析师独立草案 → 综合；基于 research_book + holdings）",
             "③ 多空辩论（仅对②中 buy/add）",
             "④ 风控终局（硬约束后的可执行动作）",
         ],
@@ -233,7 +341,7 @@ def build_decision_stages(
         "overrides": list(overrides or [])[:40],
         "draft_portfolio_summary": draft_portfolio_summary or "",
         "plain_note": (
-            "①研究评级≠开仓；②才是组合层取舍（含综合）；"
+            "①研究评级≠开仓；②建议段才是组合层取舍（含综合）；"
             "只有④里已入选且 buy/add（仓位>0）可执行并进模拟盘。"
             "「观察·未入选」=综合未写入组合（有意搁置，不是漏跑）。"
         ),

@@ -12,7 +12,7 @@ from concurrent.futures import (
 from typing import Any
 
 from money_more.llm.providers.base import LLMProvider
-from money_more.llm.prompts import DECISION_SECONDARY_SYSTEM
+from money_more.llm.prompts import ADVICE_SECONDARY_SYSTEM
 from money_more.utils.logging_util import setup_logging
 
 log = setup_logging()
@@ -138,7 +138,7 @@ class MultiAgentOrchestrator:
         multi: bool = True,
         secondary_system_prompt: str | None = None,
     ) -> dict[str, Any]:
-        secondary_prompt = secondary_system_prompt or DECISION_SECONDARY_SYSTEM
+        secondary_prompt = secondary_system_prompt or ADVICE_SECONDARY_SYSTEM
         if not multi or self.secondary is None or self.synthesizer is None:
             try:
                 return self.primary.analyze(
