@@ -506,7 +506,6 @@ def test_midlong_defaults():
     c = load_config()
     assert c.schedule.cadence == "tue_fri"
     assert c.schedule.run_hour == 1
-    assert c.schedule.optimize_after_run is True
     assert c.analysis.investment_horizon == "medium_long"
     assert c.analysis.review_min_hold_days >= 14
     assert c.trading.stop_loss_pct >= 12
@@ -554,19 +553,6 @@ def test_schedule_gate_tue_fri(tmp_path: Path):
     assert ok_force is True
 
 
-def test_optimize_pause_lock(tmp_path: Path):
-    from money_more.optimize.workspace_guard import should_skip_optimize
-
-    skip, reason = should_skip_optimize(tmp_path, skip_if_dirty=False, respect_human_lock=True)
-    assert skip is False
-    lock = tmp_path / "logs" / "OPTIMIZE_PAUSE"
-    lock.parent.mkdir(parents=True)
-    lock.write_text("cli editing\n", encoding="utf-8")
-    skip2, reason2 = should_skip_optimize(tmp_path, skip_if_dirty=False, respect_human_lock=True)
-    assert skip2 is True
-    assert "OPTIMIZE_PAUSE" in reason2
-
-
 def test_email_ready_and_preview():
     from money_more.config import EmailConfig
     from money_more.notify.emailer import _preview, email_ready
@@ -586,22 +572,6 @@ def test_email_ready_and_preview():
     )
     assert ok2 is True
     assert "截断" in _preview("字" * 25000)
-
-
-def test_optimize_prompt_includes_data_sources(tmp_path: Path):
-    reports = tmp_path / "reports"
-    reports.mkdir()
-    (reports / "2026-07-12.md").write_text(
-        "**数据质量**: 0.65 (OK)\n- 缺失项: economic_calendar\n**量化舆情分**: 48/100\n",
-        encoding="utf-8",
-    )
-    from money_more.optimize.cursor_agent import build_optimize_prompt
-
-    prompt = build_optimize_prompt("2026-07-12", project_root=tmp_path)
-    assert "数据源" in prompt
-    assert "舆情" in prompt
-    assert "economic_calendar" in prompt
-    assert "P0 数据源" in prompt
 
 
 def test_multi_agent_orchestrator_fallback():
@@ -1086,8 +1056,6 @@ def test_parse_and_merge_email_addrs():
     ]
     merged = _merge_email_addrs("a@qq.com, b@x.com", ["B@x.com", "c@y.com"])
     assert merged == ["a@qq.com", "b@x.com", "c@y.com"]
-    # 默认不发优化邮件
-    assert EmailConfig().send_optimize is False
     assert EmailConfig().send_analysis is True
 
 

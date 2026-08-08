@@ -1,6 +1,6 @@
 # money_more
 
-A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析 / 建议 / 复盘 →（可选）Cursor 自优化 →（可选）邮件送达报告。
+A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析 / 建议 / 复盘 →（可选）邮件送达报告。
 
 仓库：https://github.com/liusenliusenliusen-ctrl/money_more
 
@@ -9,13 +9,12 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 | | 本项目 |
 |---|---|
 | 投资取向 | 中长线（数周–数季），非短线 |
-| 调度 | **每周二、周五 01:00** 自动跑一轮（含自优化）；也可手动 `--force` |
+| 调度 | **每周二、周五 01:00** 自动跑一轮；也可手动 `--force` |
 | 个股遴选 | 默认全 A 现货漏斗 → 量化池 → 深度池（**自动筛选**；无独立「必跟股池」） |
 | 持仓 | 仅认 `config.yaml` 的 `holdings`；**未声明 = 空仓**；有持仓则强制进深度池 |
-| 产出 | 主报告（运行状态→结论卡→详细论证→D 趋势）+ 数据源/复盘/模拟小报告、优化报告、滚动趋势 |
+| 产出 | 主报告（运行状态→结论卡→详细论证→D 趋势）+ 数据源/复盘/模拟小报告、滚动趋势 |
 | 通知 | SMTP：正文=结论卡；附件=主报告 md |
-| 自进化 | 周期结束后 Cursor 优化代码；优先补数据源，再改分析 |
-| 多Agent | DeepSeek 主分析 + Cursor 副分析 → DeepSeek 综合（可换 Claude） |
+| 多Agent | DeepSeek 主分析 + 副分析（默认同模型异 prompt；可配 Cursor/Claude）→ DeepSeek 综合 |
 
 ## 周期流程
 
@@ -28,9 +27,7 @@ money-more scheduled
   ├─ 复盘（近 60 日；浮盈亏 ≠ 结案）→ 独立 *-review.md
   ├─ 模拟账本（回放④终局）→ 独立 *-sim.md
   ├─ 报告 → 主报告.md + *-datasources.md + *-review.md + *-sim.md；趋势 reports/trend.md
-  ├─ （可选）邮件：正文结论卡 · 附件仅主报告
-  ├─ （可选）Cursor 自优化
-  └─ （可选）邮件发送优化报告
+  └─ （可选）邮件：正文结论卡 · 附件仅主报告
 ```
 
 严谨性：as_of 贯通、空仓/深度池硬约束、遴选失败进数据质量、因子评分卡、双源/硬门禁、模拟账本与真实持仓分离。  
@@ -50,10 +47,10 @@ source .venv/bin/activate
 pip install -e .
 
 cp config.yaml.example config.yaml   # 先读清 holdings / screen
-cp .env.example .env                 # 填 LLM / Cursor / 邮件等密钥
+cp .env.example .env                 # 填 LLM / 邮件等密钥
 
 money-more doctor                    # 环境自检（会提示空仓语义）
-money-more scheduled --force --skip-optimize   # 立刻跑一轮分析
+money-more scheduled --force         # 立刻跑一轮分析
 money-more email-test                # 验证邮件（需先配好 SMTP）
 ```
 
@@ -66,7 +63,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 |------|------|
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | 分析用大模型（OpenAI 兼容，如 DeepSeek） |
 | `TUSHARE_TOKEN` | 可选；公告/财务/估值等增强源 |
-| `CURSOR_API_KEY` | 周期自优化 + 多 Agent 副分析师 |
+| `CURSOR_API_KEY` | 可选；`secondary_provider: cursor` 时用 |
 | `ANTHROPIC_API_KEY` / `CLAUDE_*` | 可选；`secondary_provider: claude` 时用 |
 | `EMAIL_ENABLED` | `true` 开启邮件 |
 | `SMTP_HOST` / `SMTP_PORT` | 如 `smtp.qq.com` / `465` |
@@ -89,7 +86,6 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `schedule.cadence` | 默认 `tue_fri`（每周二/周五）；也可用 `every_5_days` |
 | `schedule.interval_days` | 非 `tue_fri` 时的间隔门禁天数 |
 | `schedule.run_hour` | 定时触发小时（默认 1=凌晨） |
-| `schedule.optimize_after_run` | `scheduled` 默认跑完后自优化 |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
 | `sim.*` | 独立小报告 `*-sim.md`；缺 `position_pct` 不静默开仓 |
 
@@ -110,7 +106,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | 角色 | 默认 | 为什么 |
 |------|------|--------|
 | 主分析师 | DeepSeek | 日常链路；结构化 JSON 稳 |
-| 副分析师 | Cursor | 独立二意见；**持仓只认本轮 payload，不从历史报告继承** |
+| 副分析师 | DeepSeek（异 prompt） | 风控/唱反调；也可配 Cursor / Claude |
 | 综合委员 | **DeepSeek** | 便宜、schema 稳；合并两份草案写入② |
 
 决策链：**①研究 → ②组合草案（主/副 → 综合）→ ③辩论（凡 buy/add）→ ④风控终局**。  
@@ -118,7 +114,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 ## 邮件通知
 
-默认**只发送分析报告**（`email.send_optimize: false`）。
+默认发送分析报告（`email.send_analysis`）。
 
 - **正文**：仅结论卡（HTML）
 - **附件**：仅主报告 `.md`（含详细论证与 D 趋势）
@@ -127,15 +123,14 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 ## 运行方式
 
-**定时（已启用）**：每周二、周五本地 **01:00** 由 LaunchAgent 拉起 `periodic_run.sh`（分析 + 自优化）。  
+**定时（已启用）**：每周二、周五本地 **01:00** 由 LaunchAgent 拉起 `periodic_run.sh`（分析；可发邮件）。  
 安装/重装：`./scripts/install_launchd.sh`（macOS 推荐）；或 `./scripts/install_cron.sh`。
 
 手动：
 
 ```bash
 # 本地
-.venv/bin/python -m money_more scheduled --force --skip-optimize   # 只要分析+邮件
-.venv/bin/python -m money_more scheduled --force                   # 分析后顺带自优化
+.venv/bin/python -m money_more scheduled --force
 
 # 或
 ./scripts/periodic_run.sh --force
@@ -143,12 +138,6 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 `schedule.cadence=tue_fri` 时，非周二/周五会被门禁跳过（`--force` 除外）。  
 项目在 `~/Documents` 下时，请给 `/bin/bash`「完整磁盘访问权限」，否则定时任务可能 `Operation not permitted`。
-
-## 人工改动 vs 自优化
-
-1. 动手前：`touch logs/OPTIMIZE_PAUSE`
-2. 改完后：`rm logs/OPTIMIZE_PAUSE`
-3. 默认工作区有未提交改动时也会跳过自优化
 
 ## 信息源
 
@@ -171,12 +160,10 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 
 | 命令 | 说明 |
 |------|------|
-| `money-more scheduled` | 周期：门禁 → 分析 →（默认）自优化 → 邮件 |
+| `money-more scheduled` | 周期：门禁 → 分析 →（可选）邮件 |
 | `money-more scheduled --force` | 忽略间隔，强制跑一轮 |
-| `money-more scheduled --skip-optimize` | 只分析（仍可发分析邮件） |
 | `money-more weekly` | 同 `scheduled`（兼容旧名） |
-| `money-more run` | 完整分析；加 `--optimize` 才自优化 |
-| `money-more optimize` | 仅 Cursor 自优化 |
+| `money-more run` | 完整分析 |
 | `money-more email-test` | 发送测试邮件 |
 | `money-more review` | 仅复盘 |
 | `money-more lessons` / `history` | 经验库 / 历史建议 |
@@ -192,14 +179,12 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 | 路径 | 说明 |
 |------|------|
 | `data/money_more.db` | SQLite |
-| `reports/YYYY-MM-DD.md` | 主报告：运行状态 → 结论卡 A/B/C → 详细论证 A/B/C → D 趋势 |
+| `reports/YYYY-MM-DD.md` | 主报告：运行状态 → 结论卡 A/B → 详细论证 A/B → D 趋势 |
 | `reports/YYYY-MM-DD-datasources.md` | 数据源台账小报告（邮件不附） |
 | `reports/YYYY-MM-DD-review.md` | 复盘与经验小报告（邮件不附） |
 | `reports/YYYY-MM-DD-sim.md` | 模拟账本小报告（邮件不附） |
-| `reports/optimize-YYYY-MM-DD.md` | 自优化报告 |
 | `reports/trend.md` | 滚动趋势报告 |
 | `logs/last_full_run.txt` | 上次成功周期日期（门禁用） |
-| `logs/OPTIMIZE_PAUSE` | 人工改码暂停自优化 |
 | `docs/how-to-read-report.md` | 读报指南（首次邮件附件） |
 
 ## 免责声明

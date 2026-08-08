@@ -96,18 +96,6 @@ class ScheduleConfig:
     cadence: str = "tue_fri"  # tue_fri | every_5_days | weekly | daily
     interval_days: int = 3  # 非 tue_fri 时的间隔门禁；tue_fri 以星期为准
     run_hour: int = 1  # 本地凌晨 1 点（由 LaunchAgent/cron 触发）
-    optimize_after_run: bool = True
-
-
-@dataclass
-class OptimizeConfig:
-    enabled: bool = True
-    model: str = "composer-2.5"
-    max_minutes: int = 45
-    # 工作区有未提交代码改动时跳过，避免覆盖人工/Cursor CLI 编辑
-    skip_if_dirty: bool = True
-    # 存在 logs/OPTIMIZE_PAUSE 时跳过
-    respect_human_lock: bool = True
 
 
 @dataclass
@@ -121,9 +109,7 @@ class EmailConfig:
     smtp_password: str = ""
     from_addr: str = ""
     to_addrs: list[str] = field(default_factory=list)
-    # 分析报告 / 自优化报告是否分别发送（默认只发分析）
     send_analysis: bool = True
-    send_optimize: bool = False
 
 
 @dataclass
@@ -202,7 +188,6 @@ class AppConfig:
     trend: TrendConfig = field(default_factory=TrendConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
-    optimize: OptimizeConfig = field(default_factory=OptimizeConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     sim: SimTradingConfig = field(default_factory=SimTradingConfig)
@@ -285,7 +270,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     trend_raw = raw.get("trend") or {}
     analysis_raw = raw.get("analysis") or {}
     schedule_raw = raw.get("schedule") or {}
-    optimize_raw = raw.get("optimize") or {}
     email_raw = raw.get("email") or {}
     agents_raw = raw.get("agents") or {}
     sim_raw = raw.get("sim") or {}
@@ -365,14 +349,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             cadence=str(schedule_raw.get("cadence", "tue_fri")),
             interval_days=int(schedule_raw.get("interval_days", 3)),
             run_hour=int(schedule_raw.get("run_hour", 1)),
-            optimize_after_run=bool(schedule_raw.get("optimize_after_run", True)),
-        ),
-        optimize=OptimizeConfig(
-            enabled=bool(optimize_raw.get("enabled", True)),
-            model=str(optimize_raw.get("model", "composer-2.5")),
-            max_minutes=int(optimize_raw.get("max_minutes", 45)),
-            skip_if_dirty=bool(optimize_raw.get("skip_if_dirty", True)),
-            respect_human_lock=bool(optimize_raw.get("respect_human_lock", True)),
         ),
         email=EmailConfig(
             enabled=bool(
@@ -388,7 +364,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             from_addr=str(os.getenv("EMAIL_FROM") or email_raw.get("from") or email_raw.get("from_addr") or ""),
             to_addrs=to_addrs,
             send_analysis=bool(email_raw.get("send_analysis", True)),
-            send_optimize=bool(email_raw.get("send_optimize", False)),
         ),
         agents=AgentsConfig(
             enabled=bool(agents_raw.get("enabled", True)),

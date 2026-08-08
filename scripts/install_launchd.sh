@@ -1,5 +1,5 @@
 #!/bin/bash
-# 安装 macOS LaunchAgent：每周二、周五 01:00 跑一轮（含自优化）
+# 安装 macOS LaunchAgent：每周二、周五 01:00 跑一轮分析
 # 项目若在 ~/Documents，还必须给 /bin/bash「完整磁盘访问权限」，否则仍会 Operation not permitted。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -66,7 +66,7 @@ launchctl enable "gui/$(id -u)/${LABEL}" || true
 
 echo
 echo "已加载 LaunchAgent: ${LABEL}"
-echo "排期: 每周二、周五 01:00（含自优化；config schedule.cadence=tue_fri）"
+echo "排期: 每周二、周五 01:00（分析；config schedule.cadence=tue_fri）"
 echo "plist: ${DST}"
 echo
 echo "【重要 · macOS】项目在 Documents 下会被系统拦截。请："

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 安装本机 cron：每周二、周五 01:00 触发（含自优化；门禁 cadence=tue_fri）
+# 安装本机 cron：每周二、周五 01:00 触发分析（门禁 cadence=tue_fri）
 #
 # macOS 注意：项目在 ~/Documents 时，cron 常报 Operation not permitted。
 # 请给 /usr/sbin/cron（以及建议 /bin/bash）「完整磁盘访问权限」，

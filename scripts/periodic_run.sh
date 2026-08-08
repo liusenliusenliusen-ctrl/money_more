@@ -1,9 +1,9 @@
 #!/bin/bash
-# 周二/周五 01:00 周期任务：分析报告 + Cursor 自优化（optimize_after_run）
+# 周二/周五 01:00 周期任务：分析报告（可发邮件）
 # 由 LaunchAgent / cron 在排期日触发；门禁见 schedule.cadence=tue_fri
 #
 # crontab 示例（周二、周五 01:00）：
-# 0 1 * * 2,5 cd /Users/liusen/Documents/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
+# 0 1 * * 2,5 cd /path/to/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,5 +18,5 @@ fi
 
 export PYTHONPATH="${ROOT}/src:${PYTHONPATH:-}"
 
-# 周期：门禁 → 分析 + Cursor 自优化（可用 --force 强制；--skip-optimize 只分析）
+# 周期：门禁 → 分析（可用 --force 强制）
 python -m money_more scheduled "$@"

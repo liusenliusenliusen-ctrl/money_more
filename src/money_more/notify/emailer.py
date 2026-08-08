@@ -1,4 +1,4 @@
-"""SMTP 邮件通知：分析报告 / 自优化报告。"""
+"""SMTP 邮件通知：分析报告。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from money_more.config import AppConfig, EmailConfig
-from money_more.notify.email_format import build_analysis_email_bodies, md_to_email_html, md_to_plain, wrap_email_html
+from money_more.notify.email_format import build_analysis_email_bodies
 from money_more.notify.email_ledger import record_send, split_by_guide_status
 from money_more.utils.logging_util import setup_logging
 
@@ -263,26 +263,3 @@ def notify_analysis_report(config: AppConfig, report_path: str | Path, run_date:
         kind="analysis",
     )
 
-
-def notify_optimize_report(config: AppConfig, report_path: str | Path, run_date: str) -> dict[str, Any]:
-    """优化报告：正文转 HTML 便于手机阅读；附件仍为 md。"""
-    path = Path(report_path)
-    full_md = path.read_text(encoding="utf-8") if path.exists() else f"(找不到报告文件: {path})"
-    plain = (
-        f"money_more 自优化报告 {run_date}\n"
-        f"（完整 Markdown 见附件。）\n\n"
-        + md_to_plain(full_md)
-    )
-    html_body = wrap_email_html(
-        md_to_email_html(full_md),
-        run_date=run_date,
-        meta=f"money_more 自优化报告 {run_date} · 完整 md 见附件",
-    )
-    return _send_with_optional_guide(
-        config,
-        subject=f"[money_more] 自优化报告 {run_date}",
-        body=plain,
-        html_body=html_body,
-        attachments=[path],
-        kind="optimize",
-    )

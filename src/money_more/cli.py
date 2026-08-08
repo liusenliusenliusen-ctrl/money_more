@@ -153,57 +153,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         else:
             console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
 
-    want_opt = getattr(args, "optimize", False) or (
-        config.schedule.optimize_after_run and getattr(args, "with_optimize", False)
-    )
-    if want_opt and completed and not dq.get("llm_degraded"):
-        from money_more.optimize import run_cursor_optimize
-
-        console.print(Panel("开始 Cursor Agent 代码优化…", style="cyan"))
-        opt = run_cursor_optimize(config, run_date.isoformat())
-        console.print(Panel(str(opt), title="optimize", style="green" if not opt.get("error") else "red"))
-        if opt.get("report_path"):
-            console.print(Panel(f"优化报告已保存: {opt['report_path']}", style="cyan"))
-            if config.email.enabled and config.email.send_optimize:
-                from money_more.notify import notify_optimize_report
-
-                mail = notify_optimize_report(config, opt["report_path"], run_date.isoformat())
-                if mail.get("skipped"):
-                    console.print(Panel(f"邮件跳过: {mail.get('reason')}", style="yellow"))
-                elif mail.get("ok"):
-                    console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
-                else:
-                    console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
-    elif want_opt:
-        console.print(Panel("本轮未完整成功或存在 LLM 降级，已跳过 Cursor 自优化", style="yellow"))
-
     return 0 if completed else 1
-
-
-def cmd_optimize(args: argparse.Namespace) -> int:
-    from money_more.optimize import run_cursor_optimize
-
-    config = load_config(args.config)
-    run_date = args.date or date.today().isoformat()
-    console.print(Panel(f"Cursor 自优化 as_of={run_date}", title="money_more optimize"))
-    opt = run_cursor_optimize(config, run_date)
-    console.print(Panel(str(opt), title="result"))
-    if opt.get("report_path"):
-        console.print(Panel(f"优化报告: {opt['report_path']}", style="cyan"))
-        if config.email.enabled and config.email.send_optimize and not opt.get("skipped"):
-            from money_more.notify import notify_optimize_report
-
-            mail = notify_optimize_report(config, opt["report_path"], run_date)
-            if mail.get("ok"):
-                console.print(Panel(f"优化报告已发邮件 → {mail.get('to')}", style="green"))
-            elif not mail.get("skipped"):
-                console.print(Panel(f"邮件发送失败: {mail.get('error')}", style="red"))
-    if opt.get("skipped"):
-        console.print(f"[yellow]{opt.get('reason')}[/yellow]")
-        return 1
-    if opt.get("status") in ("error", "startup_error") or opt.get("error"):
-        return 2
-    return 0
 
 
 def cmd_email_test(args: argparse.Namespace) -> int:
@@ -235,7 +185,7 @@ def cmd_email_test(args: argparse.Namespace) -> int:
 
 
 def cmd_scheduled(args: argparse.Namespace) -> int:
-    """周期流程：按 interval_days 门禁 → 分析报告 + Cursor 优化报告。"""
+    """周期流程：按 cadence / interval_days 门禁 → 分析报告（可发邮件）。"""
     from money_more.schedule_gate import should_run, write_last_run
 
     config = load_config(args.config)
@@ -251,8 +201,6 @@ def cmd_scheduled(args: argparse.Namespace) -> int:
         return 0
 
     console.print(Panel(reason, title="周期门禁", style="cyan"))
-    args.optimize = False
-    args.with_optimize = not getattr(args, "skip_optimize", False)
     args.skip_debate = getattr(args, "skip_debate", False)
     code = cmd_run(args)
     if code == 0:
@@ -598,29 +546,22 @@ def main() -> int:
     p_run = sub.add_parser("run", help="执行完整分析流程（建议+复盘+趋势）")
     p_run.add_argument("--date", default=None, help="指定日期 YYYY-MM-DD")
     p_run.add_argument("--skip-debate", action="store_true", help="跳过 buy/add 多空辩论（更快）")
-    p_run.add_argument("--optimize", action="store_true", help="分析结束后调用 Cursor Agent 优化代码")
     p_run.set_defaults(func=cmd_run)
 
     p_sched = sub.add_parser(
         "scheduled",
-        help="周期流程（默认每5天）：门禁 → 分析报告 + Cursor 自优化报告",
+        help="周期流程（默认周二/周五）：门禁 → 分析报告（可发邮件）",
     )
     p_sched.add_argument("--date", default=None)
     p_sched.add_argument("--skip-debate", action="store_true")
-    p_sched.add_argument("--skip-optimize", action="store_true", help="只分析，不调用 Cursor")
     p_sched.add_argument("--force", action="store_true", help="忽略间隔门禁，强制跑一轮")
     p_sched.set_defaults(func=cmd_scheduled)
 
     p_weekly = sub.add_parser("weekly", help="同 scheduled（兼容旧名）")
     p_weekly.add_argument("--date", default=None)
     p_weekly.add_argument("--skip-debate", action="store_true")
-    p_weekly.add_argument("--skip-optimize", action="store_true", help="只分析，不调用 Cursor")
     p_weekly.add_argument("--force", action="store_true", help="忽略间隔门禁，强制跑一轮")
     p_weekly.set_defaults(func=cmd_weekly)
-
-    p_optimize = sub.add_parser("optimize", help="仅调用 Cursor Agent 优化本仓库代码")
-    p_optimize.add_argument("--date", default=None, help="写入 prompt 的报告日期")
-    p_optimize.set_defaults(func=cmd_optimize)
 
     p_email = sub.add_parser("email-test", help="发送一封测试邮件（验证 SMTP）")
     p_email.set_defaults(func=cmd_email_test)
