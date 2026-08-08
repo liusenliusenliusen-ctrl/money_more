@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from typing import Any
 
 from money_more.analysis.cashflow_quality import assess_ocf_quality
@@ -363,15 +363,60 @@ class DecisionPipeline:
                 snap["intelligence"] = intel
             return code, snap, intel
 
+        # 单票情报源偶发无超时挂死；必须 per-future 超时 + shutdown(wait=False)，
+        # 否则 with ThreadPoolExecutor 退出时会一直等挂死线程。超时后再单独重试 1 次。
+        prefetch_timeout_s = 120.0
         if stock_codes:
-            with ThreadPoolExecutor(max_workers=min(4, max(1, len(stock_codes)))) as pool:
-                futs = [pool.submit(_fetch_one, c) for c in stock_codes]
-                for fut in as_completed(futs):
+            pool = ThreadPoolExecutor(max_workers=min(4, max(1, len(stock_codes))))
+            future_map = {pool.submit(_fetch_one, c): c for c in stock_codes}
+            timed_out: list[str] = []
+            try:
+                for fut, code in future_map.items():
                     try:
-                        code, snap, intel = fut.result()
-                        prefetched[code] = (snap, intel)
+                        got_code, snap, intel = fut.result(timeout=prefetch_timeout_s)
+                        prefetched[got_code] = (snap, intel)
+                    except FuturesTimeout:
+                        log.warning(
+                            "stock prefetch timeout code=%s after %.0fs; will retry once",
+                            code,
+                            prefetch_timeout_s,
+                        )
+                        timed_out.append(code)
                     except Exception as exc:
-                        log.warning("stock prefetch failed: %s", exc)
+                        log.warning("stock prefetch failed code=%s: %s", code, exc)
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+
+            for code in timed_out:
+                retry_pool = ThreadPoolExecutor(max_workers=1)
+                try:
+                    fut = retry_pool.submit(_fetch_one, code)
+                    got_code, snap, intel = fut.result(timeout=prefetch_timeout_s)
+                    prefetched[got_code] = (snap, intel)
+                    log.info("stock prefetch retry ok code=%s", code)
+                except FuturesTimeout:
+                    log.warning(
+                        "stock prefetch retry timeout code=%s after %.0fs",
+                        code,
+                        prefetch_timeout_s,
+                    )
+                    prefetched[code] = (
+                        {
+                            "code": code,
+                            "errors": [
+                                f"prefetch timeout {int(prefetch_timeout_s)}s (retried once)"
+                            ],
+                        },
+                        {},
+                    )
+                except Exception as exc:
+                    log.warning("stock prefetch retry failed code=%s: %s", code, exc)
+                    prefetched[code] = (
+                        {"code": code, "errors": [f"prefetch retry failed: {exc}"]},
+                        {},
+                    )
+                finally:
+                    retry_pool.shutdown(wait=False, cancel_futures=True)
 
         # 先挂上已采集个股包，再跑 LLM——中途失败时台账仍能看到数据
         result["stocks"] = stock_analyses
