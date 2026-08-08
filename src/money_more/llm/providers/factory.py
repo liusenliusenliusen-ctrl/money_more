@@ -25,6 +25,7 @@ def build_provider(
     agents = getattr(config, "agents", None)
     llm_timeout = float(getattr(agents, "llm_timeout_seconds", 300) or 300)
     llm_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
+    llm_max_tokens = int(getattr(agents, "llm_max_tokens", 32768) or 32768)
     cursor_timeout = float(getattr(agents, "cursor_timeout_seconds", 180) or 180)
     cursor_retries = int(getattr(agents, "cursor_max_retries", 2) or 2)
 
@@ -36,6 +37,7 @@ def build_provider(
             model=model or config.llm_model,
             timeout=llm_timeout,
             max_retries=llm_retries,
+            max_tokens=llm_max_tokens,
         )
 
     if kind in ("cursor", "cursor_agent"):
@@ -56,6 +58,7 @@ def build_provider(
             base_url=base_url or (config.claude_base_url or None),
             timeout=llm_timeout,
             max_retries=llm_retries,
+            max_tokens=llm_max_tokens,
         )
 
     raise ValueError(f"未知 provider 类型: {kind}")

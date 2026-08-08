@@ -30,7 +30,7 @@ class OpenAICompatProvider(LLMProvider):
         model: str,
         timeout: float = 300.0,
         max_retries: int = 2,
-        max_tokens: int = 8192,
+        max_tokens: int = 32768,
     ) -> None:
         self.name = name
         self.api_key = (api_key or "").strip()
@@ -39,7 +39,7 @@ class OpenAICompatProvider(LLMProvider):
         self._client: OpenAI | None = None
         self._timeout = timeout
         self._default_max_retries = int(max_retries)
-        # thinking 会占用 completion 额度；过小易出现 content 为空
+        # thinking 会占用 completion 额度；过小易 finish=length 截断 JSON
         self._max_tokens = int(max_tokens)
 
     def available(self) -> tuple[bool, str]:
@@ -100,12 +100,13 @@ class OpenAICompatProvider(LLMProvider):
                     reasoning_tokens = getattr(details, "reasoning_tokens", None)
                 log.info(
                     "%s complete_json ok attempt=%s/%s wall=%.1fs timeout=%.0fs "
-                    "finish=%s content_len=%s reasoning_tokens=%s",
+                    "max_tokens=%s finish=%s content_len=%s reasoning_tokens=%s",
                     self.name,
                     attempt + 1,
                     retries + 1,
                     elapsed,
                     self._timeout,
+                    self._max_tokens,
                     choice.finish_reason,
                     len(content),
                     reasoning_tokens,

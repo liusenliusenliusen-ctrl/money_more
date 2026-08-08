@@ -89,15 +89,18 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
                 used_in="筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3",
             )
     else:
+        from money_more.analysis.degrade_messages import build_screen_degrade_note
+
+        fail_detail = build_screen_degrade_note(screen) or screen.get("plain_note") or screen.get("note")
+        if not fail_detail:
+            fail_detail = "；".join(str(e) for e in (screen.get("errors") or [])[:3]) or "spot 失败/空"
         add(
             name="全 A 现货快照",
             provider="东财 push2 → 分市场 → 新浪 → 磁盘缓存",
             fetches="全市场价格、涨跌幅、成交额等，构成选股宇宙",
             status="fail",
-            detail=screen.get("plain_note")
-            or screen.get("note")
-            or ("；".join(str(e) for e in (screen.get("errors") or [])[:3]) or "spot 失败/空"),
-            used_in="失败则深度池只剩声明持仓（若有），结论可信度下调并收紧开仓",
+            detail=fail_detail,
+            used_in="失败则深度池只剩声明持仓（若有），结论可信度下调并收紧开仓；可跑 `money_more doctor`",
         )
 
     # —— 板块资金 ——
@@ -295,23 +298,44 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             used_in="宏观背景，不得写入「即将公布」清单",
         )
 
-    if macro.get("macro_hard"):
+    hard = macro.get("macro_hard") or {}
+    if hard:
+        hard_keys = [k for k in ("pmi", "cpi", "m2", "social_financing", "new_credit") if hard.get(k)]
         add(
             name="国内宏观硬指标",
-            provider="AkShare PMI / CPI / M2 等",
-            fetches="景气、通胀、货币供应量",
+            provider="AkShare PMI / CPI / M2 / 社融等",
+            fetches="景气、通胀、货币供应量、社融/信贷",
             status="ok",
-            detail="已写入 macro_hard",
-            used_in="A1 中长线宏观背景；与风格（价值/成长）联动",
+            detail="已写入 macro_hard：" + ("、".join(hard_keys) or "有数据"),
+            used_in="A1 中长线宏观背景；社融为宽信用旁路，不单独驱动买入",
         )
     else:
         add(
             name="国内宏观硬指标",
-            provider="AkShare PMI / CPI / M2 等",
-            fetches="景气、通胀、货币供应量",
+            provider="AkShare PMI / CPI / M2 / 社融等",
+            fetches="景气、通胀、货币供应量、社融/信贷",
             status="fail",
             detail="macro_hard 为空",
             used_in="宏观判断更多依赖新闻叙事",
+        )
+    if hard.get("social_financing") or hard.get("shrzgm"):
+        add(
+            name="社会融资规模",
+            provider="AkShare macro_china_shrzgm（+信贷交叉）",
+            fetches="社融增量及分项；可选新增信贷",
+            status="ok",
+            detail="已写入 macro_hard.social_financing"
+            + ("；含 new_credit" if hard.get("new_credit") else ""),
+            used_in="A1 国内宽信用旁路；与 M2/两融/全球流动性交叉",
+        )
+    elif _err_has(errors, "宏观社融") or "social_financing" in str(errors):
+        add(
+            name="社会融资规模",
+            provider="AkShare macro_china_shrzgm",
+            fetches="社融增量及分项",
+            status="fail",
+            detail="社融拉取失败或为空",
+            used_in="缺少宽信用旁路时，国内流动性判断更依赖 M2/两融",
         )
 
     stance = str(gl.get("stance") or "unknown")

@@ -54,6 +54,8 @@ MARKET_SYSTEM = f"""你是资深 A 股 **中长线** 宏观策略首席，做周
 ## 任务
 判断当前 A 股 **中期** 市场阶段，给出未来数周的板块配置顶层指引。
 忽略单日涨跌噪声；关注政策、流动性、风格切换的可持续性。
+- **升乐观要慢**：不得仅凭日线站上 MA20、单日板块流入或单次政策护盘，就把 phase/style 从防御切到成长，或把 risk 从 high 降到 medium；需周频确认或硬数据改善。
+- **硬事实 vs 软叙事**：PMI/融资/社融等与政策口号冲突时，写入 contradictions，主情景不得假装已解决。
 输入含 `narrative_radar` / `market_microstructure` 时：
 - 必须输出侧栏 `contested_narratives`（2-3条）与 `policy_market_scenario`
 - 主情景 `summary` 以可验证驱动为主；若微观结构 regime 为 crowded_sync / liquidity_stress，用 1 句写入 summary 或 contradictions
@@ -101,6 +103,8 @@ EXAMPLE JSON OUTPUT:
   "primary_driver": "未来1-2个季度定价的第一因素",
   "risk_level": "low|medium|high",
   "invalidation": ["中期判断失效条件"],
+  "verify_in_days": 14,
+  "verify_signals": ["主情景验证信号（可观察）"],
   "sector_allocation_hint": "偏价值|偏成长|偏防御|均衡|降仓观望",
   "confidence": 0.0-1.0,
   "microstructure_note": "引用 market_microstructure：传导是否受扰、对仓位含义（主结论可用的一句）",
@@ -152,6 +156,8 @@ EXAMPLE JSON OUTPUT:
   "policy_evidence": ["政策依据"],
   "prosperity": "up|flat|down",
   "prosperity_evidence": ["景气依据"],
+  "inflection_signal": false,
+  "inflection_evidence": ["若景气仍 down 但出现可核对拐点（订单/库存/价格/产能利用率等），填 true 并给证据；否则 false+空列表"],
   "valuation": "cheap|fair|expensive|unknown",
   "sentiment": {{
     "level": "overheated|positive|neutral|negative|unknown",
@@ -217,6 +223,8 @@ STOCK_SYSTEM = f"""你是 A 股个股首席研究员，输出 **中长线** 研�
   "invalidation": ["thesis 失效条件（偏基本面/政策/估值）"],
   "research_rating": "strong_buy|buy|hold|reduce|sell|avoid",
   "confidence": 0.0-1.0,
+  "inflection_signal": false,
+  "inflection_evidence": ["板块景气 down 时若主张拐点须可核对证据；否则 false"],
   "info_gap_note": "若 info_completeness.status=gap_suspected：说明公开信息缺口及为何偏观望（禁止写内幕/操纵）",
   "earnings_revision_note": "引用 earnings_revision：上修/下修/冲突及对评级含义"
 }}
@@ -240,15 +248,19 @@ ADVICE_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」经理（PM�
 - 系统另有「模拟组合」在建议终局后机械执行——**不要提及模拟盘**。
 
 ## 建议原则
-1. **多因子**：优先 research_book 中的 factor 信号与 stocks 的 quality/valuation；降低纯短期 momentum/sentiment
+1. **多因子**：优先 research_book 中的 factor 信号与 stocks 的 quality/valuation；降低纯短期 momentum/sentiment；舆情只作拥挤调节，不得当看好主证据
 2. **默认 time_horizon 为 medium 或 long**；禁止 short（除非极低仓观察且写明）
-3. **矛盾时保守**：cross_check.ok=false → watch/hold（有仓）或 watch（空仓）
+3. **矛盾时保守**：cross_check.ok=false → watch/hold（有仓）或 watch（空仓）；硬事实(PMI/融资等)与软叙事冲突时禁止进攻向 buy/add
 4. **仓位纪律**：遵守 trading_constraints 与 equity_bond 上限；系统会再 clamp
 5. **硬门禁**：hard_gates.block_buy / force_watch 时不得 buy/add
-6. **失效条件**：优先盈利下修/政策转向/估值失真等中期条件
+6. **失效条件**：优先盈利下修/政策转向/估值失真等中期条件；勿因近 5 日浮亏改写中期失效
 7. **数据降级**：data_quality.degraded=true 时禁止新开仓
-8. **侧栏尾部**：未确认叙事不得当买入主因
+8. **侧栏尾部**：未确认叙事不得当买入主因；政策/联播须有流动性或资金等硬共振才可 buy/add
 9. **微观结构 / 流动性 / 股债 / 盈利修正 / OCF**：与既有中长线闸门一致，写进 market_regime_note / rationale
+10. **景气**：板块 prosperity=down 时默认禁止 buy/add；仅当研究 `inflection_signal=true` 且 `inflection_evidence` 非空时可豁免，并在理由中写明
+11. **风格/phase**：不得仅凭日线 MA20 或单日板块流入把防御切成长或下调 risk；升乐观要慢
+12. **sector_link（必填）**：每条动作须写清承接哪条板块结论，以及 research 评级→本动作的降级/一致理由
+13. **验证窗口（必填）**：`verify_in_days` + `verify_signals`（可观察、可打钩；禁止空话如「情绪好转」）
 
 ## 输出 JSON
 {{
@@ -268,7 +280,16 @@ ADVICE_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」经理（PM�
       "rationale": "建议段理由：链到研究评级；空仓勿提浮亏；有仓区分持仓操作",
       "evidence_chain": ["证据1", "证据2"],
       "key_risk": "最大中期风险",
-      "invalidation": "中期失效条件"
+      "invalidation": "中期失效条件",
+      "verify_in_days": 14,
+      "verify_signals": ["14日内可核对信号，如板块资金连续两周净流入"],
+      "sector_link": {{
+        "sector": "板块名",
+        "sector_priority": "high|medium|low",
+        "sector_prosperity": "up|flat|down",
+        "from_research_rating": "buy|hold|watch|sell",
+        "action_rationale_vs_research": "research buy → watch：原因"
+      }}
     }}
   ],
   "portfolio_summary": "【建议草案】基于声明持仓的配置意图；勿写成模拟盘。终局摘要由系统在辩论+风控后重写",
@@ -301,6 +322,7 @@ ADVICE_SECONDARY_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」�
 4. 仓位取交易约束与 equity_bond 更保守一侧
 5. 未确认叙事不得当买入主因
 6. 仍须对深度池给出完整 action 草案，整体偏审慎
+7. 每条须含 sector_link 与 verify_in_days / verify_signals（同主建议）
 
 ## 输出 JSON
 {{
@@ -320,7 +342,16 @@ ADVICE_SECONDARY_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」�
       "rationale": "风控建议理由；空仓勿提浮亏",
       "evidence_chain": ["证据1", "证据2"],
       "key_risk": "最大中期风险（必填且具体）",
-      "invalidation": "中期失效条件"
+      "invalidation": "中期失效条件",
+      "verify_in_days": 14,
+      "verify_signals": ["可核对验证信号"],
+      "sector_link": {{
+        "sector": "板块名",
+        "sector_priority": "high|medium|low",
+        "sector_prosperity": "up|flat|down",
+        "from_research_rating": "buy|hold|watch|sell",
+        "action_rationale_vs_research": "research → 风控动作"
+      }}
     }}
   ],
   "portfolio_summary": "【风控建议草案】基于声明持仓的审慎配置意图",
@@ -345,9 +376,12 @@ REVIEW_SYSTEM = f"""你是 A 股 **中长线** 复盘教练。
 - `return_pct` / 浮盈亏 **只是轨迹指标**，默认不得单独推出 wrong/correct
 - 浮亏 + thesis 仍在 + 失效未触发 → 状态必须是 `tracking` 或 `thesis_intact`
 - 只有：失效条件触发、过程/事实当时已错、该改口却未改口、或逻辑已关闭 → 才可结案
+- **忽略近 5 日价格噪声**；评估价格相对约 **60 日**位置与基本面/框架判断是否匹配
+- 若提供 **dimension_diff_table**：先对表解释（stable/changed/unknown），禁止脱离表格空谈
 
 ## 输入说明（必须用）
 - **review_window**：取材窗口（默认近 60 日）；不足则按实际有报告的天数说明
+- **dimension_diff_table**：代码算出的当时 vs 后来对照表（优先解释此表）
 - **prior_dimension_forecasts**：窗口内历史维度预测快照（市场/板块/叙事/当时建议）
 - **action_lifecycles**：同代码在窗口内的动作链（首次动作→后续改口）
 - **pending_recommendations**：待复盘/跟踪的个股建议（可为空），含 original_context、invalidation_check、return_pct

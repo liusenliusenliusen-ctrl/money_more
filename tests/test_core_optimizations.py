@@ -797,7 +797,7 @@ def test_sector_money_flow_quality_gate():
         "sentiment_overview": {"aggregate": {"score": 50}},
         "economic_calendar": [{"event": "美国PCE", "日期": "2026-07-25"}],
         "macro_hard_echo": [{"event": "中国制造业PMI", "source": "macro_hard_echo"}],
-        "macro_hard": {"pmi": [{}]},
+        "macro_hard": {"pmi": [{}], "social_financing": [{"月份": "202606"}]},
         "global_liquidity": {"stance": "mixed", "us_10y": {"latest": 4.5}},
         "errors": [],
     }
@@ -810,6 +810,7 @@ def test_sector_money_flow_quality_gate():
         }
     )
     assert ok["checks"]["sector_money_flow"] is True
+    assert ok["checks"]["social_financing"] is True
     assert ok["score"] == 1.0
 
 

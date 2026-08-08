@@ -52,6 +52,39 @@ def _macro_records_from_df(df: pd.DataFrame | None, limit: int = 6) -> list[dict
     return df.head(limit).to_dict(orient="records")
 
 
+def _macro_records_newest(df: pd.DataFrame | None, limit: int = 6) -> list[dict[str, Any]]:
+    """兼容升序/降序宏观表：用月份字段选最新，再取最近 limit 条（新→旧）。"""
+    if df is None or df.empty:
+        return []
+    work = df.copy()
+    month_col = None
+    for c in work.columns:
+        if "月" in str(c) or str(c).lower() in ("month", "date", "日期"):
+            month_col = c
+            break
+    if month_col is None:
+        return work.tail(limit).iloc[::-1].to_dict(orient="records")
+
+    def _row_period(val: Any) -> date | None:
+        parsed = parse_macro_period_date({month_col: val}) or parse_record_date({month_col: val})
+        if parsed:
+            return parsed
+        text = str(val or "").strip()
+        if len(text) == 6 and text.isdigit():
+            try:
+                return date(int(text[:4]), int(text[4:6]), 1)
+            except ValueError:
+                return None
+        return None
+
+    try:
+        work["_sort_dt"] = work[month_col].map(_row_period)
+        work = work.dropna(subset=["_sort_dt"]).sort_values("_sort_dt", ascending=False)
+        return work.drop(columns=["_sort_dt"]).head(limit).to_dict(orient="records")
+    except Exception:
+        return work.tail(limit).iloc[::-1].to_dict(orient="records")
+
+
 def _filter_df(df: pd.DataFrame, code: str, code_cols: tuple[str, ...] = ("代码", "股票代码")) -> pd.DataFrame:
     code = normalize_code(code)
     for col in code_cols:
@@ -80,8 +113,10 @@ class IntelligenceFetcher:
         self.rss = RssFeedFetcher(
             feeds=config.rss.feeds or None,
             max_items_per_feed=config.rss.max_items_per_feed,
+            timeout=int(getattr(config.rss, "cls_timeout_sec", 8) or 8),
             cls_direct=config.rss.cls_direct,
             use_fallback_rss=config.rss.use_fallback_rss,
+            rsshub_base=str(getattr(config.rss, "rsshub_base", "") or ""),
         ) if config.rss.enabled else None
         self._rss_cache: dict[str, Any] | None = None
         self._tushare_macro_cache: dict[str, Any] | None = None
@@ -354,7 +389,7 @@ class IntelligenceFetcher:
                 except Exception:
                     continue
 
-        # 宏观硬数据：PMI / CPI（失败则跳过）
+        # 宏观硬数据：PMI / CPI / M2 / 社融（失败则跳过）
         macro_hard: dict[str, Any] = {}
         for label, fn in [
             ("pmi", getattr(ak, "macro_china_pmi", None)),
@@ -369,6 +404,26 @@ class IntelligenceFetcher:
                     macro_hard[label] = _macro_records_from_df(df, 6)
             except Exception as exc:
                 result["errors"].append(f"宏观{label}: {exc}")
+        # 社融：国内宽信用旁路（注意部分接口为时间升序）
+        try:
+            shr_fn = getattr(ak, "macro_china_shrzgm", None)
+            if shr_fn is not None:
+                shr_df = shr_fn()
+                shr_recs = _macro_records_newest(shr_df, 6)
+                if shr_recs:
+                    macro_hard["social_financing"] = shr_recs
+                    macro_hard["shrzgm"] = shr_recs  # 兼容别名
+        except Exception as exc:
+            result["errors"].append(f"宏观社融: {exc}")
+        try:
+            credit_fn = getattr(ak, "macro_china_new_financial_credit", None)
+            if credit_fn is not None:
+                credit_df = credit_fn()
+                credit_recs = _macro_records_from_df(credit_df, 6)
+                if credit_recs:
+                    macro_hard["new_credit"] = credit_recs
+        except Exception as exc:
+            result["errors"].append(f"宏观信贷: {exc}")
         result["macro_hard"] = macro_hard
 
         # 全球流动性硬指标（美债 + USD/CNY）——主线宏观外因
@@ -489,16 +544,39 @@ class IntelligenceFetcher:
                 result["tushare_macro_backfill"] = True
                 result["errors"].append("tushare_macro_backfill_from_alt_sources")
 
+        # 主线池：政策/联播/宏观；噪声池：电报/全球碎资讯（仅事件/拥挤旁路）
+        mainline_pool: list[dict[str, Any]] = []
+        mainline_pool.extend(result.get("policy_news") or [])
+        mainline_pool.extend(result.get("tushare_macro_news") or [])
+        noise_pool: list[dict[str, Any]] = []
+        noise_pool.extend(result.get("global_news") or [])
+        noise_pool.extend(result.get("global_news_sina") or [])
+        noise_pool.extend(result.get("rss_important") or [])
+        noise_pool.extend((result.get("rss_telegraph") or [])[: self.max_items])
+
         macro_news_pool: list[dict[str, Any]] = []
-        macro_news_pool.extend(result["policy_news"])
-        macro_news_pool.extend(result["global_news"])
-        macro_news_pool.extend(result.get("global_news_sina") or [])
-        macro_news_pool.extend(result["rss_important"])
-        macro_news_pool.extend(result["rss_telegraph"][: self.max_items])
-        macro_news_pool.extend(result["tushare_macro_news"])
+        macro_news_pool.extend(mainline_pool)
+        macro_news_pool.extend(noise_pool)
 
         if self.config.sentiment.enabled:
-            result["sentiment_overview"] = self.scorer.score_news_items(macro_news_pool)
+            sent_cfg = self.config.sentiment
+            mainline_only = bool(getattr(sent_cfg, "mainline_pool_only", True))
+            score_pool = mainline_pool if mainline_only and mainline_pool else macro_news_pool
+            result["sentiment_overview"] = self.scorer.score_news_items(score_pool)
+            if isinstance(result["sentiment_overview"], dict):
+                result["sentiment_overview"]["pool"] = (
+                    "mainline" if mainline_only and mainline_pool else "all"
+                )
+                result["sentiment_overview"]["role"] = str(
+                    getattr(sent_cfg, "role", "crowding_only") or "crowding_only"
+                )
+            if noise_pool:
+                result["sentiment_noise"] = self.scorer.score_news_items(noise_pool)
+                if isinstance(result["sentiment_noise"], dict):
+                    result["sentiment_noise"]["pool"] = "noise"
+                    result["sentiment_noise"]["plain_note"] = (
+                        "电报/全球碎资讯噪声池：仅事件扫描与拥挤旁路，不进综合舆情主分"
+                    )
 
         # S11：数库新闻情绪指数（市场温度旁路，失败不阻断）
         try:

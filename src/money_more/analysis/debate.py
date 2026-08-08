@@ -22,7 +22,10 @@ EXAMPLE JSON OUTPUT:
   "key_contradiction": "主要矛盾一句话",
   "decision_hint": "buy|add|hold|watch|sell"
 }
-原则：证据不足时选 draw 并提高 haircut；禁止编造未提供的数据。
+原则（中长线）：
+1. 辩论议题以 **盈利/质量、估值锚、逻辑失效条件、信息完备性** 为主；禁止把「昨涨跌幅/追涨」当主论据。
+2. 证据不足时选 draw 并提高 haircut；禁止编造未提供的数据。
+3. 技术面/资金流仅作辅助旁证，不得单独支撑 buy/add。
 最终 content 必须是合法 json 对象；允许内部思考，但不要把 JSON 只留在思考里。"""
 
 

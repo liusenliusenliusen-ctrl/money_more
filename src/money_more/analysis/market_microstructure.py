@@ -2,6 +2,11 @@
 
 回答：常规「基本面→价格」传导是否仍大致可用，还是进入拥挤共振/流动性压力状态。
 不指控「量化有罪」，只给可核对的市场结构信号。
+
+波次门禁（optimization-plan-v2）：
+- 重度：单日禁新买
+- 轻/中度：跨轮确认后再禁
+- 极端涨跌停比：升格约束
 """
 
 from __future__ import annotations
@@ -10,14 +15,19 @@ from typing import Any
 
 import pandas as pd
 
+from money_more.config import MicrostructureConfig
 from money_more.data.fetcher import _safe_float
 
 
 def assess_market_microstructure(
     overview: dict[str, Any] | None,
     spot: pd.DataFrame | None = None,
+    *,
+    config: MicrostructureConfig | None = None,
+    prior_micro: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     overview = overview or {}
+    cfg = config or MicrostructureConfig()
     metrics: dict[str, Any] = {}
     flags: list[str] = []
 
@@ -31,6 +41,18 @@ def assess_market_microstructure(
         flags.append(f"跌停家数偏多({limit_down})")
     if isinstance(limit_up, int) and isinstance(limit_down, int) and limit_up + limit_down >= 80:
         flags.append(f"涨跌停合计偏多({limit_up}+{limit_down})")
+
+    # 极端扩散/拥挤：涨停远多于跌停（如 103:1）
+    extreme_crowding = False
+    if isinstance(limit_up, int) and limit_up >= 40:
+        denom = max(int(limit_down or 0), 1)
+        ratio = limit_up / denom
+        metrics["limit_up_down_ratio"] = round(ratio, 2)
+        if ratio >= float(cfg.extreme_limit_ratio) or (
+            limit_up >= 80 and int(limit_down or 0) <= 2
+        ):
+            extreme_crowding = True
+            flags.append(f"涨跌停比极端拥挤({limit_up}:{limit_down})")
 
     # 指数单日波动
     idx_moves: list[float] = []
@@ -66,12 +88,43 @@ def assess_market_microstructure(
     nb_net = _safe_float(nb.get("latest_net"))
     if nb_net is not None:
         metrics["northbound_latest_net"] = nb_net
-        # 单位常为亿元；大幅净流出粗阈值
         if nb_net <= -80:
             flags.append(f"北向净流出偏大({nb_net})")
 
     regime = _classify_regime(flags, metrics)
-    fundamental_channel_ok = regime in ("normal", "elevated")
+    severity, stress_extra = _classify_severity(regime, flags, extreme_crowding)
+    prior = prior_micro or {}
+    prior_sev = str(prior.get("severity") or "")
+    prior_pending = bool(prior.get("pending_confirm"))
+    prior_pressure = prior_sev in ("mild", "moderate", "severe") or str(
+        prior.get("regime") or ""
+    ) in ("crowded_sync", "liquidity_stress", "elevated")
+
+    forbid_new_buys = False
+    pending_confirm = False
+    confirm_note = ""
+
+    if severity == "severe" and cfg.severe_forbid_new_buys:
+        forbid_new_buys = True
+        confirm_note = "重度机制压力：本轮立即禁新开仓"
+    elif severity in ("mild", "moderate"):
+        pending_confirm = True
+        need = max(1, int(cfg.mild_confirm_rounds))
+        if need <= 1 and prior_pressure:
+            forbid_new_buys = True
+            confirm_note = f"{severity}压力已跨轮确认：禁新开仓"
+        else:
+            confirm_note = f"{severity}压力观察中：本轮降权不全面禁买"
+    elif prior_pending and severity == "none" and regime == "normal":
+        confirm_note = "结构压力已解除"
+
+    if extreme_crowding and not forbid_new_buys:
+        # 极端拥挤至少压进攻；若已是 moderate 以上在上面处理
+        if severity in ("mild", "moderate", "severe"):
+            forbid_new_buys = True
+            confirm_note = (confirm_note + "；" if confirm_note else "") + "极端涨跌停比→禁新买"
+
+    fundamental_channel_ok = regime in ("normal", "elevated") and severity in ("none", "mild")
     if regime == "crowded_sync":
         implication = (
             "价格同向性高，短线量价/个股分化规律变弱；中长线可继续看基本面，"
@@ -86,21 +139,38 @@ def assess_market_microstructure(
         fundamental_channel_ok = False
     elif regime == "elevated":
         implication = "微观结构略紧，主结论仍可用，但对追涨与拥挤赛道提高警惕。"
-        fundamental_channel_ok = True
+        fundamental_channel_ok = severity == "none"
     else:
         implication = "未见显著拥挤共振或流动性断点；常规中长线分析框架仍大致适用。"
 
+    if extreme_crowding:
+        implication += " 涨跌停比极端，属拥挤扩散，不宜追涨式加仓。"
+
+    regime_mult = {"none": 1.0, "mild": 0.85, "moderate": 0.85, "severe": 0.7}.get(
+        severity, 1.0
+    )
+
     return {
         "regime": regime,
+        "severity": severity,
+        "severity_extra_flags": stress_extra,
+        "extreme_crowding": extreme_crowding,
+        "pending_confirm": pending_confirm,
+        "forbid_new_buys": forbid_new_buys,
+        "prior_severity": prior_sev or None,
+        "regime_position_mult": regime_mult,
         "fundamental_channel_ok": fundamental_channel_ok,
         "flags": flags,
         "metrics": metrics,
         "implication": implication,
+        "confirm_note": confirm_note,
         "plain_note": (
-            f"微观结构状态=`{regime}`；"
+            f"微观结构状态=`{regime}`/severity=`{severity}`；"
+            + ("禁新开仓。" if forbid_new_buys else ("观察中。" if pending_confirm else ""))
             + ("基本面→价格传导可能受扰。" if not fundamental_channel_ok else "传导大致可用。")
+            + (f" {confirm_note}" if confirm_note else "")
         ),
-        "layer": "mechanism",  # 机制层：偏主结论可用的硬信号，但仍单独成块
+        "layer": "mechanism",
     }
 
 
@@ -108,7 +178,6 @@ def _spot_sync_metrics(spot: pd.DataFrame | None) -> dict[str, Any]:
     if spot is None or not isinstance(spot, pd.DataFrame) or spot.empty:
         return {}
     df = spot.copy()
-    # 列名兼容
     chg_col = "涨跌幅" if "涨跌幅" in df.columns else ("change_pct" if "change_pct" in df.columns else None)
     amt_col = "成交额" if "成交额" in df.columns else ("amount" if "amount" in df.columns else None)
     if not chg_col:
@@ -140,17 +209,46 @@ def _spot_sync_metrics(spot: pd.DataFrame | None) -> dict[str, Any]:
 def _classify_regime(flags: list[str], metrics: dict[str, Any]) -> str:
     sync = any("同向性" in f for f in flags)
     stress = any(k in f for f in flags for k in ("跌停", "波动偏大", "北向净流出", "成交额高度集中"))
+    extreme = any("极端拥挤" in f for f in flags)
+    if extreme and (sync or stress):
+        return "liquidity_stress"
     if sync and stress:
         return "liquidity_stress"
     if sync:
         return "crowded_sync"
     if stress and len(flags) >= 2:
         return "liquidity_stress"
+    if extreme:
+        return "crowded_sync"
     if flags:
         return "elevated"
-    # 无 flag 时也可由指标轻判
     down_ratio = metrics.get("down_ratio") or 0
     up_ratio = metrics.get("up_ratio") or 0
     if max(down_ratio, up_ratio) >= 0.7:
         return "crowded_sync"
     return "normal"
+
+
+def _classify_severity(
+    regime: str,
+    flags: list[str],
+    extreme_crowding: bool,
+) -> tuple[str, int]:
+    """返回 (severity, 额外硬 flag 数)。severity: none|mild|moderate|severe"""
+    hard_keys = ("跌停", "波动偏大", "北向净流出", "成交额高度集中", "极端拥挤")
+    extra = sum(1 for f in flags if any(k in f for k in hard_keys))
+    sync = any("同向性" in f for f in flags)
+
+    if regime == "liquidity_stress":
+        if extreme_crowding or extra >= 2 or (sync and extra >= 1):
+            return "severe", extra
+        return "moderate", extra
+    if regime == "crowded_sync":
+        if extreme_crowding or extra >= 1:
+            return "moderate", extra
+        return "mild", extra
+    if regime == "elevated":
+        return "mild", extra
+    if extreme_crowding:
+        return "moderate", extra
+    return "none", extra

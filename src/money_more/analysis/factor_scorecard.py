@@ -117,36 +117,33 @@ def build_stock_scorecard(
         evidence["momentum"].append(f"相对沪深300_20d={rs:.1f}%")
     scores["momentum"] = _clamp(mom)
 
-    # --- fund_flow: 个股资金/两融/北向 ---
+    # --- fund_flow: 取消 3–5 日净流入线性加分；仅短长窗背离惩罚 + 中期痕迹旁证 ---
     flow = 50.0
     fund = stock_snap.get("fund_flow") or intel.get("fund_flow") or {}
     if fund:
         net3 = _f(fund.get("net_3d") or fund.get("main_net_3d"))
         net5 = _f(fund.get("net_5d") or fund.get("main_net_5d"))
+        net20 = _f(fund.get("net_20d") or fund.get("main_net_20d"))
         if net5 is not None:
-            # 假设单位万元，粗略映射
-            flow += max(-30, min(30, net5 / 5000 * 10))
-            evidence["fund_flow"].append(f"主力净流入5d≈{net5}")
+            evidence["fund_flow"].append(f"主力净流入5d≈{net5}(不线性加分)")
         if net3 is not None and net5 is not None and net3 * net5 < 0:
-            flow -= 10
-            evidence["fund_flow"].append("短中期资金背离")
+            flow -= 12
+            evidence["fund_flow"].append("短中期资金背离→惩罚")
+        if net5 is not None and net20 is not None and net5 * net20 < 0:
+            flow -= 8
+            evidence["fund_flow"].append("5d与20d资金背离→惩罚")
     margin = intel.get("margin_detail") or []
     if margin:
-        evidence["fund_flow"].append("有两融明细")
-        flow += 5
+        evidence["fund_flow"].append("有两融明细(旁证不抬分)")
     hk = intel.get("northbound_hold") or fund.get("northbound")
     if hk:
-        evidence["fund_flow"].append("有北向持仓信息")
-        flow += 5
-        # 若有持股变动字段，粗略加减分
+        evidence["fund_flow"].append("有北向持仓信息(痕迹旁证)")
         chg_hold = _f(hk.get("今日增持估计-股数") or hk.get("增持估计") or hk.get("持股数量变化"))
-        if chg_hold is not None:
-            if chg_hold > 0:
-                flow += 8
-                evidence["fund_flow"].append("北向增持")
-            elif chg_hold < 0:
-                flow -= 8
-                evidence["fund_flow"].append("北向减持")
+        if chg_hold is not None and chg_hold < 0:
+            flow -= 6
+            evidence["fund_flow"].append("北向减持→轻罚")
+        elif chg_hold is not None and chg_hold > 0:
+            evidence["fund_flow"].append("北向增持(不抬分)")
     scores["fund_flow"] = _clamp(flow)
 
     # --- sentiment: 拥挤惩罚为主；新闻语调/热度不抬分（S3）；分列供报告（S13）---

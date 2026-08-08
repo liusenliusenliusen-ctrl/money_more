@@ -30,6 +30,29 @@ screen:
   max_deep_per_theme: 5        # 同一粗主题（如科技硬件）最多几只新票
   deep_theme_floor: 1          # 关注/优先中的防御板块（银行/白酒等）软保底席位
   deep_relax_theme_cap: false  # false=同主题已满宁缺毋滥（中长线推荐）
+  exclude_surge_main_pct: 7.0      # 主板暴涨当日剔除新票；0=关闭
+  exclude_surge_chi_star_pct: 14.0 # 创业板/科创；约 70%×涨跌停
+  # exclude_surge_pct: 7.0         # 若设置则两板共用（不推荐）
+  amount_avg_days: 20              # 成交额用近 N 日均（0=当日）；P1 中长线
+
+# 行情通路（第四波深治）
+data:
+  eastmoney_force_direct: true     # 调东财时绕过系统代理
+  eastmoney_bypass: both           # env_clear | session_trust_env_false | both | off
+
+# 微观结构门禁（机制压力；非短线择时）
+microstructure:
+  severe_forbid_new_buys: true
+  mild_confirm_rounds: 1       # 轻/中度需上轮已压力才禁新买
+  extreme_limit_ratio: 50.0    # 涨停/跌停比达此视为极端拥挤
+
+# 中长线框架闸
+framework_gates:
+  prosperity_block_adds: true          # 景气 down 禁 buy/add
+  contradiction_haircut: 0.8           # 矛盾激活时置信/仓位折扣
+  contradiction_block_offensive: true  # 矛盾时禁进攻向开加仓
+  policy_requires_hard_resonance: true # 政策须硬共振才买
+  phase_upgrade_needs_confirm: true    # 升乐观要慢
 
 # 持仓（空仓示例；有仓再填 code / quantity / cost）
 # 跑任务时：未说明持仓 → 必须保持 []；说明了再写入
@@ -99,6 +122,7 @@ agents:
   cursor_model: composer-2.5
   llm_timeout_seconds: 300
   llm_max_retries: 2
+  llm_max_tokens: 32768          # 亦可 LLM_MAX_TOKENS；决策大 JSON+thinking 勿过小
   cursor_timeout_seconds: 180
   cursor_max_retries: 2
   # 略大于 llm_timeout × (retries+1)，避免编排层先掐断
@@ -116,12 +140,16 @@ tushare:
 rss:
   enabled: true
   cls_direct: true
-  use_fallback_rss: false
+  use_fallback_rss: false          # 无自建前保持关；推荐：早餐→CLS→自建 RSSHub
+  cls_timeout_sec: 8
+  rsshub_base: ""                  # 例 https://rsshub.example.com（fallback 开时生效）
   max_items_per_feed: 10
   feeds: []
 
 sentiment:
   enabled: true
+  role: crowding_only          # 拥挤调节器；非 alpha 加分
+  mainline_pool_only: true     # 综合舆情只打政策/宏观主线池
 
 trend:
   enabled: true

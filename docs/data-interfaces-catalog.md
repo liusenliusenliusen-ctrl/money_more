@@ -70,6 +70,8 @@
 | `ak.macro_china_pmi` | 中国 PMI | A1 硬宏观 |
 | `ak.macro_china_cpi` | 中国 CPI | 同上 |
 | `ak.macro_china_money_supply` | M2 / 货币供应量 | 同上 |
+| `ak.macro_china_shrzgm` | 社会融资规模增量及分项 | A1 宽信用旁路（`macro_hard.social_financing`） |
+| `ak.macro_china_new_financial_credit` | 新增信贷 | 与社融交叉 |
 | `ak.bond_zh_us_rate` | 中美利率（美 2Y/10Y、国开等） | A1 全球流动性 stance |
 | `ak.currency_boc_sina(symbol="美元")` | 中行美元兑人民币 | A1 流动性（USD/CNY） |
 | `ak.stock_index_pe_lg(symbol="沪深300")` | 沪深300 PE | 股债性价比 ERP → 总仓上限 |

@@ -12,6 +12,7 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
     recs = []
     for r in result.get("recommendations") or []:
         sc = r.get("factor_scorecard") or {}
+        sl = r.get("sector_link") if isinstance(r.get("sector_link"), dict) else {}
         recs.append(
             {
                 "code": r.get("code"),
@@ -23,8 +24,19 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
                 "factor_total": sc.get("total_score"),
                 "factor_signal": sc.get("signal"),
                 "debate_referee": (r.get("debate") or {}).get("referee"),
-                "sector_tag": r.get("sector_tag"),
+                "sector_tag": r.get("sector_tag") or sl.get("sector"),
                 "invalidation": r.get("invalidation"),
+                "verify_in_days": r.get("verify_in_days"),
+                "verify_signals": list(r.get("verify_signals") or [])[:4],
+                "sector_link": {
+                    "sector": sl.get("sector"),
+                    "sector_priority": sl.get("sector_priority"),
+                    "sector_prosperity": sl.get("sector_prosperity"),
+                    "from_research_rating": sl.get("from_research_rating"),
+                    "action_rationale_vs_research": sl.get("action_rationale_vs_research"),
+                }
+                if sl
+                else None,
             }
         )
 
@@ -74,4 +86,21 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
         "risk_check_ok": (result.get("risk_check") or {}).get("ok"),
         "validation_override_count": len(result.get("validation_overrides") or []),
         "factor_weights_adapted": result.get("factor_weights_adapted"),
+        "sector_coverage": list(result.get("sector_coverage") or [])[:12],
+        "micro_regime": (result.get("market_microstructure") or {}).get("regime"),
+        "micro_severity": (result.get("market_microstructure") or {}).get("severity"),
+        "synthesis_audit_brief": _synthesis_brief(result),
+    }
+
+
+def _synthesis_brief(result: dict[str, Any]) -> dict[str, Any] | None:
+    audit = (result.get("decision_stages") or {}).get("synthesis_audit") or {}
+    if not audit:
+        return None
+    return {
+        "agreed_buys": list(audit.get("agreed_buys") or [])[:8],
+        "dropped_buys": list(audit.get("dropped_buys") or [])[:8],
+        "agent_only_buys": {
+            k: list(v or [])[:6] for k, v in (audit.get("agent_only_buys") or {}).items()
+        },
     }

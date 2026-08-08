@@ -610,6 +610,7 @@ class Database:
             a = item.get("analysis") or {}
             sent = a.get("sentiment_assessment") or {}
             liq = a.get("liquidity_assessment") or {}
+            micro = a.get("market_microstructure") or {}
             compact.append(
                 {
                     "date": item["run_date"],
@@ -623,6 +624,10 @@ class Database:
                     "quant_score_100": sent.get("quant_score_100"),
                     "margin_trend": liq.get("margin_trend"),
                     "confidence": a.get("confidence"),
+                    "micro_regime": micro.get("regime"),
+                    "micro_severity": micro.get("severity"),
+                    "micro_pending_confirm": micro.get("pending_confirm"),
+                    "micro_forbid_new_buys": micro.get("forbid_new_buys"),
                 }
             )
         return {"market_history": compact, "days": len(compact)}

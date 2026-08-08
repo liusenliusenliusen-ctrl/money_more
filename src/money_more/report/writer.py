@@ -778,6 +778,53 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         if not is_pipeline_status_note(warn):
             lines.append(f"> ⚠️ **数据/遴选警告**: {warn}")
             lines.append("")
+    # A0：关键降级诚实可见 + 完整缺失列表
+    from money_more.analysis.degrade_messages import (
+        build_screen_degrade_note,
+        flash_chain_tip,
+        spot_source_plain,
+    )
+
+    a0_bits: list[str] = []
+    spot_src = str(screen.get("spot_source") or "").lower()
+    if spot_src in ("sina", "cache", "spot", "stale_cache", "em_split"):
+        a0_bits.append(spot_source_plain(str(screen.get("spot_source"))))
+    deg_note = build_screen_degrade_note(screen)
+    if deg_note and "错误类=" in deg_note:
+        a0_bits.append(deg_note)
+    if "sector_money_flow" in (dq.get("missing") or []) or dq.get("policy_news_source") == "rss_global_extract":
+        a0_bits.append(flash_chain_tip())
+    if dq.get("policy_news_source") == "rss_global_extract":
+        a0_bits.append("政策源=快讯抽取（≠正式联播）")
+    missing = list(dq.get("missing") or [])
+    if missing:
+        a0_bits.append("缺失: " + "、".join(f"`{k}`" for k in missing[:12]))
+        if len(missing) > 12:
+            a0_bits.append(f"…另有 {len(missing) - 12} 项")
+    if screen.get("excluded_surge_count"):
+        a0_bits.append(f"暴涨剔除新票 {screen.get('excluded_surge_count')} 只")
+    if screen.get("amount_avg_days"):
+        meta = screen.get("amount_avg_meta") or {}
+        a0_bits.append(
+            f"成交额近{screen.get('amount_avg_days')}日均"
+            f"（ok={meta.get('ok', '?')}/fallback={meta.get('fallback', '?')}）"
+        )
+    micro_card = result.get("market_microstructure") or {}
+    if micro_card.get("forbid_new_buys") or micro_card.get("pending_confirm"):
+        a0_bits.append(
+            f"微观结构 `{micro_card.get('regime')}`/{micro_card.get('severity')}"
+            + (" · 禁新开仓" if micro_card.get("forbid_new_buys") else " · 观察中")
+        )
+    fw = result.get("framework_gates") or {}
+    if fw.get("plain_note"):
+        a0_bits.append(str(fw.get("plain_note")))
+    if a0_bits:
+        lines.append("> ℹ️ **数据/框架速览**: " + "；".join(a0_bits[:10]))
+        lines.append("")
+    err_sample = list(dq.get("errors_sample") or [])[:5]
+    if err_sample:
+        lines.append("> ⚠️ **数据错误抽样**: " + "；".join(str(e)[:80] for e in err_sample))
+        lines.append("")
     if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
         lines.append(
             "> **模块说明**: 本轮**研究**照常（筛股+深度池）；**建议段**按空仓"
@@ -930,6 +977,29 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         lines.append(f"- **主要风险**: {'；'.join(_one_line(r, None) for r in risks)}")
     if inv:
         lines.append(f"- **若出现则认错**: {'；'.join(_one_line(x, None) for x in inv)}")
+    mv_days = market.get("verify_in_days")
+    mv_signals = [str(x) for x in (market.get("verify_signals") or []) if str(x).strip()]
+    if not mv_signals:
+        # 从动作侧汇总验证信号作 A2 旁证
+        seen_vs: set[str] = set()
+        for rec in recs:
+            for s in rec.get("verify_signals") or []:
+                t = str(s).strip()
+                if t and t not in seen_vs:
+                    seen_vs.add(t)
+                    mv_signals.append(t)
+            if len(mv_signals) >= 3:
+                break
+        if mv_days is None and recs:
+            try:
+                mv_days = int(recs[0].get("verify_in_days") or 14)
+            except (TypeError, ValueError):
+                mv_days = 14
+    if mv_days is not None or mv_signals:
+        sig = "；".join(_one_line(s, None) for s in mv_signals[:4]) if mv_signals else "（见各动作验证窗口）"
+        lines.append(
+            f"- **验证窗口**: {mv_days or 14} 日内看 — {sig}"
+        )
     vs = market.get("vs_prior") or {}
     if vs.get("continuity"):
         changed = "；".join(str(x) for x in (vs.get("what_changed") or []))
@@ -946,6 +1016,19 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         "不是①研究评级列表；研究看好但未进组合/被风控压掉的票不会出现在这里。_"
     )
     lines.append("")
+    audit = (result.get("decision_stages") or {}).get("synthesis_audit") or {}
+    if audit and (audit.get("agreed_buys") is not None or audit.get("dropped_buys")):
+        agreed = "、".join(str(c) for c in (audit.get("agreed_buys") or [])[:6]) or "无"
+        dropped = "、".join(str(c) for c in (audit.get("dropped_buys") or [])[:6]) or "无"
+        only_bits = []
+        for agent, codes in (audit.get("agent_only_buys") or {}).items():
+            if codes:
+                only_bits.append(f"{agent}:{'/'.join(str(c) for c in codes[:4])}")
+        only_s = "；".join(only_bits) if only_bits else "无"
+        lines.append(
+            f"- **主副分歧**: 一致买入 {agreed} · 仅一方 {only_s} · 综合否决 {dropped}"
+        )
+        lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
     if basis.get("is_empty"):
         lines.append(
@@ -974,17 +1057,31 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             conf_s = rec.get("confidence", "-")
             # 理由全文，不截断（仅压空白）
             why = " ".join(str(rec.get("rationale") or "").split())
-            sector = rec.get("sector_tag") or infer_sector(code) or ""
-            sec_s = f" · 板块:{sector}" if sector else ""
+            sl = rec.get("sector_link") if isinstance(rec.get("sector_link"), dict) else {}
+            sector = sl.get("sector") or rec.get("sector_tag") or infer_sector(code) or ""
+            pri = sl.get("sector_priority")
+            link_s = f" · ←{sector}" + (f"·{pri}" if pri and pri != "unknown" else "") if sector else ""
+            sec_s = f" · 板块:{sector}" if sector and not link_s else ""
             head = (
                 f"- **{label}** {code}{(' ' + name) if name else ''} "
-                f"(置信度 {conf_s}{pos_s}{sec_s})"
+                f"(置信度 {conf_s}{pos_s}{link_s or sec_s})"
             )
             if why:
                 lines.append(f"{head}")
                 lines.append(f"  - 理由: {why}")
             else:
                 lines.append(head)
+            if sl.get("action_rationale_vs_research"):
+                lines.append(
+                    f"  - 逻辑链: {_one_line(sl.get('action_rationale_vs_research'), None)}"
+                )
+            vdays = rec.get("verify_in_days")
+            vsigs = [str(x) for x in (rec.get("verify_signals") or []) if str(x).strip()]
+            if vdays is not None or vsigs:
+                lines.append(
+                    f"  - 验证窗口: {vdays or 14} 日 — "
+                    + ("；".join(_one_line(s, None) for s in vsigs[:3]) if vsigs else "见失效条件")
+                )
     lines.append("")
 
     # ---------- B. 推理链（一体两层）----------
@@ -1044,6 +1141,17 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             lines.append(
                 f"- **{name}** [{pri}] {' · '.join(bits)} — **{stance}**{link}"
             )
+        gaps = [
+            g
+            for g in (result.get("sector_coverage") or [])
+            if g.get("missing_target") and str(g.get("priority") or "").lower() in ("high", "高")
+        ]
+        if gaps:
+            lines.append("")
+            lines.append("**缺标的（高优先级无深度池映射）**")
+            lines.append("")
+            for g in gaps[:8]:
+                lines.append(f"- {g.get('note') or g.get('sector')}")
     lines.append("")
 
     lines.append("#### B2. 个股决策链（①研究→②草案→③辩论→④风控）")
@@ -1482,9 +1590,18 @@ def render_daily_report(result: dict[str, Any]) -> str:
         lines.append(f"> {su['note']}")
         lines.append("")
     if su.get("auto_sectors") or su.get("watch_sectors"):
+        observe = su.get("auto_sectors_observe") or []
+        promote = su.get("auto_sectors_promote") or []
+        auto_bits = []
+        if promote:
+            auto_bits.append("升权扩 " + "、".join(promote))
+        if observe:
+            auto_bits.append("观察扩 " + "、".join(observe))
+        if not auto_bits and su.get("auto_sectors"):
+            auto_bits.append("、".join(su.get("auto_sectors") or []))
         lines.append(
             f"- 关注板块: {'、'.join(su.get('watch_sectors') or []) or '—'}"
-            f" · 资金流自动扩: {'、'.join(su.get('auto_sectors') or []) or '—'}"
+            f" · 资金流自动扩: {'；'.join(auto_bits) or '—'}"
         )
         lines.append("")
     by_sec = _recs_by_sector(result)
@@ -1501,7 +1618,12 @@ def render_daily_report(result: dict[str, Any]) -> str:
         related = by_sec.get(sec_name) or []
         stance = _sector_stance(a, related)
         src = sec.get("source") or a.get("sector_source") or "watch"
-        src_s = "自动扩" if src == "auto_flow" else "关注"
+        src_s = {
+            "auto_promote": "升权扩",
+            "auto_observe": "观察扩",
+            "auto_flow": "自动扩",
+            "watch": "关注",
+        }.get(str(src), str(src))
         lines.append(
             f"- {worth} **{sec_name}** "
             f"[{a.get('priority', '-')}优先级 · {src_s}] | "
@@ -1677,9 +1799,29 @@ def render_review_report(result: dict[str, Any]) -> str:
             f"> **取材窗口**：近 {lookback or '—'} 日"
             + (f"（{cutoff} → {as_of}）" if cutoff and as_of else "")
             + "。开放式预测下，**浮盈亏只作轨迹，不等于预测成败**。"
+            "忽略近 5 日噪声；看约 60 日位置与基本面匹配。"
         )
         if rw_note:
             lines.append(f"> {rw_note}")
+        lines.append("")
+
+    diff_table = result.get("dimension_diff_table") or []
+    if diff_table:
+        lines.append("## 维度对照表（代码预计算）")
+        lines.append("")
+        lines.append("| 维度 | 字段 | 当时 | 后来 | 判定 |")
+        lines.append("|------|------|------|------|------|")
+        for row in diff_table[:24]:
+            dim = row.get("dimension") or ""
+            field = row.get("field") or ""
+            if row.get("sector"):
+                field = f"{field}/{row.get('sector')}"
+            then = str(row.get("then") or "—")[:24]
+            now = str(row.get("now") or "—")[:24]
+            verdict = row.get("verdict") or "unknown"
+            lines.append(f"| {dim} | {field} | {then} | {now} | `{verdict}` |")
+        lines.append("")
+        lines.append("_下节 LLM 解释应锚定此表；stable=延续，changed=已漂移，unknown=材料不足。_")
         lines.append("")
 
     dim_reviews = result.get("dimension_reviews") or []

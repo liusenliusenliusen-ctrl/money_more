@@ -13,12 +13,15 @@
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
+from datetime import timedelta
 from typing import Any
 
 import pandas as pd
 
 from money_more.analysis.sector_map import infer_sector, normalize_industry, theme_bucket
 from money_more.config import ScreenConfig
+from money_more.data.cache import DiskTTLCache
 from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code
 from money_more.utils.logging_util import setup_logging
 
@@ -109,11 +112,28 @@ def run_stock_screen(
 
     before_filter = len(universe_df)
     universe_df, filter_stats = _apply_hard_filters(universe_df, config)
+    universe_df, surge_stats = _exclude_surge_rows(universe_df, config, force_codes=force)
+    filter_stats["surge"] = int(surge_stats.get("surge") or 0)
+    filter_stats["surge_samples"] = list(surge_stats.get("surge_samples") or [])
+    filter_stats["kept"] = int(len(universe_df))
+    filter_stats["removed"] = int(before_filter - len(universe_df))
     if force:
         force_rows = spot[spot["code"].isin(force)]
         universe_df = pd.concat([universe_df, force_rows], ignore_index=True).drop_duplicates(
             subset=["code"], keep="first"
         )
+
+    # 先按当日额截到候选池，再对候选算多日均额（控制 hist 调用量）
+    avg_days = int(getattr(config, "amount_avg_days", 0) or 0)
+    pre_cap = max(int(config.max_universe) * 2, int(config.max_quant) * 4, 80)
+    if len(universe_df) > pre_cap and "amount" in universe_df.columns:
+        universe_df = universe_df.nlargest(pre_cap, "amount", keep="all")
+    amount_avg_meta: dict[str, Any] = {}
+    if avg_days > 0:
+        universe_df, amount_avg_meta = _enrich_amount_avg(
+            fetcher, universe_df, days=avg_days, force_codes=force, min_amount=config.min_amount
+        )
+        filter_stats["amount_avg"] = amount_avg_meta
 
     if len(universe_df) > config.max_universe:
         universe_df = universe_df.nlargest(config.max_universe, "amount", keep="all")
@@ -239,9 +259,23 @@ def run_stock_screen(
             + ("与声明持仓" if force else "")
             + "；≠全市场逐只深挖。"
             + diversify_plain
-            + "打分偏中长线（估值权重大、弱化当日涨跌）。"
+            + "打分偏中长线（估值/流动性；当日涨跌不进主分）。"
+            + (
+                f" 暴涨剔除新票 {filter_stats.get('surge', 0)} 只"
+                f"（主板≥{config.exclude_surge_main_pct}% / 创科≥{config.exclude_surge_chi_star_pct}%）。"
+                if int(filter_stats.get("surge") or 0) > 0
+                else ""
+            )
         ),
+        "excluded_surge_count": int(filter_stats.get("surge") or 0),
+        "excluded_surge_samples": list(filter_stats.get("surge_samples") or []),
+        "amount_avg_days": avg_days if avg_days > 0 else 0,
+        "amount_avg_meta": amount_avg_meta,
     }
+    if avg_days > 0:
+        fb = int(amount_avg_meta.get("fallback") or 0)
+        ok_n = int(amount_avg_meta.get("ok") or 0)
+        out["plain_note"] += f" 成交额用近{avg_days}日均（成功{ok_n}/回退当日{fb}）。"
     if not coverage_ok and len(deep) <= max(len(force), 1):
         out["degraded"] = True
         out["ok"] = False
@@ -470,9 +504,114 @@ def _normalize_spot(spot: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _apply_hard_filters(df: pd.DataFrame, config: ScreenConfig) -> tuple[pd.DataFrame, dict[str, int]]:
+def _enrich_amount_avg(
+    fetcher: MarketDataFetcher,
+    df: pd.DataFrame,
+    *,
+    days: int,
+    force_codes: list[str] | None = None,
+    min_amount: float = 0.0,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """用近 N 日成交额均值替换 amount；失败则保留当日额。"""
+    meta: dict[str, Any] = {"days": days, "ok": 0, "fallback": 0, "dropped_illiquid": 0}
+    if df is None or df.empty or days <= 0:
+        return df, meta
+    out = df.copy()
+    force = {normalize_code(c) for c in (force_codes or []) if c}
+    as_of = getattr(fetcher, "as_of", None)
+    end = as_of.strftime("%Y%m%d") if as_of is not None else None
+    start = (as_of - timedelta(days=max(days * 2, 40))).strftime("%Y%m%d") if as_of is not None else None
+    if not end or not start:
+        meta["fallback"] = int(len(out))
+        return out, meta
+
+    from pathlib import Path
+
+    cache = DiskTTLCache(Path("data/cache"), default_ttl_sec=6 * 3600)
+    codes = [normalize_code(str(c)) for c in out["code"].tolist()]
+
+    def _one(code: str) -> tuple[str, float | None]:
+        key = f"amount_avg:{code}:{days}:{end}"
+        cached = cache.get(key)
+        if isinstance(cached, (int, float)) and cached > 0:
+            return code, float(cached)
+        try:
+            hist = fetcher._fetch_daily_hist(code, start, end)
+            if hist is None or hist.empty:
+                return code, None
+            amt_col = next(
+                (c for c in ("成交额", "amount", "额") if c in hist.columns),
+                None,
+            )
+            if not amt_col:
+                # 东财 hist 常用「成交额」；若无则用额=价*量近似
+                if "成交量" in hist.columns and "收盘" in hist.columns:
+                    vol = pd.to_numeric(hist["成交量"], errors="coerce")
+                    close = pd.to_numeric(hist["收盘"], errors="coerce")
+                    # 手→股：*100；单位粗估，仅作相对流动性
+                    series = (vol * 100.0 * close).tail(days)
+                else:
+                    return code, None
+            else:
+                series = pd.to_numeric(hist[amt_col], errors="coerce").tail(days)
+            avg = float(series.mean()) if series.notna().any() else None
+            if avg is not None and avg > 0:
+                cache.set(key, avg)
+            return code, avg
+        except Exception:
+            return code, None
+
+    avgs: dict[str, float | None] = {}
+    workers = min(8, max(1, len(codes)))
+    # 单票 hist 超时，避免本机代理/东财挂起拖死整轮筛股
+    per_code_timeout = 25.0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {pool.submit(_one, c): c for c in codes}
+        try:
+            for fut in as_completed(
+                futs, timeout=max(90.0, per_code_timeout * max(1, len(codes)) / workers + 60)
+            ):
+                code = futs[fut]
+                try:
+                    _c, avg = fut.result(timeout=per_code_timeout)
+                    avgs[_c] = avg
+                except (FuturesTimeout, Exception):
+                    avgs[code] = None
+        except FuturesTimeout:
+            pass
+        for fut, code in futs.items():
+            if code not in avgs:
+                avgs[code] = None
+                fut.cancel()
+
+    rows_out: list[dict[str, Any]] = []
+    for _, row in out.iterrows():
+        code = normalize_code(str(row.get("code") or ""))
+        day_amt = _safe_float(row.get("amount")) or 0.0
+        avg = avgs.get(code)
+        rec = row.to_dict()
+        if avg is not None and avg > 0:
+            meta["ok"] += 1
+            use = float(avg)
+            rec["amount_avg"] = use
+            rec["amount_source"] = "avg"
+        else:
+            meta["fallback"] += 1
+            use = day_amt
+            rec["amount_avg"] = None
+            rec["amount_source"] = "day"
+        rec["amount"] = use
+        if code in force or min_amount <= 0 or use >= min_amount:
+            rows_out.append(rec)
+        else:
+            meta["dropped_illiquid"] += 1
+
+    return pd.DataFrame(rows_out) if rows_out else out.iloc[0:0].copy(), meta
+
+
+def _apply_hard_filters(df: pd.DataFrame, config: ScreenConfig) -> tuple[pd.DataFrame, dict[str, Any]]:
     """硬过滤；PE 默认只做软降权（见打分），除非显式配置 pe_max/exclude_negative_pe。"""
-    stats = {"st": 0, "illiquid": 0, "neg_pe": 0, "high_pe": 0, "bad_price": 0}
+    stats: dict[str, Any] = {"st": 0, "illiquid": 0, "neg_pe": 0, "high_pe": 0, "bad_price": 0}
     out = df
     n0 = len(out)
     if config.exclude_st and "name" in out.columns:
@@ -505,30 +644,80 @@ def _apply_hard_filters(df: pd.DataFrame, config: ScreenConfig) -> tuple[pd.Data
     return out, stats
 
 
+def _surge_threshold_for_code(code: str, config: ScreenConfig) -> float | None:
+    """返回该代码暴涨剔除阈值；None/≤0 表示不剔除。"""
+    override = float(getattr(config, "exclude_surge_pct", 0) or 0)
+    if override > 0:
+        return override
+    c = normalize_code(code)
+    if c.startswith(("3", "68")):
+        thr = float(getattr(config, "exclude_surge_chi_star_pct", 0) or 0)
+    else:
+        thr = float(getattr(config, "exclude_surge_main_pct", 0) or 0)
+    return thr if thr > 0 else None
+
+
+def _exclude_surge_rows(
+    df: pd.DataFrame,
+    config: ScreenConfig,
+    *,
+    force_codes: list[str] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """暴涨当日剔除新票；声明持仓 force 保留。"""
+    force = {normalize_code(c) for c in (force_codes or []) if c}
+    stats: dict[str, Any] = {"surge": 0, "surge_samples": []}
+    if df is None or df.empty or "change_pct" not in df.columns:
+        return df, stats
+    keep_mask = []
+    samples: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        code = normalize_code(str(row.get("code") or ""))
+        if code in force:
+            keep_mask.append(True)
+            continue
+        thr = _surge_threshold_for_code(code, config)
+        chg = _safe_float(row.get("change_pct"))
+        if thr is not None and chg is not None and chg >= thr:
+            keep_mask.append(False)
+            if len(samples) < 8:
+                samples.append(
+                    {
+                        "code": code,
+                        "change_pct": chg,
+                        "threshold": thr,
+                        "board": "chi_star" if code.startswith(("3", "68")) else "main",
+                    }
+                )
+        else:
+            keep_mask.append(True)
+    out = df.loc[keep_mask].copy()
+    stats["surge"] = int((~pd.Series(keep_mask)).sum())
+    stats["surge_samples"] = samples
+    stats["kept"] = int(len(out))
+    return out, stats
+
+
 def _score_universe(
     df: pd.DataFrame,
     priority_sectors: list[str],
     sector_boost: float,
 ) -> pd.DataFrame:
-    """中长线打分：估值权重大，成交额次之，弱化当日涨跌幅。"""
+    """中长线打分：估值权重大，成交额次之；当日涨跌不进主分（暴涨已硬剔除）。"""
     out = df.copy()
     scores: list[float] = []
     pe = out["pe"] if "pe" in out.columns else pd.Series([None] * len(out))
     pb = out["pb"] if "pb" in out.columns else pd.Series([None] * len(out))
     amt = out["amount"] if "amount" in out.columns else pd.Series([0.0] * len(out))
-    chg = out["change_pct"] if "change_pct" in out.columns else pd.Series([0.0] * len(out))
 
     pe_score = pe.map(_pe_to_score)
     pb_score = pb.map(_pb_to_score)
     amt_rank = amt.rank(pct=True, method="average").fillna(0.5) * 100
-    chg_score = chg.map(_chg_to_score)
 
     for i in range(len(out)):
         s = (
-            0.40 * float(pe_score.iloc[i] if pe_score.iloc[i] == pe_score.iloc[i] else 50)
-            + 0.25 * float(pb_score.iloc[i] if pb_score.iloc[i] == pb_score.iloc[i] else 50)
-            + 0.20 * float(amt_rank.iloc[i] if amt_rank.iloc[i] == amt_rank.iloc[i] else 50)
-            + 0.15 * float(chg_score.iloc[i] if chg_score.iloc[i] == chg_score.iloc[i] else 50)
+            0.45 * float(pe_score.iloc[i] if pe_score.iloc[i] == pe_score.iloc[i] else 50)
+            + 0.30 * float(pb_score.iloc[i] if pb_score.iloc[i] == pb_score.iloc[i] else 50)
+            + 0.25 * float(amt_rank.iloc[i] if amt_rank.iloc[i] == amt_rank.iloc[i] else 50)
         )
         scores.append(round(s, 3))
     out["screen_score"] = scores

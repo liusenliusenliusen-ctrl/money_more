@@ -14,11 +14,20 @@ import requests
 
 DEFAULT_RSS_FEEDS: list[dict[str, str]] = []  # 默认仅财联社直连；可在 config 中自定义 RSSHub 源
 
-FALLBACK_RSS_FEEDS = [
-    {"name": "财联社电报", "url": "https://rsshub.app/cls/telegraph", "category": "telegraph"},
-    {"name": "财联社电报-加红", "url": "https://rsshub.app/cls/telegraph/red", "category": "telegraph_red"},
-    {"name": "财联社深度", "url": "https://rsshub.app/cls/depth", "category": "depth"},
-]
+_DEFAULT_RSSHUB = "https://rsshub.app"
+
+
+def feeds_from_rsshub_base(base: str | None = None) -> list[dict[str, str]]:
+    """由 RSSHub base 生成财联社相关 feeds。"""
+    root = (base or _DEFAULT_RSSHUB).rstrip("/")
+    return [
+        {"name": "财联社电报", "url": f"{root}/cls/telegraph", "category": "telegraph"},
+        {"name": "财联社电报-加红", "url": f"{root}/cls/telegraph/red", "category": "telegraph_red"},
+        {"name": "财联社深度", "url": f"{root}/cls/depth", "category": "depth"},
+    ]
+
+
+FALLBACK_RSS_FEEDS = feeds_from_rsshub_base(_DEFAULT_RSSHUB)
 
 CLS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) money_more/0.2",
@@ -72,16 +81,19 @@ class RssFeedFetcher:
         timeout: int = 8,
         cls_direct: bool = True,
         use_fallback_rss: bool = False,
+        rsshub_base: str = "",
     ) -> None:
         if feeds:
             self.feeds = feeds
         elif use_fallback_rss:
-            self.feeds = FALLBACK_RSS_FEEDS
+            self.feeds = feeds_from_rsshub_base(rsshub_base or None)
         else:
             self.feeds = DEFAULT_RSS_FEEDS
         self.max_items_per_feed = max_items_per_feed
         self.timeout = timeout
         self.cls_direct = cls_direct
+        self.rsshub_base = (rsshub_base or "").rstrip("/")
+        self.use_fallback_rss = use_fallback_rss
 
     def fetch_all(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -91,6 +103,12 @@ class RssFeedFetcher:
             "cls_telegraph_important": [],
             "combined": [],
             "errors": [],
+            "meta": {
+                "cls_direct": self.cls_direct,
+                "use_fallback_rss": self.use_fallback_rss,
+                "rsshub_base": self.rsshub_base or "",
+                "flash_sources_hit": [],
+            },
         }
 
         if self.cls_direct:
@@ -99,6 +117,14 @@ class RssFeedFetcher:
                 cls_imp = self._fetch_cls_direct(important_only=True)
                 result["cls_telegraph"] = cls_all
                 result["cls_telegraph_important"] = cls_imp
+                hits = sorted(
+                    {
+                        str(x.get("source") or "")
+                        for x in (cls_all + cls_imp)
+                        if x.get("source")
+                    }
+                )
+                result["meta"]["flash_sources_hit"] = [h for h in hits if h]
             except Exception as exc:
                 result["errors"].append(f"财联社直连: {exc}")
 

@@ -63,17 +63,30 @@ class TushareConfig:
 
 
 @dataclass
+class DataConfig:
+    """行情/东财通路（第四波深治）。"""
+
+    eastmoney_force_direct: bool = True  # 调东财时绕过系统代理
+    # env_clear | session_trust_env_false | both | off
+    eastmoney_bypass: str = "both"
+
+
+@dataclass
 class RssConfig:
     enabled: bool = True
     cls_direct: bool = True
     max_items_per_feed: int = 10
-    use_fallback_rss: bool = False
+    use_fallback_rss: bool = False  # 无自建 RSSHub 前保持关
+    cls_timeout_sec: int = 8
+    rsshub_base: str = ""  # 例 https://rsshub.example.com；非空且 fallback 开则替换公网
     feeds: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
 class SentimentConfig:
     enabled: bool = True
+    role: str = "crowding_only"  # crowding_only | legacy_boost
+    mainline_pool_only: bool = True  # 综合舆情只打主线池（政策/联播/宏观）
 
 
 @dataclass
@@ -133,6 +146,8 @@ class AgentsConfig:
     # V4 Pro + thinking：大 payload 常见 60–120s，默认 300s
     llm_timeout_seconds: float = 300.0
     llm_max_retries: int = 2
+    # completion 上限（含 thinking）；决策大 JSON 易顶满 8192 → finish=length
+    llm_max_tokens: int = 32768
     cursor_timeout_seconds: float = 180.0
     cursor_max_retries: int = 2
     # 编排层等待单个分析师的上限（应略大于单次 timeout × (retries+1)）
@@ -171,6 +186,33 @@ class ScreenConfig:
     deep_theme_floor: int = 1  # 关注/优先板块中的防御主题软保底席位
     # False=中长线默认：同主题已满则宁缺毋滥，不把深度池用同质票填满
     deep_relax_theme_cap: bool = False
+    # 暴涨当日剔除新票（持仓强制进池不受限）；约 70%×涨跌停
+    exclude_surge_main_pct: float = 7.0  # 主板；0=关闭
+    exclude_surge_chi_star_pct: float = 14.0  # 创业板/科创；0=关闭
+    # 若 >0：两板共用该阈值（覆盖分板；不推荐默认）
+    exclude_surge_pct: float = 0.0
+    # P1：成交额改近 N 日均（0=仍用当日）；过滤与打分共用
+    amount_avg_days: int = 20
+
+
+@dataclass
+class MicrostructureConfig:
+    """微观结构门禁：重度单日禁；轻/中度跨轮确认。"""
+
+    severe_forbid_new_buys: bool = True
+    mild_confirm_rounds: int = 1  # 上轮已压力且本轮仍压力 → 禁新买
+    extreme_limit_ratio: float = 50.0  # 涨停/max(跌停,1) 达此视为极端拥挤
+
+
+@dataclass
+class FrameworkGateConfig:
+    """中长线框架闸：景气/矛盾/政策共振/风格升档。"""
+
+    prosperity_block_adds: bool = True  # 景气 down 禁止 buy/add
+    contradiction_haircut: float = 0.8  # 矛盾激活时置信度折扣
+    contradiction_block_offensive: bool = True  # 矛盾时禁止新开/加仓（偏进攻）
+    policy_requires_hard_resonance: bool = True
+    phase_upgrade_needs_confirm: bool = True
 
 
 @dataclass
@@ -181,7 +223,10 @@ class AppConfig:
     quality: QualityConfig = field(default_factory=QualityConfig)
     equity_bond: EquityBondConfig = field(default_factory=EquityBondConfig)
     screen: ScreenConfig = field(default_factory=ScreenConfig)
+    microstructure: MicrostructureConfig = field(default_factory=MicrostructureConfig)
+    framework_gates: FrameworkGateConfig = field(default_factory=FrameworkGateConfig)
     intelligence: IntelligenceConfig = field(default_factory=IntelligenceConfig)
+    data: DataConfig = field(default_factory=DataConfig)
     tushare: TushareConfig = field(default_factory=TushareConfig)
     rss: RssConfig = field(default_factory=RssConfig)
     sentiment: SentimentConfig = field(default_factory=SentimentConfig)
@@ -265,8 +310,11 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     equity_bond_raw = raw.get("equity_bond") or {}
     intel_raw = raw.get("intelligence") or {}
     tushare_raw = raw.get("tushare") or {}
+    data_raw = raw.get("data") or {}
     rss_raw = raw.get("rss") or {}
     sentiment_raw = raw.get("sentiment") or {}
+    micro_raw = raw.get("microstructure") or {}
+    framework_raw = raw.get("framework_gates") or {}
     trend_raw = raw.get("trend") or {}
     analysis_raw = raw.get("analysis") or {}
     schedule_raw = raw.get("schedule") or {}
@@ -301,7 +349,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         use_ssl = bool(use_ssl_raw) if use_ssl_raw is not None else (smtp_port == 465)
         use_tls = bool(use_tls_raw) if use_tls_raw is not None else (not use_ssl)
 
-    return AppConfig(
+    cfg = AppConfig(
         watch_sectors=list(raw.get("watch_sectors") or []),
         holdings=holdings,
         trading=TradingConfig(
@@ -328,14 +376,42 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             news_lookback_days=int(intel_raw.get("news_lookback_days", 14)),
         ),
         tushare=TushareConfig(enabled=bool(tushare_raw.get("enabled", True))),
+        data=DataConfig(
+            eastmoney_force_direct=bool(data_raw.get("eastmoney_force_direct", True)),
+            eastmoney_bypass=str(data_raw.get("eastmoney_bypass") or "both"),
+        ),
         rss=RssConfig(
             enabled=bool(rss_raw.get("enabled", True)),
             cls_direct=bool(rss_raw.get("cls_direct", True)),
             max_items_per_feed=int(rss_raw.get("max_items_per_feed", 10)),
             use_fallback_rss=bool(rss_raw.get("use_fallback_rss", False)),
+            cls_timeout_sec=int(rss_raw.get("cls_timeout_sec", 8)),
+            rsshub_base=str(rss_raw.get("rsshub_base") or "").strip(),
             feeds=list(rss_raw.get("feeds") or []),
         ),
-        sentiment=SentimentConfig(enabled=bool(sentiment_raw.get("enabled", True))),
+        sentiment=SentimentConfig(
+            enabled=bool(sentiment_raw.get("enabled", True)),
+            role=str(sentiment_raw.get("role") or "crowding_only"),
+            mainline_pool_only=bool(sentiment_raw.get("mainline_pool_only", True)),
+        ),
+        microstructure=MicrostructureConfig(
+            severe_forbid_new_buys=bool(micro_raw.get("severe_forbid_new_buys", True)),
+            mild_confirm_rounds=int(micro_raw.get("mild_confirm_rounds", 1)),
+            extreme_limit_ratio=float(micro_raw.get("extreme_limit_ratio", 50.0)),
+        ),
+        framework_gates=FrameworkGateConfig(
+            prosperity_block_adds=bool(framework_raw.get("prosperity_block_adds", True)),
+            contradiction_haircut=float(framework_raw.get("contradiction_haircut", 0.8)),
+            contradiction_block_offensive=bool(
+                framework_raw.get("contradiction_block_offensive", True)
+            ),
+            policy_requires_hard_resonance=bool(
+                framework_raw.get("policy_requires_hard_resonance", True)
+            ),
+            phase_upgrade_needs_confirm=bool(
+                framework_raw.get("phase_upgrade_needs_confirm", True)
+            ),
+        ),
         trend=TrendConfig(enabled=bool(trend_raw.get("enabled", True))),
         analysis=AnalysisConfig(
             prompt_version=str(analysis_raw.get("prompt_version", "v3-midlong-5d")),
@@ -378,6 +454,11 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             cursor_model=str(agents_raw.get("cursor_model") or "composer-2.5"),
             llm_timeout_seconds=float(agents_raw.get("llm_timeout_seconds", 300)),
             llm_max_retries=int(agents_raw.get("llm_max_retries", 2)),
+            llm_max_tokens=int(
+                os.getenv("LLM_MAX_TOKENS")
+                or agents_raw.get("llm_max_tokens")
+                or 32768
+            ),
             cursor_timeout_seconds=float(agents_raw.get("cursor_timeout_seconds", 180)),
             cursor_max_retries=int(agents_raw.get("cursor_max_retries", 2)),
             agent_wait_seconds=float(agents_raw.get("agent_wait_seconds", 960)),
@@ -405,6 +486,10 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             max_deep_per_theme=int(screen_raw.get("max_deep_per_theme", 5)),
             deep_theme_floor=int(screen_raw.get("deep_theme_floor", 1)),
             deep_relax_theme_cap=bool(screen_raw.get("deep_relax_theme_cap", False)),
+            exclude_surge_main_pct=float(screen_raw.get("exclude_surge_main_pct", 7.0)),
+            exclude_surge_chi_star_pct=float(screen_raw.get("exclude_surge_chi_star_pct", 14.0)),
+            exclude_surge_pct=float(screen_raw.get("exclude_surge_pct", 0.0)),
+            amount_avg_days=int(screen_raw.get("amount_avg_days", 20)),
         ),
         review_lookback_days=int(raw.get("review_lookback_days", 60)),
         paths=PathsConfig(
@@ -423,3 +508,14 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         claude_base_url=os.getenv("CLAUDE_BASE_URL", ""),
         project_root=root,
     )
+    try:
+        from money_more.data.ak_direct import (
+            set_eastmoney_bypass_mode,
+            set_eastmoney_force_direct,
+        )
+
+        set_eastmoney_force_direct(cfg.data.eastmoney_force_direct)
+        set_eastmoney_bypass_mode(cfg.data.eastmoney_bypass)
+    except Exception:
+        pass
+    return cfg

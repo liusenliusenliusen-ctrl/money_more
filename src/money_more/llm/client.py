@@ -50,6 +50,7 @@ class LLMClient:
             else (getattr(agents, "llm_timeout_seconds", 300) or 300)
         )
         resolved_retries = int(getattr(agents, "llm_max_retries", 2) or 2)
+        resolved_max_tokens = int(getattr(agents, "llm_max_tokens", 32768) or 32768)
         self.provider = provider or OpenAICompatProvider(
             name="deepseek",
             api_key=config.llm_api_key,
@@ -57,6 +58,7 @@ class LLMClient:
             model=config.llm_model,
             timeout=resolved_timeout,
             max_retries=resolved_retries,
+            max_tokens=resolved_max_tokens,
         )
         ok, reason = self.provider.available()
         if not ok:

@@ -21,6 +21,7 @@ class AnthropicProvider(LLMProvider):
         base_url: str | None = None,
         timeout: float = 90.0,
         max_retries: int = 2,
+        max_tokens: int = 32768,
         name: str = "claude",
     ) -> None:
         self.name = name
@@ -29,6 +30,7 @@ class AnthropicProvider(LLMProvider):
         self.base_url = (base_url or "").strip() or None
         self._timeout = timeout
         self._default_max_retries = int(max_retries)
+        self._max_tokens = int(max_tokens)
         self._compat: OpenAICompatProvider | None = None
 
     def available(self) -> tuple[bool, str]:
@@ -61,6 +63,7 @@ class AnthropicProvider(LLMProvider):
                     model=self.model,
                     timeout=self._timeout,
                     max_retries=retries,
+                    max_tokens=self._max_tokens,
                 )
             return self._compat.complete_json(
                 system_prompt,
@@ -87,7 +90,7 @@ class AnthropicProvider(LLMProvider):
             try:
                 msg = client.messages.create(
                     model=self.model,
-                    max_tokens=8192,
+                    max_tokens=self._max_tokens,
                     temperature=temperature,
                     system=system_prompt + "\n\n请只输出合法 JSON 对象，不要 Markdown 围栏。",
                     messages=[{"role": "user", "content": payload_text}],

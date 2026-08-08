@@ -450,7 +450,16 @@ def cmd_risk_check(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """环境与数据源自检，不调用 LLM。"""
-    from money_more.data.as_of import filter_records_by_date
+    from money_more.analysis.degrade_messages import flash_chain_tip, suggest_from_err_class
+    from money_more.data.ak_direct import eastmoney_bypass_mode, eastmoney_force_direct_enabled
+    from money_more.data.connectivity import (
+        format_doctor_table,
+        probe_eastmoney_spot,
+        probe_flash_news,
+        probe_hist_sample,
+        probe_hot_rank,
+        probe_sector_flow,
+    )
     from money_more.data.intelligence import IntelligenceFetcher
 
     config = load_config(args.config)
@@ -464,69 +473,125 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     else:
         console.print(f"[green]LLM[/green] model={config.llm_model} base={config.llm_base_url}")
 
+    console.print(
+        f"data: force_direct={eastmoney_force_direct_enabled()} "
+        f"bypass={eastmoney_bypass_mode()}"
+    )
+    console.print(
+        f"rss: enabled={config.rss.enabled} fallback={config.rss.use_fallback_rss} "
+        f"timeout={config.rss.cls_timeout_sec}s "
+        f"rsshub_base={config.rss.rsshub_base or '(none)'}"
+    )
+
     token = (config.tushare_token or "").strip()
     if not token or token.startswith("your_"):
         console.print(
-            "[yellow]TUSHARE_TOKEN 未配置或仍为占位符[/yellow] — "
-            "双源估值/公告/业绩预告/解禁将不可用，数据质量会降级。请到 https://tushare.pro 获取后写入 .env"
+            "[yellow]Tushare[/yellow] token 未配置 — 财务/公告/联播等将降级（升积分见 TODO）"
         )
     else:
         from money_more.data.tushare_source import TushareSource
 
         ts = TushareSource(token, as_of=run_date)
         if ts.probe():
-            console.print("[green]Tushare[/green] token OK")
+            console.print("[green]Tushare[/green] token OK（轻量 probe，未刷受限接口）")
         else:
             console.print(f"[red]Tushare[/red] {ts._probe_error}")
             ok = False
 
-    fetcher = MarketDataFetcher(as_of=run_date)
-    try:
-        ov = fetcher.fetch_market_overview()
-        console.print(
-            f"[green]Market[/green] indices={len(ov.get('indices') or [])} errors={len(ov.get('errors') or [])}"
-        )
-    except Exception as exc:
-        console.print(f"[red]Market fetch failed[/red] {exc}")
-        ok = False
-
+    console.print("\n[bold]连通探测[/bold]")
+    em = probe_eastmoney_spot()
+    hist = probe_hist_sample("600519")
+    hot = probe_hot_rank()
+    sector = probe_sector_flow()
     intel = IntelligenceFetcher(config, as_of=run_date)
+    flash = probe_flash_news(intel.rss)
+
+    rows = [
+        {
+            "check": "spot_env",
+            "ok": em["env_proxy"]["ok"],
+            "ms": em["env_proxy"]["latency_ms"],
+            "err": em["env_proxy"].get("err_class") or "",
+            "extra": f"rows={em['env_proxy'].get('rows')}",
+        },
+        {
+            "check": "spot_direct",
+            "ok": em["force_direct"]["ok"],
+            "ms": em["force_direct"]["latency_ms"],
+            "err": em["force_direct"].get("err_class") or "",
+            "extra": f"rows={em['force_direct'].get('rows')}",
+        },
+        {
+            "check": "hist_sample",
+            "ok": hist["ok"],
+            "ms": hist["latency_ms"],
+            "err": hist.get("err_class") or "",
+            "extra": f"rows={hist.get('rows')}",
+        },
+        {
+            "check": "hot_rank",
+            "ok": hot["ok"],
+            "ms": hot["latency_ms"],
+            "err": hot.get("err_class") or "",
+            "extra": f"src={hot.get('source')}",
+        },
+        {
+            "check": "sector_flow",
+            "ok": sector["ok"],
+            "ms": sector["latency_ms"],
+            "err": sector.get("err_class") or "",
+            "extra": f"src={sector.get('source')}",
+        },
+        {
+            "check": "flash_news",
+            "ok": flash.get("ok"),
+            "ms": flash.get("latency_ms"),
+            "err": flash.get("err_class") or "",
+            "extra": (
+                f"telegraph={flash.get('telegraph')} rss={flash.get('rss_items')} "
+                f"hits={flash.get('breakfast_like')}"
+            ),
+        },
+    ]
+    console.print(format_doctor_table(rows))
+    console.print(f"[cyan]建议[/cyan] {em.get('tip')}")
+    console.print(f"[cyan]快讯[/cyan] {flash_chain_tip()}")
+
+    if not em["env_proxy"]["ok"] and not em["force_direct"]["ok"]:
+        ok = False
+    if not hist["ok"]:
+        console.print("[yellow]hist 抽样失败[/yellow] — 筛股多日成交额将大量回退当日额")
+    for label, probe in (("hot", hot), ("sector", sector), ("flash", flash)):
+        if not probe.get("ok") and probe.get("err_class"):
+            console.print(
+                f"[yellow]{label}[/yellow] {suggest_from_err_class(probe.get('err_class'))}"
+            )
+
     try:
         macro = intel.fetch_macro_intelligence()
         stale = "policy_news_stale_or_empty" in (macro.get("errors") or [])
         console.print(
-            f"policy_news={len(macro.get('policy_news') or [])} "
+            f"macro: policy_news={len(macro.get('policy_news') or [])} "
             f"rss={len(macro.get('rss_telegraph') or [])} "
             f"macro_hard={list((macro.get('macro_hard') or {}).keys())} "
-            f"stale_flag={stale}"
+            f"stale={stale}"
         )
-        # 演示新鲜度过滤
-        demo = filter_records_by_date(
-            [{"日期": "2020-01-01"}, {"日期": run_date.isoformat()}], run_date, 7
-        )
-        console.print(f"freshness_filter demo kept={len(demo)}")
     except Exception as exc:
         console.print(f"[red]Intelligence failed[/red] {exc}")
         ok = False
 
-    # 持仓语义
     holdings = list(config.holdings or [])
     if not holdings:
-        console.print(
-            "[green]holdings[/green] 空 → 按**空仓**决策（未声明=空仓）。"
-            " 深度池全部来自 screen 量化遴选。"
-        )
+        console.print("[green]holdings[/green] 空 → 按空仓决策；深度池来自 screen")
     else:
         codes = "、".join(h.code for h in holdings[:8])
-        console.print(
-            f"[green]holdings[/green] 声明持仓 {len(holdings)} 只（强制进深度池）: {codes}"
-        )
+        console.print(f"[green]holdings[/green] {len(holdings)} 只: {codes}")
     screen = getattr(config, "screen", None)
     if screen:
         console.print(
             f"screen: enabled={screen.enabled} mode={screen.universe_mode} "
-            f"max_quant={screen.max_quant} max_deep={screen.max_deep} "
-            f"pe_max={screen.pe_max} exclude_neg_pe={screen.exclude_negative_pe}"
+            f"amount_avg_days={getattr(screen, 'amount_avg_days', 0)} "
+            f"max_deep={screen.max_deep}"
         )
 
     db = Database(config.resolve(config.paths.db))

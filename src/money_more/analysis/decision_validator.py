@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from money_more.analysis.wave2_enrich import enrich_sector_link, enrich_verify_window
+
 
 def validate_recommendations(
     recommendations: list[dict[str, Any]],
@@ -22,6 +24,9 @@ def validate_recommendations(
     global_liquidity: dict[str, Any] | None = None,
     ocf_quality: dict[str, dict[str, Any]] | None = None,
     equity_bond: dict[str, Any] | None = None,
+    framework_gates: dict[str, Any] | None = None,
+    sector_analyses: list[dict[str, Any]] | None = None,
+    research_by_code: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -29,6 +34,7 @@ def validate_recommendations(
     quotes_meta = quotes_meta or {}
     hard_gates = hard_gates or {}
     dq = data_quality or {}
+    fw = framework_gates or {}
     max_single = float(constraints.get("max_single_position_pct", 20))
     max_total = float(constraints.get("max_total_position_pct", 80))
     stop_loss_pct = float(constraints.get("stop_loss_pct", 8))
@@ -52,15 +58,36 @@ def validate_recommendations(
         regime_mult *= 0.8
         overrides.append(f"market_risk={market_risk_level} → 总仓位×0.8")
 
-    # 微观结构断点：收紧总仓、抑制新开仓（机制层信号）
+    # 微观结构：severity 分档 + 跨轮确认后的 forbid_new_buys
     micro = microstructure or {}
     micro_regime = str(micro.get("regime") or "normal")
-    if micro_regime == "liquidity_stress":
-        regime_mult *= 0.7
-        overrides.append("microstructure=liquidity_stress → 总仓位×0.7，抑制新开仓")
-    elif micro_regime == "crowded_sync":
-        regime_mult *= 0.85
-        overrides.append("microstructure=crowded_sync → 总仓位×0.85")
+    severity = str(micro.get("severity") or "none")
+    micro_mult = micro.get("regime_position_mult")
+    try:
+        if micro_mult is not None:
+            regime_mult *= float(micro_mult)
+            if float(micro_mult) < 0.999:
+                overrides.append(
+                    f"microstructure={micro_regime}/{severity} → 总仓位×{float(micro_mult):.2f}"
+                )
+        elif micro_regime == "liquidity_stress":
+            regime_mult *= 0.7
+            overrides.append("microstructure=liquidity_stress → 总仓位×0.7，抑制新开仓")
+        elif micro_regime == "crowded_sync":
+            regime_mult *= 0.85
+            overrides.append("microstructure=crowded_sync → 总仓位×0.85")
+    except (TypeError, ValueError):
+        pass
+    if micro.get("confirm_note"):
+        overrides.append(f"microstructure: {micro.get('confirm_note')}")
+    if fw.get("contradiction_active"):
+        try:
+            hair = float(fw.get("contradiction_haircut") or 0.8)
+        except (TypeError, ValueError):
+            hair = 0.8
+        if hair < 0.999:
+            regime_mult *= hair
+            overrides.append(f"framework contradiction → 总仓/进攻×{hair}")
 
     gl = global_liquidity or {}
     gl_stance = str(gl.get("stance") or "unknown")
@@ -88,7 +115,17 @@ def validate_recommendations(
         except (TypeError, ValueError):
             pass
 
-    forbid_new_buys = score < 0.4 or micro_regime == "liquidity_stress"
+    # 微观分档：以 enrich 后的 forbid_new_buys 为准；无该字段时回退旧 stress 逻辑
+    if "forbid_new_buys" in micro:
+        forbid_new_buys = score < 0.4 or bool(micro.get("forbid_new_buys"))
+    else:
+        forbid_new_buys = score < 0.4 or micro_regime == "liquidity_stress"
+    block_offensive = bool(fw.get("block_offensive_buys"))
+    prosperity_map = fw.get("prosperity_by_code") or {}
+    inflection_map = fw.get("inflection_by_code") or {}
+    prosperity_block = bool(fw.get("prosperity_block_adds", True))
+    need_resonance = bool(fw.get("policy_requires_hard_resonance"))
+    resonance_ok = bool(fw.get("hard_resonance_ok", True))
     info_map = info_completeness or {}
     earn_map = earnings_revisions or {}
     ocf_map = ocf_quality or {}
@@ -124,6 +161,22 @@ def validate_recommendations(
         elif action in ("观望", "观察"):
             action = "watch"
         rec["action"] = action
+
+        # Wave2：sector_link + 验证窗口（缺则补默认，不整轮失败）
+        link, link_note = enrich_sector_link(
+            rec,
+            sector_analyses=sector_analyses,
+            research_by_code=research_by_code,
+        )
+        rec["sector_link"] = link
+        if link.get("sector") and not rec.get("sector_tag"):
+            rec["sector_tag"] = link["sector"]
+        if link_note:
+            overrides.append(link_note)
+        verify_fields, verify_note = enrich_verify_window(rec)
+        rec.update(verify_fields)
+        if verify_note:
+            overrides.append(verify_note)
 
         # 空仓硬校验：禁止 hold/sell/add（无真实持仓可操作）
         if is_empty_book and action in ("hold", "sell", "add"):
@@ -209,15 +262,67 @@ def validate_recommendations(
 
         if action in ("buy", "hold", "add"):
             if forbid_new_buys and action == "buy" and code not in holding_by_code:
-                if micro_regime == "liquidity_stress":
-                    overrides.append(f"{code}: 微观结构liquidity_stress禁止新买 → watch")
-                elif score < 0.4:
-                    overrides.append(f"{code}: 数据质量过低禁止新买 → watch")
-                else:
-                    overrides.append(f"{code}: 风控禁止新买 → watch")
+                reason = (
+                    f"微观结构{severity or micro_regime}禁新买"
+                    if micro.get("forbid_new_buys")
+                    else ("数据质量过低禁新买" if score < 0.4 else "风控禁新买")
+                )
+                overrides.append(f"{code}: {reason} → watch")
                 action = "watch"
                 rec["action"] = "watch"
                 pos_f = 0.0
+            if forbid_new_buys and action == "add" and bool(micro.get("forbid_new_buys")):
+                overrides.append(f"{code}: 微观结构禁加仓 → hold")
+                action = "hold"
+                rec["action"] = "hold"
+
+            # 景气 down：禁止 buy/add（拐点信号+证据可豁免）
+            prosp = str(prosperity_map.get(code) or "").lower()
+            if prosperity_block and prosp == "down" and action in ("buy", "add"):
+                inf = inflection_map.get(code) or {}
+                own_inf = rec.get("inflection_signal")
+                own_ev = rec.get("inflection_evidence") or []
+                if isinstance(own_ev, str):
+                    own_ev = [own_ev] if own_ev.strip() else []
+                exempt = bool(inf.get("signal") and inf.get("evidence")) or (
+                    bool(own_inf) and bool(own_ev)
+                )
+                if exempt:
+                    overrides.append(f"{code}: 景气down但拐点豁免{action}")
+                    rec["inflection_exemption"] = True
+                    rec["inflection_evidence"] = list(inf.get("evidence") or own_ev)[:4]
+                else:
+                    overrides.append(f"{code}: 板块景气down禁止{action} → watch/hold")
+                    action = "hold" if code in holding_by_code else "watch"
+                    rec["action"] = action
+                    if action == "watch":
+                        pos_f = 0.0
+
+            # 矛盾激活：禁止进攻向 buy/add
+            if block_offensive and action in ("buy", "add"):
+                overrides.append(f"{code}: 硬事实/叙事矛盾激活 → 禁止进攻{action}")
+                action = "hold" if code in holding_by_code else "watch"
+                rec["action"] = action
+                if action == "watch":
+                    pos_f = 0.0
+
+            # 政策须硬共振：无共振时不得新开/加仓
+            if need_resonance and not resonance_ok and action in ("buy", "add"):
+                overrides.append(f"{code}: 硬共振不足(政策单独不够) → 禁止{action}")
+                action = "hold" if code in holding_by_code else "watch"
+                rec["action"] = action
+                if action == "watch":
+                    pos_f = 0.0
+
+            # 矛盾 haircut 置信度
+            try:
+                ch = float(fw.get("contradiction_haircut") or 1.0)
+                if ch < 0.999 and action in ("buy", "add", "hold"):
+                    conf_f = max(0.05, conf_f * ch)
+                    rec["confidence"] = conf_f
+            except (TypeError, ValueError):
+                pass
+
             # 置信度缩放仓位
             sized = pos_f * (0.5 + 0.5 * conf_f)
             # ATR% 波动率缩放：波动越高仓位越低
@@ -305,18 +410,25 @@ def validate_recommendations(
     for code, h in holding_by_code.items():
         if code not in present:
             ref = float(h.get("cost") or 0) or quotes.get(code)
-            out.append(
-                {
-                    "code": code,
-                    "action": "hold",
-                    "confidence": 0.4,
-                    "position_pct": 0.0,
-                    "rationale": "系统补全：持仓未出现在 LLM 建议中，默认 hold",
-                    "stop_loss": round(float(ref) * (1 - stop_loss_pct / 100), 4) if ref else None,
-                    "target_price": round(float(ref) * (1 + take_profit_pct / 100), 4) if ref else None,
-                    "validation": {"auto_filled": True},
-                }
+            filled = {
+                "code": code,
+                "action": "hold",
+                "confidence": 0.4,
+                "position_pct": 0.0,
+                "rationale": "系统补全：持仓未出现在 LLM 建议中，默认 hold",
+                "stop_loss": round(float(ref) * (1 - stop_loss_pct / 100), 4) if ref else None,
+                "target_price": round(float(ref) * (1 + take_profit_pct / 100), 4) if ref else None,
+                "validation": {"auto_filled": True},
+            }
+            link, _ = enrich_sector_link(
+                filled, sector_analyses=sector_analyses, research_by_code=research_by_code
             )
+            filled["sector_link"] = link
+            if link.get("sector"):
+                filled["sector_tag"] = link["sector"]
+            vf, _ = enrich_verify_window(filled)
+            filled.update(vf)
+            out.append(filled)
             overrides.append(f"{code}: 补全缺失持仓建议 → hold")
 
     # 总仓位缩放

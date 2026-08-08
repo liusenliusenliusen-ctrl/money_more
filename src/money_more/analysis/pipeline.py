@@ -16,6 +16,11 @@ from money_more.analysis.factor_scorecard import DEFAULT_WEIGHTS, build_stock_sc
 from money_more.analysis.invalidation import evaluate_invalidation
 from money_more.analysis.earnings_revision import assess_earnings_revision
 from money_more.analysis.info_completeness import assess_info_completeness
+from money_more.analysis.framework_gates import (
+    build_framework_gate_state,
+    clamp_market_optimism,
+)
+from money_more.analysis.wave2_enrich import build_dimension_diff_table, build_sector_coverage
 from money_more.analysis.market_microstructure import assess_market_microstructure
 from money_more.analysis.narrative_radar import (
     build_narrative_radar,
@@ -25,7 +30,7 @@ from money_more.analysis.narrative_radar import (
 from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
-from money_more.config import AppConfig
+from money_more.config import AppConfig, FrameworkGateConfig
 from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code, sector_money_flow_present
 from money_more.data.intelligence import IntelligenceFetcher
 from money_more.llm.client import (
@@ -139,7 +144,13 @@ class DecisionPipeline:
             spot_df = self.fetcher._get_spot_df()
         except Exception:
             spot_df = None
-        market_micro = assess_market_microstructure(market_snapshot, spot_df)
+        prior_micro = self._prior_microstructure(prior_context)
+        market_micro = assess_market_microstructure(
+            market_snapshot,
+            spot_df,
+            config=getattr(self.config, "microstructure", None),
+            prior_micro=prior_micro,
+        )
         result["market_microstructure"] = market_micro
 
         if intel_enabled:
@@ -233,6 +244,19 @@ class DecisionPipeline:
             market_analysis.get("policy_market_scenario"),
             radar,
         )
+        # 框架闸：升乐观过快时压回（景气映射待板块/个股后再补全）
+        early_fw = build_framework_gate_state(
+            config=getattr(self.config, "framework_gates", None) or FrameworkGateConfig(),
+            market_analysis=market_analysis,
+            macro_intel=macro_intel if intel_enabled else {},
+            microstructure=market_micro,
+            prior_context=prior_context,
+        )
+        market_analysis, phase_overrides = clamp_market_optimism(market_analysis, early_fw)
+        market_analysis["market_microstructure"] = market_micro
+        result["framework_gates_early"] = early_fw
+        if phase_overrides:
+            result.setdefault("framework_overrides", []).extend(phase_overrides)
         try:
             self.db.save_market_snapshot(run_id, market_snapshot, market_analysis)
         except Exception as db_exc:
@@ -241,21 +265,38 @@ class DecisionPipeline:
 
         watch_sectors = list(self.config.watch_sectors)
         auto_n = int(getattr(getattr(self.config, "screen", None), "auto_sector_from_flow", 3) or 0)
-        auto_sectors = (
-            self._auto_sectors_from_flow(macro_intel, watch_sectors, limit=auto_n) if auto_n > 0 else []
+        auto_meta = (
+            self._auto_sectors_from_flow(
+                macro_intel,
+                watch_sectors,
+                limit=auto_n,
+                prior_context=prior_context,
+            )
+            if auto_n > 0
+            else {"all": [], "observe": [], "promote": []}
         )
+        auto_sectors = list(auto_meta.get("all") or [])
+        auto_observe = list(auto_meta.get("observe") or [])
+        auto_promote = list(auto_meta.get("promote") or [])
         result["sector_universe"] = {
             "watch_sectors": watch_sectors,
             "auto_sectors": auto_sectors,
+            "auto_sectors_observe": auto_observe,
+            "auto_sectors_promote": auto_promote,
             "note": (
-                "B1 含「关注板块」+ 资金流入自动扩板块；个股漏斗另见筛股说明。"
+                "B1 含「关注板块」+ 资金流自动扩（单日=观察扩；多日/叙事重叠=升权扩）；个股漏斗另见筛股说明。"
                 if auto_sectors
                 else "B1 仅覆盖 config.watch_sectors；个股漏斗可更宽（见 screen.universe_mode）。"
             ),
         }
         sector_analyses: list[dict[str, Any]] = []
         result["sectors"] = sector_analyses
-        for sector, src in [(s, "watch") for s in watch_sectors] + [(s, "auto_flow") for s in auto_sectors]:
+        auto_src_map = {s: "auto_promote" for s in auto_promote}
+        for s in auto_observe:
+            auto_src_map.setdefault(s, "auto_observe")
+        for sector, src in [(s, "watch") for s in watch_sectors] + [
+            (s, auto_src_map.get(s, "auto_flow")) for s in auto_sectors
+        ]:
             try:
                 snap = self.fetcher.fetch_sector_data(sector)
             except Exception as exc:
@@ -272,18 +313,21 @@ class DecisionPipeline:
                     snap["intelligence"] = sector_intel
 
             try:
+                sector_payload = {
+                    "date": run_date.isoformat(),
+                    "sector_data": snap,
+                    "sector_intelligence": sector_intel,
+                    "intelligence_digest": intel_digest,
+                    "market_context": market_analysis,
+                    "past_lessons": result["lessons_used"],
+                    "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
+                    "sector_source": src,
+                }
+                if src == "auto_observe":
+                    sector_payload = self._compact_sector_llm_payload(sector_payload)
                 analysis = self.llm.analyze_json(
-                    SECTOR_SYSTEM,
-                    {
-                        "date": run_date.isoformat(),
-                        "sector_data": snap,
-                        "sector_intelligence": sector_intel,
-                        "intelligence_digest": intel_digest,
-                        "market_context": market_analysis,
-                        "past_lessons": result["lessons_used"],
-                        "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
-                        "sector_source": src,
-                    },
+                    SECTOR_SYSTEM if src != "auto_observe" else self._sector_system_compact(),
+                    sector_payload,
                     required_keys=["sector", "worth_research", "summary", "confidence"],
                 )
             except Exception as exc:
@@ -770,6 +814,21 @@ class DecisionPipeline:
                     + " | 失效条件已触发: "
                     + "; ".join(inv.get("fired") or [])
                 ).strip(" |")
+        fw_state = build_framework_gate_state(
+            config=getattr(self.config, "framework_gates", None) or FrameworkGateConfig(),
+            market_analysis=market_analysis,
+            macro_intel=macro_intel or {},
+            microstructure=market_micro,
+            prior_context=prior_context,
+            sector_analyses=sector_analyses,
+            stock_analyses=stock_analyses,
+        )
+        result["framework_gates"] = fw_state
+        research_by_code: dict[str, Any] = {}
+        for s in stock_analyses:
+            c = normalize_code(str(s.get("code") or ""))
+            if c:
+                research_by_code[c] = s.get("analysis") or {}
         validated, overrides = validate_recommendations(
             raw_recs,
             holdings=holdings_enriched,
@@ -788,8 +847,17 @@ class DecisionPipeline:
             equity_bond=result.get("equity_bond")
             or (macro_intel or {}).get("equity_bond")
             or {},
+            framework_gates=fw_state,
+            sector_analyses=sector_analyses,
+            research_by_code=research_by_code,
         )
-        overrides = debate_overrides + overrides
+        result["sector_coverage"] = build_sector_coverage(
+            sector_analyses,
+            validated,
+            deep_codes=stock_codes,
+            min_priority="high",
+        )
+        overrides = list(result.get("framework_overrides") or []) + debate_overrides + overrides
         result["validation_overrides"] = overrides
         after_risk_snap = snapshot_recommendations(validated)
         final_portfolio_summary = build_final_portfolio_summary(
@@ -943,6 +1011,7 @@ class DecisionPipeline:
         result["review_window"] = review_result.get("review_window")
         result["review_window_note"] = review_result.get("review_window_note")
         result["action_lifecycles"] = review_result.get("action_lifecycles")
+        result["dimension_diff_table"] = review_result.get("dimension_diff_table") or []
 
         # 更新纸面持仓盯市
         try:
@@ -1013,6 +1082,7 @@ class DecisionPipeline:
             max_items=24,
         )
         current_compact = compact_current_view(current_view)
+        dimension_diff_table = build_dimension_diff_table(prior_dims, current_compact)
 
         historical_reports = load_historical_reports_corpus(
             reports_dir,
@@ -1040,6 +1110,7 @@ class DecisionPipeline:
                 "sentiment_lessons": [],
                 "review_window": review_window,
                 "action_lifecycles": [],
+                "dimension_diff_table": dimension_diff_table,
             }
 
         enriched: list[dict[str, Any]] = []
@@ -1113,6 +1184,7 @@ class DecisionPipeline:
             {
                 "date": run_date.isoformat(),
                 "review_window": review_window,
+                "dimension_diff_table": dimension_diff_table,
                 "pending_recommendations": enriched,
                 "prior_dimension_forecasts": prior_dims,
                 "action_lifecycles": action_lifecycles,
@@ -1122,6 +1194,7 @@ class DecisionPipeline:
                 "historical_reports": historical_reports,
                 "trend_report_summary": self._trend_summary_for_llm(existing_trend),
                 "instruction": (
+                    "0) 先解释 dimension_diff_table（忽略近5日噪声，看约60日位置与基本面匹配）；"
                     "1) 用窗口内 prior_dimension_forecasts 对照 current_view，复盘 market/sector/narrative/linkage；"
                     "2) 个股用 status（tracking/thesis_intact/invalidation_fired/...），禁止仅凭 return_pct 打 wrong/correct；"
                     "3) 对错都要写清有效信号或归因；动作链看 action_lifecycles。"
@@ -1220,6 +1293,7 @@ class DecisionPipeline:
             "review_window_note": review_payload.get("review_window_note")
             or (review_window.get("note") if isinstance(review_window, dict) else ""),
             "action_lifecycles": action_lifecycles,
+            "dimension_diff_table": dimension_diff_table,
         }
 
     def _insert_unique_lessons(self, lessons: list[Any], category: str) -> None:
@@ -1363,32 +1437,124 @@ class DecisionPipeline:
         watch_sectors: list[str],
         *,
         limit: int = 3,
-    ) -> list[str]:
-        """从板块资金流入/涨幅前列自动扩 LLM 板块覆盖。"""
+        prior_context: dict[str, Any] | None = None,
+    ) -> dict[str, list[str]]:
+        """资金流自动扩：单日流入=观察扩；升权需双榜/叙事/上轮观察确认。"""
+        empty: dict[str, list[str]] = {"all": [], "observe": [], "promote": []}
         if limit <= 0:
-            return []
+            return empty
         flow = macro_intel.get("sector_money_flow") or {}
         seen = {str(s).strip() for s in watch_sectors if s}
         skip_keys = ("沪深", "上证", "深证", "创业板指", "科创50", "中证", "北证")
-        out: list[str] = []
-        rows: list[Any] = []
-        rows.extend(flow.get("top_inflow") or [])
-        rows.extend(flow.get("top_gainers") or [])
-        for row in rows:
-            if not isinstance(row, dict):
+
+        def _names(rows: Any) -> list[str]:
+            out: list[str] = []
+            for row in rows or []:
+                if not isinstance(row, dict):
+                    continue
+                name = str(
+                    row.get("板块") or row.get("行业") or row.get("名称") or row.get("name") or ""
+                ).strip()
+                if not name or name in seen:
+                    continue
+                if any(k in name for k in skip_keys):
+                    continue
+                out.append(name)
+            return out
+
+        inflow = _names(flow.get("top_inflow"))
+        gainers = _names(flow.get("top_gainers"))
+        inflow_set = set(inflow)
+        gainer_set = set(gainers)
+
+        radar = macro_intel.get("narrative_radar") or {}
+        radar_text = " ".join(
+            str(x)
+            for x in (
+                radar.get("themes")
+                or radar.get("topics")
+                or radar.get("hot_narratives")
+                or radar.get("items")
+                or []
+            )
+            if x
+        )
+        if isinstance(radar.get("summary"), str):
+            radar_text += " " + radar["summary"]
+
+        prior_auto: set[str] = set()
+        for hist in (prior_context or {}).get("market_history") or []:
+            if not isinstance(hist, dict):
                 continue
-            name = str(
-                row.get("板块") or row.get("行业") or row.get("名称") or row.get("name") or ""
-            ).strip()
-            if not name or name in seen:
+            for key in ("auto_sectors", "auto_sectors_observe", "sectors"):
+                vals = hist.get(key) or []
+                if isinstance(vals, list):
+                    prior_auto.update(str(v).strip() for v in vals if v)
+
+        promote: list[str] = []
+        observe: list[str] = []
+        ordered = list(dict.fromkeys(inflow + gainers))
+        for name in ordered:
+            if name in seen:
                 continue
-            if any(k in name for k in skip_keys):
-                continue
-            out.append(name)
-            seen.add(name)
-            if len(out) >= limit:
+            in_both = name in inflow_set and name in gainer_set
+            radar_hit = bool(radar_text) and (name in radar_text or name.replace("板块", "") in radar_text)
+            prior_hit = name in prior_auto
+            if in_both or radar_hit or prior_hit:
+                if len(promote) < limit:
+                    promote.append(name)
+                    seen.add(name)
+            else:
+                if len(observe) + len(promote) < limit * 2 and len(observe) < limit:
+                    observe.append(name)
+                    seen.add(name)
+            if len(promote) >= limit and len(observe) >= limit:
                 break
+
+        # 升权优先进 LLM；观察扩补足至 limit 总量（升权+观察合计不超过 limit*2，LLM 用 all≤limit+observe）
+        all_names = list(dict.fromkeys(promote + observe))[: max(limit, len(promote) + min(len(observe), limit))]
+        return {"all": all_names, "observe": observe, "promote": promote}
+
+    @staticmethod
+    def _compact_sector_llm_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        """观察扩板块：砍大表，省 token。"""
+        out = dict(payload)
+        snap = dict(out.get("sector_data") or {})
+        for key in ("constituents", "raw", "detail_table", "stocks"):
+            if key in snap and isinstance(snap[key], list) and len(snap[key]) > 8:
+                snap[key] = snap[key][:8]
+        out["sector_data"] = snap
+        intel = dict(out.get("sector_intelligence") or {})
+        for key in ("news", "research", "announcements", "items"):
+            if key in intel and isinstance(intel[key], list):
+                intel[key] = intel[key][:5]
+        out["sector_intelligence"] = intel
+        digest = out.get("intelligence_digest")
+        if isinstance(digest, dict):
+            out["intelligence_digest"] = {
+                k: digest[k]
+                for k in ("summary", "policy_pulse", "risk_flags", "key_points")
+                if k in digest
+            }
+        elif isinstance(digest, str) and len(digest) > 800:
+            out["intelligence_digest"] = digest[:800]
+        lessons = out.get("past_lessons")
+        if isinstance(lessons, list):
+            out["past_lessons"] = lessons[:3]
+        series = out.get("prior_sector_series")
+        if isinstance(series, list):
+            out["prior_sector_series"] = series[:3]
+        out["compact_mode"] = "auto_observe"
         return out
+
+    @staticmethod
+    def _sector_system_compact() -> str:
+        """观察扩用短 schema，仍要求 JSON 契约。"""
+        return (
+            SECTOR_SYSTEM
+            + "\n\n## 本轮为「观察扩」板块：请输出更短 summary（≤80字），"
+            "catalysts/risks 各最多 2 条；勿复述大段原始行情表。"
+        )
 
     @staticmethod
     def _merge_screen_into_dq(
@@ -1440,6 +1606,24 @@ class DecisionPipeline:
         return out
 
     @staticmethod
+    @staticmethod
+    def _prior_microstructure(prior_context: dict[str, Any] | None) -> dict[str, Any] | None:
+        hist = (prior_context or {}).get("market_history") or []
+        if not hist:
+            return None
+        first = hist[0] or {}
+        regime = first.get("micro_regime") or first.get("microstructure_regime")
+        severity = first.get("micro_severity")
+        if not regime and not severity:
+            return None
+        return {
+            "regime": regime or "normal",
+            "severity": severity or "",
+            "pending_confirm": bool(first.get("micro_pending_confirm")),
+            "forbid_new_buys": bool(first.get("micro_forbid_new_buys")),
+        }
+
+    @staticmethod
     def _assess_data_quality(macro_intel: dict[str, Any]) -> dict[str, Any]:
         errors = list(macro_intel.get("errors") or [])
         err_text = " ".join(errors).lower()
@@ -1457,6 +1641,7 @@ class DecisionPipeline:
             )
         )
         has_macro_news = bool(macro_intel.get("tushare_macro_news"))
+        hard = macro_intel.get("macro_hard") or {}
         checks = {
             "policy_news": bool(macro_intel.get("policy_news")),
             "global_news": bool(macro_intel.get("global_news") or macro_intel.get("global_news_sina")),
@@ -1471,7 +1656,8 @@ class DecisionPipeline:
             "macro_hard_echo": bool(macro_intel.get("macro_hard_echo")),
             "tushare_macro": has_macro_news,
             "sector_money_flow": sector_money_flow_present(macro_intel.get("sector_money_flow")),
-            "macro_hard": bool(macro_intel.get("macro_hard")),
+            "macro_hard": bool(hard),
+            "social_financing": bool(hard.get("social_financing") or hard.get("shrzgm")),
             "global_liquidity": bool(
                 (macro_intel.get("global_liquidity") or {}).get("stance")
                 and (macro_intel.get("global_liquidity") or {}).get("stance") != "unknown"
@@ -1480,12 +1666,22 @@ class DecisionPipeline:
         missing = [k for k, ok in checks.items() if not ok]
         if "policy_news_stale_or_empty" in errors:
             missing.append("policy_news_fresh")
+        policy_src = str(macro_intel.get("policy_news_source") or "")
         score = round(sum(1 for ok in checks.values() if ok) / max(len(checks), 1), 2)
         # Tushare 不可用且替代源也无法补宏观新闻时才扣分
         if tushare_bad and not has_macro_news:
             score = round(max(0.0, score - 0.15), 2)
             missing.append("tushare_available")
         degraded = score < 0.6
+        notes = []
+        if degraded:
+            notes.append("DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓")
+        else:
+            notes.append("数据完整度尚可")
+        if policy_src == "rss_global_extract":
+            notes.append("政策源=快讯抽取(≠正式联播)")
+        if macro_intel.get("tushare_macro_backfill"):
+            notes.append("Tushare宏观新闻已用替代源回填")
         return {
             "score": score,
             "checks": checks,
@@ -1494,7 +1690,8 @@ class DecisionPipeline:
             "errors_sample": errors[:8],
             "degraded": degraded,
             "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
-            "note": "DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓" if degraded else "数据完整度尚可",
+            "policy_news_source": policy_src or None,
+            "note": "；".join(notes),
         }
 
     @staticmethod

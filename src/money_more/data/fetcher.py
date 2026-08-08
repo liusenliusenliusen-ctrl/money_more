@@ -7,6 +7,7 @@ from typing import Any
 import akshare as ak
 import pandas as pd
 
+from money_more.data.ak_direct import annotate_em_error, eastmoney_direct_session
 from money_more.data.as_of import parse_as_of, ymd
 
 
@@ -104,7 +105,11 @@ def fetch_sector_board_summary() -> tuple[pd.DataFrame, str, list[str]]:
     ]
     for source, caller, column_map in attempts:
         try:
-            raw = caller()
+            if source == "em_rank":
+                with eastmoney_direct_session():
+                    raw = caller()
+            else:
+                raw = caller()
             if raw is None or raw.empty:
                 errors.append(f"sector_flow_{source}_empty")
                 continue
@@ -114,7 +119,7 @@ def fetch_sector_board_summary() -> tuple[pd.DataFrame, str, list[str]]:
                 continue
             return normalized, source, errors
         except Exception as exc:
-            errors.append(f"板块资金({source}): {exc}")
+            errors.append(annotate_em_error(f"板块资金({source})", exc))
     return pd.DataFrame(), "", errors
 
 
@@ -175,13 +180,14 @@ def _canonicalize_spot_df(df: pd.DataFrame | None) -> pd.DataFrame:
 def _fetch_em_split_spot() -> pd.DataFrame:
     """东财分市场快照（沪/深/北），全量 push2 失败时有时仍可通。"""
     parts: list[pd.DataFrame] = []
-    for fn_name in ("stock_sh_a_spot_em", "stock_sz_a_spot_em", "stock_bj_a_spot_em"):
-        fn = getattr(ak, fn_name, None)
-        if fn is None:
-            continue
-        raw = fn()
-        if raw is not None and not raw.empty:
-            parts.append(raw)
+    with eastmoney_direct_session():
+        for fn_name in ("stock_sh_a_spot_em", "stock_sz_a_spot_em", "stock_bj_a_spot_em"):
+            fn = getattr(ak, fn_name, None)
+            if fn is None:
+                continue
+            raw = fn()
+            if raw is not None and not raw.empty:
+                parts.append(raw)
     if not parts:
         return pd.DataFrame()
     merged = pd.concat(parts, ignore_index=True)
@@ -212,10 +218,14 @@ def fetch_spot_with_fallback(
     ]
     for source, caller in attempts:
         try:
-            raw = caller()
+            if source.startswith("em"):
+                with eastmoney_direct_session():
+                    raw = caller()
+            else:
+                raw = caller()
             df = _canonicalize_spot_df(raw)
             if df.empty:
-                errors.append(f"spot_{source}_empty")
+                errors.append(annotate_em_error(f"spot_{source}_empty", "empty"))
                 continue
             try:
                 disk.set(cache_key, df.to_dict(orient="records"), ttl_sec=3600)
@@ -225,7 +235,7 @@ def fetch_spot_with_fallback(
                 errors.append(f"spot_fallback:{source}")
             return df, source, errors
         except Exception as exc:
-            errors.append(f"spot({source}): {exc}")
+            errors.append(annotate_em_error(f"spot({source})", exc))
 
     stale = disk.get_stale(cache_key)
     if isinstance(stale, list) and stale:
@@ -289,12 +299,13 @@ def fetch_hot_rank_with_fallback(*, limit: int = 100) -> tuple[pd.DataFrame, str
     """市场人气榜：东财 push2 → 雪球关注榜（push2 失败时备源）。"""
     errors: list[str] = []
     try:
-        raw = ak.stock_hot_rank_em()
+        with eastmoney_direct_session():
+            raw = ak.stock_hot_rank_em()
         if raw is not None and not raw.empty:
             return raw.head(limit), "em", errors
         errors.append("hot_rank_em_empty")
     except Exception as exc:
-        errors.append(f"hot_rank(em): {exc}")
+        errors.append(annotate_em_error("hot_rank(em)", exc))
 
     try:
         follow = ak.stock_hot_follow_xq()
@@ -369,20 +380,23 @@ class MarketDataFetcher:
         return self._spot_df
 
     def _fetch_daily_hist(self, code: str, start: str, end: str) -> pd.DataFrame:
-        """优先东方财富 K 线，失败则回退新浪日线。"""
+        """优先东方财富 K 线（直连+一次重试），失败则回退新浪日线。"""
         errors: list[str] = []
-        try:
-            df = ak.stock_zh_a_hist(
-                symbol=normalize_code(code),
-                period="daily",
-                start_date=start,
-                end_date=end,
-                adjust="qfq",
-            )
-            if df is not None and not df.empty:
-                return df
-        except Exception as exc:
-            errors.append(str(exc))
+        for attempt in range(2):
+            try:
+                with eastmoney_direct_session():
+                    df = ak.stock_zh_a_hist(
+                        symbol=normalize_code(code),
+                        period="daily",
+                        start_date=start,
+                        end_date=end,
+                        adjust="qfq",
+                    )
+                if df is not None and not df.empty:
+                    return df
+                errors.append(annotate_em_error(f"em_hist_empty(attempt={attempt + 1})", "empty"))
+            except Exception as exc:
+                errors.append(annotate_em_error(f"em_hist({attempt + 1})", exc))
 
         df = ak.stock_zh_a_daily(symbol=code_with_prefix(code), adjust="qfq")
         if df is None or df.empty:
@@ -731,30 +745,44 @@ class MarketDataFetcher:
         except Exception as exc:
             result["errors"].append(f"新闻: {exc}")
 
-        # 个股资金流向（东财）
-        try:
-            flow = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith(("5", "6", "9")) else "sz")
-            if flow is not None and not flow.empty:
-                flow = flow.copy()
-                date_col = "日期" if "日期" in flow.columns else None
-                if date_col:
-                    flow[date_col] = pd.to_datetime(flow[date_col], errors="coerce")
-                    flow = flow[flow[date_col] <= pd.Timestamp(self.as_of)]
-                tail = flow.tail(20)
-                net_col = next(
-                    (c for c in ("主力净流入-净额", "今日主力净流入-净额", "净额") if c in tail.columns),
-                    None,
-                )
-                if net_col:
-                    nets = pd.to_numeric(tail[net_col], errors="coerce")
-                    result["fund_flow"] = {
-                        "net_3d": _safe_float(nets.tail(3).sum()),
-                        "net_5d": _safe_float(nets.tail(5).sum()),
-                        "net_20d": _safe_float(nets.tail(20).sum()),
-                        "recent": tail.tail(5).to_dict(orient="records"),
-                    }
-        except Exception as exc:
-            result["errors"].append(f"资金流向: {exc}")
+        # 个股资金流向（东财；直连 + 一次重试）
+        flow_errs: list[str] = []
+        for attempt in range(2):
+            try:
+                with eastmoney_direct_session():
+                    flow = ak.stock_individual_fund_flow(
+                        stock=code,
+                        market="sh" if code.startswith(("5", "6", "9")) else "sz",
+                    )
+                if flow is not None and not flow.empty:
+                    flow = flow.copy()
+                    date_col = "日期" if "日期" in flow.columns else None
+                    if date_col:
+                        flow[date_col] = pd.to_datetime(flow[date_col], errors="coerce")
+                        flow = flow[flow[date_col] <= pd.Timestamp(self.as_of)]
+                    tail = flow.tail(20)
+                    net_col = next(
+                        (
+                            c
+                            for c in ("主力净流入-净额", "今日主力净流入-净额", "净额")
+                            if c in tail.columns
+                        ),
+                        None,
+                    )
+                    if net_col:
+                        nets = pd.to_numeric(tail[net_col], errors="coerce")
+                        result["fund_flow"] = {
+                            "net_3d": _safe_float(nets.tail(3).sum()),
+                            "net_5d": _safe_float(nets.tail(5).sum()),
+                            "net_20d": _safe_float(nets.tail(20).sum()),
+                            "recent": tail.tail(5).to_dict(orient="records"),
+                        }
+                    break
+                flow_errs.append(f"empty(attempt={attempt + 1})")
+            except Exception as exc:
+                flow_errs.append(str(exc))
+        else:
+            result["errors"].append("资金流向: " + "; ".join(flow_errs) if flow_errs else "资金流向: unavailable")
 
         return result
 
