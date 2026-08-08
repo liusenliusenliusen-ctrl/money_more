@@ -9,6 +9,7 @@
 **第二波（已落地）**：[`optimization-plan-wave2.md`](optimization-plan-wave2.md)  
 **第三波（已落地）**：[`optimization-plan-wave3.md`](optimization-plan-wave3.md)  
 **第四波（已落地）**：[`optimization-plan-wave4.md`](optimization-plan-wave4.md)（数据源深治 + Token/辩论薄补；**未**升积分/Cursor/新源；**未**冒烟）  
+**第五波（方案）**：[`optimization-plan-wave5.md`](optimization-plan-wave5.md)（A0 止血 + 工程修 + 证据链/归因；待拍板）  
 本文件保留未排期项；与上述方案冲突时以方案文档为准。
 
 ---
