@@ -768,10 +768,13 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
         lines.append("")
     elif dq.get("llm_degraded"):
-        lines.append(
-            f"> ⚠️ **分析降级**: {dq.get('llm_note') or '部分 LLM 阶段失败，已用占位继续'}。"
-            "动作与评级需人工复核。"
-        )
+        note = str(dq.get("llm_note") or "部分 LLM 阶段失败，已用占位继续")
+        if "secondary_only" in note or "primary_only" in note:
+            lines.append(
+                "> 🛑 **非完整双角色决策**：主/副分析师有一路 LLM 失败，"
+                "建议段为单角色产出；**动作与评级必须人工复核后再参考**。"
+            )
+        lines.append(f"> ⚠️ **分析降级**: {note}。动作与评级需人工复核。")
         lines.append("")
     if dq.get("degraded") or dq.get("screen_degraded") or screen.get("degraded"):
         warn = dq.get("screen_note") or screen.get("plain_note") or dq.get("note") or "数据/遴选降级"
@@ -818,6 +821,39 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     fw = result.get("framework_gates") or {}
     if fw.get("plain_note"):
         a0_bits.append(str(fw.get("plain_note")))
+    # C1：LLM 截断率（本轮进程内统计）
+    lcs = dq.get("llm_call_stats") or {}
+    if lcs.get("calls"):
+        a0_bits.append(
+            f"LLM 调用 {lcs.get('calls')} 次·截断 {lcs.get('finish_length', 0)}"
+            f"·空返回 {lcs.get('empty_content', 0)}·压缩重试 {lcs.get('compact_retries', 0)}"
+        )
+    # B1：验证窗口命中率（到期必评）
+    vl = result.get("verify_ledger") or {}
+    if vl.get("total_due"):
+        bl = vl.get("buy_like") or {}
+        wl = vl.get("watch_like") or {}
+        bits: list[str] = []
+        if bl.get("count"):
+            bits.append(f"buy/hold 命中率 {bl.get('hit_rate_pct')}%（{bl.get('hit')}/{bl.get('count')}）")
+        if wl.get("count"):
+            bits.append(f"watch 规避率 {wl.get('avoid_rate_pct')}%（{wl.get('avoided')}/{wl.get('count')}）")
+        if bits:
+            a0_bits.append("验证窗口 " + "；".join(bits))
+    # A0-5：社融期次落后告警（数据可能滞后于跑日，叙事别写「最新社融」）
+    sf = ((result.get("intelligence") or {}).get("macro_raw") or {}).get("macro_hard") or {}
+    sf_recs = sf.get("social_financing") or sf.get("shrzgm") or []
+    if sf_recs:
+        latest = str((sf_recs[0] or {}).get("月份") or (sf_recs[0] or {}).get("month") or "")
+        if latest and latest < result.get("run_date", "")[:7].replace("-", ""):
+            a0_bits.append(f"社融最新期={latest}（早于跑日，勿称「最新社融」）")
+    # A0-5：现货 cache 红字
+    if str(screen.get("spot_source") or "").lower() in ("cache", "stale_cache"):
+        lines.append(
+            "> 🟥 **现货快照为缓存/旧数据**：估值因子与涨跌幅可能滞后，"
+            "结论卡中的 PE/PB 视为「中性未验证」，不作为开仓依据。"
+        )
+        lines.append("")
     if a0_bits:
         lines.append("> ℹ️ **数据/框架速览**: " + "；".join(a0_bits[:10]))
         lines.append("")
@@ -858,6 +894,15 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
     lines.append("##### 主线")
     lines.append("")
+    # A0-3：终局为何没有进攻性 buy——先列真实 override（矛盾禁买/ERP 封顶等），再谈环境
+    ov = list(result.get("validation_overrides") or (result.get("decision_summary") or {}).get("validation_overrides") or [])
+    key_ov = [
+        str(x) for x in ov
+        if any(k in str(x) for k in ("矛盾", "禁新买", "禁加仓", "ERP", "equity_bond", "硬共振", "景气down"))
+    ][:4]
+    if key_ov:
+        lines.append("> **为何没有进攻性买入**：" + "；".join(key_ov))
+        lines.append("")
     lines.append(f"- **环境**: {phase} · 风格 {style} · 风险 {risk} · 置信度 {conf}")
     if driver and driver != "-":
         lines.append(f"- **主驱动**: {_one_line(driver, 100)}")
@@ -896,6 +941,23 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
     elif market.get("microstructure_note"):
         lines.append(f"- **微观结构**: {_one_line(market.get('microstructure_note'), 100)}")
+    # A3：核心结论证据出处（数据源名+as_of），无出处不硬写
+    macro_raw = (result.get("intelligence") or {}).get("macro_raw") or {}
+    hard_keys = [
+        k for k in ("pmi", "cpi", "m2", "social_financing", "new_credit")
+        if (macro_raw.get("macro_hard") or {}).get(k)
+    ]
+    ev_bits: list[str] = []
+    if gl.get("stance") and gl.get("stance") != "unknown":
+        ev_bits.append("全球流动性(bond_zh_us_rate)")
+    if hard_keys:
+        ev_bits.append("宏观硬指标(" + "/".join(hard_keys[:4]) + ")")
+    if micro.get("regime"):
+        ev_bits.append("微观结构(涨跌停/成交结构)")
+    if eb.get("ok"):
+        ev_bits.append(f"股债ERP(as_of={eb.get('as_of') or result.get('run_date')})")
+    if ev_bits:
+        lines.append(f"- **证据出处**: {'；'.join(ev_bits[:6])}")
     facts: list[str] = []
     for theme in (digest.get("headline_themes") or [])[:2]:
         facts.append(_one_line(theme, 80))
@@ -930,6 +992,20 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             lines.append(
                 f"- `{code}`{(' ' + name) if name else ''} · 研究 `{rating}`{score_s}{force_s}"
             )
+        lines.append("")
+
+    # A4：矛盾分支（若…则…），硬事实优先，避免平均抹掉
+    fw = result.get("framework_gates") or {}
+    branches = fw.get("contradiction_branches") or []
+    if branches:
+        lines.append("##### 矛盾分支（若…则…）")
+        lines.append("")
+        lines.append("_硬事实与叙事冲突不平均抹掉；按分支跟踪，确认一条动一条。_")
+        lines.append("")
+        for b in branches[:4]:
+            lines.append(f"- **{b.get('topic')}**（{b.get('fact')}）")
+            lines.append(f"  - 若改善：{b.get('if_improves')}")
+            lines.append(f"  - 若恶化：{b.get('if_worsens')}")
         lines.append("")
 
     contested = _render_contested_block(

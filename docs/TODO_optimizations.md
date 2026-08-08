@@ -9,7 +9,10 @@
 **第二波（已落地）**：[`optimization-plan-wave2.md`](optimization-plan-wave2.md)  
 **第三波（已落地）**：[`optimization-plan-wave3.md`](optimization-plan-wave3.md)  
 **第四波（已落地）**：[`optimization-plan-wave4.md`](optimization-plan-wave4.md)（数据源深治 + Token/辩论薄补；**未**升积分/Cursor/新源；**未**冒烟）  
-**第五波（方案）**：[`optimization-plan-wave5.md`](optimization-plan-wave5.md)（A0 止血 + 工程修 + 证据链/归因；待拍板）  
+**第五波（方案）**：[`optimization-plan-wave5.md`](optimization-plan-wave5.md)（A0 止血 + 工程修 + 证据链/归因）  
+**第五波阶段一（已落地）**：A0-1~5 + C5/C6/C7/C9/C11 + 测试  
+**第五波阶段二（已落地）**：A3 证据出处 / A4 矛盾分支 / B1 验证命中率台账 / C1 截断率指标 / C2 影子回放脚本 + 测试（177/177 过）  
+**未做**：统一部署 + 冒烟；Tushare 升积分；Cursor 9b；新增强源；轨 A1/A2（盈利修正评分、拥挤 vs 景气判据）与 B2–B4（stage 归因/集中度/成本）按需另开  
 本文件保留未排期项；与上述方案冲突时以方案文档为准。
 
 ---

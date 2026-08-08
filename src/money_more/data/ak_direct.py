@@ -9,8 +9,13 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import contextmanager
 from typing import Iterator
+
+# 第五波 C5：环境变量与 Session monkey-patch 是进程级全局状态；
+# 筛股均额等路径有并发，必须加锁避免「谁都不清 env」窗口。
+_BYPASS_LOCK = threading.RLock()
 
 _PROXY_KEYS = (
     "HTTP_PROXY",
@@ -84,6 +89,18 @@ def annotate_em_error(prefix: str, exc: BaseException | str) -> str:
     return f"{prefix}[{classify_em_error(exc)}]: {exc}"
 
 
+_DEFAULT_HTTP_TIMEOUT: float = 20.0
+
+
+def set_default_http_timeout(seconds: float) -> None:
+    """第五波 C6：bypass 会话内给 requests 调用补默认超时，防 akshare 挂死。"""
+    global _DEFAULT_HTTP_TIMEOUT
+    try:
+        _DEFAULT_HTTP_TIMEOUT = max(3.0, float(seconds))
+    except (TypeError, ValueError):
+        pass
+
+
 def _patch_requests_trust_env(active: bool) -> None:
     global _SESSION_PATCHED, _ORIG_SESSION_REQUEST
     try:
@@ -98,6 +115,9 @@ def _patch_requests_trust_env(active: bool) -> None:
                 self.trust_env = False
             except Exception:
                 pass
+            # C6：调用方未显式给 timeout 时补默认，避免东财挂起拖死线程池
+            if kwargs.get("timeout") is None:
+                kwargs["timeout"] = _DEFAULT_HTTP_TIMEOUT
             return _ORIG_SESSION_REQUEST(self, method, url, **kwargs)
 
         requests.Session.request = _wrapped  # type: ignore[method-assign]
@@ -110,45 +130,47 @@ def _patch_requests_trust_env(active: bool) -> None:
 
 def _enter_bypass(do_env: bool, do_session: bool) -> None:
     global _DIRECT_DEPTH, _SAVED_ENV, _SAVED_NO_PROXY, _SAVED_NO_PROXY_L
-    _DIRECT_DEPTH += 1
-    if _DIRECT_DEPTH != 1:
-        return
-    if do_env:
-        _SAVED_ENV = {k: os.environ.pop(k, None) for k in _PROXY_KEYS}
-        _SAVED_NO_PROXY = os.environ.get("NO_PROXY")
-        _SAVED_NO_PROXY_L = os.environ.get("no_proxy")
-        os.environ["NO_PROXY"] = "*"
-        os.environ["no_proxy"] = "*"
-    if do_session:
-        _patch_requests_trust_env(True)
+    with _BYPASS_LOCK:
+        _DIRECT_DEPTH += 1
+        if _DIRECT_DEPTH != 1:
+            return
+        if do_env:
+            _SAVED_ENV = {k: os.environ.pop(k, None) for k in _PROXY_KEYS}
+            _SAVED_NO_PROXY = os.environ.get("NO_PROXY")
+            _SAVED_NO_PROXY_L = os.environ.get("no_proxy")
+            os.environ["NO_PROXY"] = "*"
+            os.environ["no_proxy"] = "*"
+        if do_session:
+            _patch_requests_trust_env(True)
 
 
 def _leave_bypass(do_env: bool, do_session: bool) -> None:
     global _DIRECT_DEPTH, _SAVED_ENV, _SAVED_NO_PROXY, _SAVED_NO_PROXY_L
-    if _DIRECT_DEPTH <= 0:
-        return
-    _DIRECT_DEPTH -= 1
-    if _DIRECT_DEPTH != 0:
-        return
-    if do_session:
-        _patch_requests_trust_env(False)
-    if do_env:
-        for k, v in _SAVED_ENV.items():
-            if v is None:
-                os.environ.pop(k, None)
+    with _BYPASS_LOCK:
+        if _DIRECT_DEPTH <= 0:
+            return
+        _DIRECT_DEPTH -= 1
+        if _DIRECT_DEPTH != 0:
+            return
+        if do_session:
+            _patch_requests_trust_env(False)
+        if do_env:
+            for k, v in _SAVED_ENV.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            if _SAVED_NO_PROXY is None:
+                os.environ.pop("NO_PROXY", None)
             else:
-                os.environ[k] = v
-        if _SAVED_NO_PROXY is None:
-            os.environ.pop("NO_PROXY", None)
-        else:
-            os.environ["NO_PROXY"] = _SAVED_NO_PROXY
-        if _SAVED_NO_PROXY_L is None:
-            os.environ.pop("no_proxy", None)
-        else:
-            os.environ["no_proxy"] = _SAVED_NO_PROXY_L
-        _SAVED_ENV = {}
-        _SAVED_NO_PROXY = None
-        _SAVED_NO_PROXY_L = None
+                os.environ["NO_PROXY"] = _SAVED_NO_PROXY
+            if _SAVED_NO_PROXY_L is None:
+                os.environ.pop("no_proxy", None)
+            else:
+                os.environ["no_proxy"] = _SAVED_NO_PROXY_L
+            _SAVED_ENV = {}
+            _SAVED_NO_PROXY = None
+            _SAVED_NO_PROXY_L = None
 
 
 @contextmanager

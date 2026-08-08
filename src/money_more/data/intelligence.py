@@ -419,7 +419,8 @@ class IntelligenceFetcher:
             credit_fn = getattr(ak, "macro_china_new_financial_credit", None)
             if credit_fn is not None:
                 credit_df = credit_fn()
-                credit_recs = _macro_records_from_df(credit_df, 6)
+                # 第五波 C11：与社融一致用「最新月份排序」，避免升序表取到最旧 6 条
+                credit_recs = _macro_records_newest(credit_df, 6)
                 if credit_recs:
                     macro_hard["new_credit"] = credit_recs
         except Exception as exc:

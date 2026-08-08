@@ -52,6 +52,46 @@ def enrich_sector_link(
     return link, note
 
 
+def refresh_sector_link_rationale(
+    rec: dict[str, Any],
+    *,
+    research_by_code: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """门禁可能把 buy→watch/hold；第五波 C7：终局动作落定后重算 rationale，
+    避免「research buy → buy」出现在 watch 上（系统补全文案与终局一致）。"""
+    link = rec.get("sector_link")
+    if not isinstance(link, dict):
+        link = {}
+        rec["sector_link"] = link
+    code = normalize_code(str(rec.get("code") or ""))
+    research = (research_by_code or {}).get(code) or {}
+    rating = str(
+        link.get("from_research_rating")
+        or research.get("research_rating")
+        or research.get("rating")
+        or ""
+    ).lower()
+    if rating and not link.get("from_research_rating"):
+        link["from_research_rating"] = rating
+    action = str(rec.get("action") or "watch").lower()
+    if rating and rating != action:
+        link["action_rationale_vs_research"] = f"research {rating} → {action}"
+    elif rating:
+        link["action_rationale_vs_research"] = f"research {rating} → {action}（一致）"
+    else:
+        link["action_rationale_vs_research"] = f"action={action}"
+    # A0-2：终局 watch/0% 时，理由里不得残留「轻仓/试探买入」类文案（LLM 常写）
+    if action == "watch" and float(rec.get("position_pct") or 0) <= 0:
+        rat = str(rec.get("rationale") or "")
+        bad = ("轻仓买入", "试探性买入", "轻仓介入", "小仓位买入", "试探买入")
+        if any(b in rat for b in bad):
+            for b in bad:
+                rat = rat.replace(b, "观察")
+            rec["rationale"] = rat
+            link["action_rationale_vs_research"] += "（终局0仓，文案已对齐观察）"
+    return link
+
+
 def enrich_verify_window(rec: dict[str, Any], *, default_days: int = 14) -> tuple[dict[str, Any], str | None]:
     """补全 verify_in_days / verify_signals；返回更新字段与 override。"""
     note: str | None = None

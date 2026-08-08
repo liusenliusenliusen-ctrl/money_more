@@ -110,6 +110,16 @@ class DecisionPipeline:
         }
         try:
             self._run_daily_body(run_id, run_date, result)
+            # 第五波 C1：把 provider 截断/空返回统计挂到 DQ（供报告与趋势）
+            try:
+                stats = self.llm.llm_call_stats() if hasattr(self.llm, "llm_call_stats") else {}
+                if stats:
+                    dq = result.setdefault("data_quality", {})
+                    dq["llm_call_stats"] = stats
+                    calls = max(int(stats.get("calls") or 0), 1)
+                    dq["llm_truncation_rate"] = round(int(stats.get("finish_length") or 0) / calls, 3)
+            except Exception:
+                pass
             if result.get("data_quality", {}).get("llm_degraded") or result.get("llm_stage_errors"):
                 result["run_status"] = "degraded"
             else:
@@ -372,6 +382,19 @@ class DecisionPipeline:
         result["data_quality"] = self._merge_screen_into_dq(
             result.get("data_quality") or {}, screen_result
         )
+        # 第五波 B1：验证窗口命中率台账（到期必评；失败不影响主链）
+        try:
+            from money_more.analysis.verify_tracker import build_verify_ledger
+
+            result["verify_ledger"] = build_verify_ledger(
+                digests_dir=self.config.project_root / "reports" / "digests",
+                fetcher=self.fetcher,
+                as_of=datetime.strptime(run_date, "%Y-%m-%d").date()
+                if isinstance(run_date, str)
+                else None,
+            )
+        except Exception as v_exc:
+            log.warning("verify_ledger build failed (non-fatal): %s", v_exc)
         stock_codes = list(screen_result.get("deep_codes") or force_codes)
         log.info(
             "run_id=%s screen deep=%s quant=%s universe=%s ok=%s",
@@ -1673,11 +1696,26 @@ class DecisionPipeline:
             score = round(max(0.0, score - 0.15), 2)
             missing.append("tushare_available")
         degraded = score < 0.6
+        # 第五波 A0-4：研究关键字段与连接完整度拆分。
+        # Tushare 无权限/频率受限时，盈利修正/业绩预告/双源估值整体不可用，
+        # 即便新闻类接口全通，也不得给出 1.0 的「研究数据完整度」。
+        research_fields = {
+            "earnings_revision": not tushare_bad,
+            "forecast_announce": not tushare_bad,
+            "dual_source_valuation": not tushare_bad,
+        }
+        research_score = round(
+            sum(1 for ok in research_fields.values() if ok) / max(len(research_fields), 1), 2
+        )
         notes = []
         if degraded:
             notes.append("DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓")
         else:
             notes.append("数据完整度尚可")
+        if tushare_bad:
+            # 连接层分数不打穿（新闻还能用备源），但研究层显式降权并禁止满分
+            score = min(score, 0.85)
+            notes.append("Tushare 无权限/超限：盈利修正/业绩预告/双源估值不可用（研究层降权）")
         if policy_src == "rss_global_extract":
             notes.append("政策源=快讯抽取(≠正式联播)")
         if macro_intel.get("tushare_macro_backfill"):
@@ -1690,6 +1728,9 @@ class DecisionPipeline:
             "errors_sample": errors[:8],
             "degraded": degraded,
             "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
+            "tushare_perm_issue": bool(tushare_bad),
+            "research_fields": research_fields,
+            "research_score": research_score,
             "policy_news_source": policy_src or None,
             "note": "；".join(notes),
         }

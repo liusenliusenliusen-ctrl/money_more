@@ -116,6 +116,58 @@ def _latest_macro_value(macro_hard: dict[str, Any], key: str, field_hints: tuple
     return None
 
 
+def build_contradiction_branches(
+    contradiction_active: bool,
+    hard_flags: list[str],
+    llm_contras: list[str],
+) -> list[dict[str, Any]]:
+    """第五波 A4：把「矛盾」从散文升级为显式「若…则…」分支，供结论卡展示。
+
+    硬事实优先：每条硬标志给出一个「若改善/若恶化」的双分支；
+    LLM 散文矛盾仅作为一条通用分支，避免平均抹掉。
+    """
+    branches: list[dict[str, Any]] = []
+    for flag in hard_flags[:4]:
+        if "PMI" in flag:
+            branches.append(
+                {
+                    "topic": "景气（PMI）",
+                    "fact": flag,
+                    "if_improves": "PMI 回 50 上方且新订单改善 → 解除「禁进攻」，phase 可升档",
+                    "if_worsens": "PMI 连续两月 <50 → 维持防御，成长升档继续被拦截",
+                }
+            )
+        elif "融资" in flag:
+            branches.append(
+                {
+                    "topic": "杠杆资金",
+                    "fact": flag,
+                    "if_improves": "融资余额止跌回升 5 日 → 矛盾权重下调，可评估进攻仓位",
+                    "if_worsens": "融资余额继续收缩 → 总仓 haircut 维持，禁止追题材",
+                }
+            )
+        else:
+            branches.append(
+                {
+                    "topic": "硬事实",
+                    "fact": flag,
+                    "if_improves": "该指标回到中性区 → 解除对应闸",
+                    "if_worsens": "该指标继续恶化 → 维持/加码防御",
+                }
+            )
+    if not branches and contradiction_active:
+        for c in llm_contras[:2]:
+            branches.append(
+                {
+                    "topic": "叙事矛盾",
+                    "fact": str(c)[:80],
+                    "if_improves": "叙事被硬数据证实 → 升权",
+                    "if_worsens": "叙事被证伪 → 降权或剔除",
+                }
+            )
+    return branches
+
+
 def detect_hard_contradictions(macro_intel: dict[str, Any] | None) -> list[str]:
     """硬事实层面的矛盾线索（非 LLM 散文）。"""
     macro = macro_intel or {}
@@ -225,6 +277,9 @@ def build_framework_gate_state(
         "prosperity_by_code": build_code_prosperity_map(sector_analyses, stock_analyses),
         "inflection_by_code": build_code_inflection_map(sector_analyses, stock_analyses),
         "prosperity_block_adds": config.prosperity_block_adds,
+        "contradiction_branches": build_contradiction_branches(
+            contradiction_active, hard_flags, contra_texts
+        ),
         "plain_note": _plain_note(
             contradiction_active, resonance, block_phase_upgrade, hard_flags
         ),

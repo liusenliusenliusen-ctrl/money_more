@@ -562,6 +562,16 @@ def render_data_sources_section(result: dict[str, Any]) -> list[str]:
         score_disp = score
     flag = "⚠️ DEGRADED" if data_degraded else "OK"
     lines.append(f"**数据完整度**: {score_disp} ({flag})" + (f" — {data_note}" if data_note else ""))
+    # 第五波 A0-4：研究关键字段（盈利修正/预告/双源估值）与连接完整度分开披露
+    rs = dq.get("research_score")
+    if rs is not None:
+        rf = dq.get("research_fields") or {}
+        rf_bad = [k for k, ok in rf.items() if not ok]
+        rs_flag = "⚠️" if rf_bad else "✅"
+        lines.append(
+            f"**研究关键字段完整度**: {rs} ({rs_flag})"
+            + (f" — 缺失：{', '.join(rf_bad)}（Tushare 权限相关）" if rf_bad else "")
+        )
     lines.append(
         f"- 统计: ✅成功 {summary.get('ok', 0)} · "
         f"⚠️降级/备源 {summary.get('fallback_or_degraded', 0)} · "

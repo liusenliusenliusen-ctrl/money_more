@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from money_more.analysis.wave2_enrich import enrich_sector_link, enrich_verify_window
+from money_more.analysis.wave2_enrich import (
+    enrich_sector_link,
+    enrich_verify_window,
+    refresh_sector_link_rationale,
+)
 
 
 def validate_recommendations(
@@ -403,6 +407,8 @@ def validate_recommendations(
             "effective_max_total": effective_max_total,
             "data_quality_score": score,
         }
+        # C7：门禁已把 action 翻到终局，重算 sector_link 叙述，避免与终局矛盾
+        refresh_sector_link_rationale(rec, research_by_code=research_by_code)
         out.append(rec)
 
     # 确保每个持仓都有建议

@@ -66,6 +66,13 @@ class LLMClient:
         self.model = getattr(self.provider, "model", config.llm_model)
         self._default_max_retries = resolved_retries
 
+    def llm_call_stats(self) -> dict[str, int]:
+        """第五波 C1：返回 provider 累计的截断/空返回/压缩重试统计。"""
+        stats = getattr(self.provider, "stats", None)
+        if isinstance(stats, dict):
+            return {k: int(v) for k, v in stats.items()}
+        return {}
+
     def analyze_json(
         self,
         system_prompt: str,

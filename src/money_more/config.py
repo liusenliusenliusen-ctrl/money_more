@@ -291,6 +291,37 @@ def _merge_email_addrs(*sources: Any) -> list[str]:
     return out
 
 
+_CACHE_DIR: Path | None = None
+
+
+def get_data_cache_dir() -> Path:
+    """统一的本地缓存目录（第五波 C9）：不再随 CWD 漂移。
+
+    优先取 ``config.paths.cache``；未配置时锚定项目根 ``data/cache``，
+    项目根由包内 ``__file__`` 推导（src/money_more/config.py → 仓库根）。
+    """
+    global _CACHE_DIR
+    if _CACHE_DIR is not None:
+        return _CACHE_DIR
+    root = Path(__file__).resolve().parents[3]
+    out = root / "data" / "cache"
+    try:
+        for cand in (Path.cwd() / "config.yaml", root / "config.yaml"):
+            if not cand.exists():
+                continue
+            with open(cand, encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+            p = str((raw.get("paths") or {}).get("cache") or "").strip()
+            if p:
+                pp = Path(p)
+                out = pp if pp.is_absolute() else (cand.parent / pp)
+            break
+    except Exception:
+        pass
+    _CACHE_DIR = out
+    return out
+
+
 def load_config(config_path: str | Path | None = None) -> AppConfig:
     load_dotenv()
     root = Path.cwd()

@@ -525,9 +525,9 @@ def _enrich_amount_avg(
         meta["fallback"] = int(len(out))
         return out, meta
 
-    from pathlib import Path
+    from money_more.config import get_data_cache_dir
 
-    cache = DiskTTLCache(Path("data/cache"), default_ttl_sec=6 * 3600)
+    cache = DiskTTLCache(get_data_cache_dir(), default_ttl_sec=6 * 3600)
     codes = [normalize_code(str(c)) for c in out["code"].tolist()]
 
     def _one(code: str) -> tuple[str, float | None]:
