@@ -117,7 +117,7 @@ agents:
   decision_multi: true
   parallel: true
   primary_provider: deepseek
-  # 默认同模型异 prompt；Cursor secondary 见 docs/TODO_optimizations.md
+  # 默认同模型异 prompt；Cursor secondary 见 docs/optimization/TODO_optimizations.md
   secondary_provider: deepseek
   secondary_model: ""  # 空则跟 llm_model
   synthesizer_provider: deepseek

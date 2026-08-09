@@ -66,7 +66,7 @@
 
 - `analysis/screen.py`：硬过滤或选深前剔除；更新 `plain_note` / `filter_stats`  
 - 测试：`tests/test_stock_screen.py`  
-- 文档：`docs/data-sources-guide.md` / README 术语表可补一句「暴涨当日不进新票深度池」
+- 文档：`docs/data-sources-guide.md`（上一级）/ README 术语表可补一句「暴涨当日不进新票深度池」
 
 ---
 

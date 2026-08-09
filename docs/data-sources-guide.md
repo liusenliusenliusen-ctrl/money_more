@@ -3,7 +3,8 @@
 面向「不太熟股票、但要看懂系统吃什么数据」。  
 每日独立小报告 `YYYY-MM-DD-datasources.md` 是**本轮体检摘要**；本文是**完整说明书**。运行/LLM 中断说明在主报告「运行状态」，不在数据源小报告。
 
-依据仓库当前代码梳理。主链路：**AkShare**；可选增强：**Tushare Pro**、**RSS/快讯**。
+依据仓库当前代码梳理。主链路：**AkShare**；可选增强：**Tushare Pro**、**RSS/快讯**。  
+宏观硬指标 / 两融 / 质押 / 股东减持等已做 **Ak↔Tushare 双源融合**（细节见下表与接口目录）。
 
 - **精确到接口名的完整目录**（接口 / 数据说明 / 用途）：[`data-interfaces-catalog.md`](data-interfaces-catalog.md)  
 - 各字段的**本质 / 用途 / 禁区**：[`data-semantics-guide.md`](data-semantics-guide.md)
@@ -55,8 +56,8 @@
 | 数据叫什么 | 拿到什么 | 用来干什么 | 从哪来 / 备源 | 开关 |
 |------------|----------|------------|---------------|------|
 | 北向资金 | 外资买卖 A 股净流入（可能滞后） | A1 风险偏好 | 东财沪深港通 | `intelligence.enabled` |
-| 两融 | 融资余额及变化 | A1 杠杆情绪 | 沪/深两融序列 | 同上 |
-| 国内硬指标 | PMI / CPI / M2 / 社融（及信贷交叉） | A1 中长线背景；宽信用旁路；日历备源 | AkShare 宏观 | 同上 |
+| 两融（市场） | 融资余额及近 5 日变化 | A1 杠杆情绪 | **Ak 沪/深为主**；失败用 Tushare `margin`（仅汇总同时有 SSE+SZSE 的交易日）；方向冲突标 `conflict`、以 Ak 为准 | 同上 + tushare |
+| 国内硬指标 | PMI / CPI / M2 / 社融（及信贷交叉） | A1 中长线背景；宽信用旁路；`macro_hard_echo` | **双源**：Tushare（`cn_pmi`/`cn_cpi`/`cn_m`/`sf_month`）优先写序列；Ak 对照期次；冲突不平均，细节在 `macro_hard_meta`；信贷仍多来自 Ak | 同上 + tushare |
 | 全球流动性 | 美债、美元兑人民币、收紧/宽松 stance | A1 主驱动；收紧时压总仓 | 利率 + 中行汇率 | 同上 |
 | 经济日历 | 未来数据发布窗口 | A2 关注提醒 | 百度 → 备源；硬指标另见 `macro_hard_echo`（≠日历） | 同上 |
 
@@ -89,11 +90,12 @@
 | 数据叫什么 | 拿到什么 | 用来干什么 | 从哪来 / 备源 | 开关 |
 |------------|----------|------------|---------------|------|
 | 个股行情包 | 报价、资金流、财务摘要、新闻 | B2①、因子卡、信息完备性 | 东财个股族 | 深度池每只 |
-| 另类情报 | 研报、千股千评、雪球、龙虎榜、两融、北向持股 | 拥挤度、完备性 | AkShare 多接口 | `intelligence.enabled` |
+| 另类情报 | 研报、千股千评、雪球、龙虎榜、北向持股等 | 拥挤度、完备性 | AkShare 多接口 | `intelligence.enabled` |
 | Tushare 公司增强 | 公告、财报、预告、解禁、估值 | 盈利修正、硬门禁、双源核对 | Tushare Pro | `tushare.enabled` |
 | 数库新闻情绪指数 | 全市场新闻情绪温度计 | A1 旁路（不进个股打分） | AkShare `index_news_sentiment_scope` | 宏观情报默认拉取 |
-| 股权质押比例 | 个股质押比例 | 硬门禁（偏高观察/过高禁买） | 东财质押比例表（按日缓存） | 个股情报 |
-| 股东增减持 | 近窗减持记录 | 硬门禁强制观察 | 同花顺股东变动 + 公告标题 | 个股情报 |
+| 股权质押比例 | 个股质押比例（%） | 硬门禁（≥40 观察 / ≥60 禁买） | **双源保守合并**：东财全市场表 + Tushare `pledge_stat`；`ratio=max`；附 `sources`/`agreement` | 个股情报 + tushare |
+| 股东增减持 | 近窗减持记录 | 硬门禁强制观察 | **并集**：同花顺变动表 + Tushare `stk_holdertrade`(DE) + 公告标题关键词；任一侧近窗减持即 `force_watch` | 同上 |
+| 个股两融明细 | 融资/融券余额等 | B2 情报 | **Tushare `margin_detail` 优先**；Ak 上交所按日盲试为备 | 同上 |
 
 不是全市场逐只深挖，只细读深度池。
 
@@ -126,10 +128,11 @@
 
 | 现象 | 白话含义 |
 |------|----------|
-| 量化前列 PE/PB = None | 现货走了缺估值列的缓存/新浪备源；打分中性处理 |
+| 量化前列 PE/PB = None | 现货走了缺估值列的缓存/新浪备源；打分**降权/偏低分**，不是伪装「估值中性优质」 |
 | 北向 stale | 外资维度弱化 |
 | 政策联播过旧 | 标降级或快讯抽取；政策假说降权 |
-| Tushare 权限不足 | 财务/预告/估值增强变薄 |
+| Tushare 权限不足 | 财务/预告/估值/质押/宏观硬指标等增强变薄；台账会标 fail/fallback |
+| `macro_hard_*_conflict` / `pledge_ratio_conflict` | 双源期次或数值不一致；序列用主源、门禁用更严侧，**不平均** |
 | 经济日历空 + 仅有 echo | 只有已公布硬指标回看，不是未来日程 |
 | 关 intelligence/screen | 情报或海选变窄，报告会说明降级 |
 
@@ -139,20 +142,18 @@
 
 - `intelligence.enabled` — 宏观/板块/个股情报总闸  
 - `screen.enabled` — 全市场筛股  
-- `tushare.enabled` + `TUSHARE_TOKEN` — 公告/财务/估值增强  
+- `tushare.enabled` + `TUSHARE_TOKEN` — 公告/财务/估值/预告/解禁，以及质押·增减持·宏观硬指标·两融双源  
 - `rss.*` / `sentiment.enabled` — 快讯与词典舆情  
 
-细节见 `config.yaml.example`。
+细节见 `config.yaml.example`。双源合并实现：`data/source_fuse.py` + `tushare_source.py` 拉取 + `intelligence.py` 接线。
 
 ---
 
-## 数据侧优化优先级（建议）
+## 数据侧演进（摘要）
 
-权威排期见 [`optimization-plan-v2.md`](optimization-plan-v2.md)。摘要：
+历史排期见 [`optimization/`](optimization/)。与**当前实现**对齐的要点：
 
-1. 现货缺 PE/PB 时不要假装「东财完整快照」  
-2. 政策/北向 stale 在结论卡更醒目  
-3. Tushare 薄时明确盈利修正可信度；积分升级另见 TODO  
-4. 第一波新增：社融（`macro_china_shrzgm`）作国内宽信用旁路  
-
-数据地基与框架收束按 v2 同波推进。
+1. 现货缺 PE/PB → 打分降权/标注，不假装完整快照  
+2. 社融等宽信用旁路、硬指标与经济日历语义拆分（`macro_hard_echo`）  
+3. **Tushare 双源（已落地）**：宏观硬指标 / 市场与个股两融 / 质押 / 股东减持 —— 保留 `source`·期次；门禁保守合并；序列主源优先、冲突不平均  
+4. 积分/权限不足时台账标降级，不把「撞限」写成「未配置 token」

@@ -33,10 +33,12 @@ money-more scheduled
 严谨性：as_of 贯通、空仓/深度池硬约束、遴选失败进数据质量、因子评分卡、双源/硬门禁、模拟账本与真实持仓分离。  
 全面性补充：**叙事雷达** + A1 争议/未验证假说；**政策市假说**；**微观结构/流动性断点**；个股**信息完备性**（缺口→观望）；报告 **A 主结论（A1 含主线与争议） / B 推理链 / D 趋势**。
 
+文档索引：[`docs/README.md`](docs/README.md)。  
 读报：[`docs/how-to-read-report.md`](docs/how-to-read-report.md)（首次邮件会附带）。  
 数据说明书（比 `*-datasources.md` 更细）：[`docs/data-sources-guide.md`](docs/data-sources-guide.md)。  
 数据接口目录（精确到接口名）：[`docs/data-interfaces-catalog.md`](docs/data-interfaces-catalog.md)。  
-数据语义（本质·用途·禁区）：[`docs/data-semantics-guide.md`](docs/data-semantics-guide.md)。
+数据语义（本质·用途·禁区）：[`docs/data-semantics-guide.md`](docs/data-semantics-guide.md)。  
+项目优化（波次方案 / TODO）：[`docs/optimization/`](docs/optimization/)。
 
 ## 快速开始
 
@@ -144,11 +146,12 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | 层级 | 来源 | 内容 |
 |------|------|------|
 | 宏观 | 新闻联播、全球财经、经济日历、财联社、RSS、Tushare | 政策与事件 |
+| 宏观硬指标 | PMI/CPI/M2/社融（**Tushare 主 + Ak 对照**） | A1 背景；冲突不平均 |
 | 全球流动性 | 中美国债收益率、USD/CNY（硬指标 stance） | 外因风险偏好；进主结论 |
-| 资金 | 北向、两融、板块净流入 | 资金面；可扩 B1 板块 |
+| 资金 | 北向、两融（Ak 主 + Tushare 备）、板块净流入 | 资金面；可扩 B1 板块 |
 | 情绪 | 东财人气、雪球热度、舆情打分 | 拥挤度 |
 | 板块 | 同花顺/东财排名、板块新闻 | 轮动与叙事 |
-| 个股 | 全 A 现货漏斗 + 新闻/研报/龙虎榜、Tushare 公告财报估值 | 基本面与**盈利预期修正** |
+| 个股 | 全 A 现货漏斗 + 新闻/研报/龙虎榜；Tushare 公告财报估值；质押/减持/个股两融双源 | 基本面、**盈利预期修正**、硬门禁 |
 
 ## 分析框架
 
@@ -186,6 +189,8 @@ LLM 按综合框架：宏观政策 → **全球流动性** → 产业景气 → 
 | `reports/trend.md` | 滚动趋势报告 |
 | `logs/last_full_run.txt` | 上次成功周期日期（门禁用） |
 | `docs/how-to-read-report.md` | 读报指南（首次邮件附件） |
+| `docs/README.md` | 文档索引（理解类 vs 优化类） |
+| `docs/optimization/` | 项目优化波次方案与 TODO |
 
 ## 免责声明
 

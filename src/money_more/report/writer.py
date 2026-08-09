@@ -1000,7 +1000,11 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     if branches:
         lines.append("##### 矛盾分支（若…则…）")
         lines.append("")
-        lines.append("_硬事实与叙事冲突不平均抹掉；按分支跟踪，确认一条动一条。_")
+        lines.append(
+            "_硬数据与故事打架时先听硬数据；冲突拆开跟（若改善/若恶化），"
+            "哪条被证实就只调那条对应闸门——不要折中抹平。"
+            "「分支」=同一矛盾的 if/else，不是旁支题材。详见 docs/contradiction-branches.md_"
+        )
         lines.append("")
         for b in branches[:4]:
             lines.append(f"- **{b.get('topic')}**（{b.get('fact')}）")

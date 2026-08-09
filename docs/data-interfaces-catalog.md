@@ -2,7 +2,8 @@
 
 精确到**代码实际调用的接口名**。白话说明书见 [`data-sources-guide.md`](data-sources-guide.md)；字段本质/禁区见 [`data-semantics-guide.md`](data-semantics-guide.md)。
 
-依据仓库当前实现梳理。主链路：**AkShare**；可选：**Tushare Pro**、**RSS/快讯**。
+依据仓库当前实现梳理。主链路：**AkShare**；可选增强：**Tushare Pro**、**RSS/快讯**。  
+若干字段已 **Ak↔Tushare 双源融合**（`source_fuse`）：宏观硬指标、市场/个股两融、质押、股东减持——约定见各表「用途」列与 §6 末。
 
 报告对照：**A1** 宏观环境 · **A2** 展望/事件 · **B1** 板块 · **B2** 个股 · **A3** 动作/硬门禁 · **screen** 选股漏斗。
 
@@ -67,16 +68,21 @@
 | `ak.macro_cons_gold` | 日历备源之一 | 主日历空时 |
 | `ak.news_trade_notify_suspend_baidu` | 日历备源之二 | 同上 |
 | `macro_hard_echo`（派生，非外部接口） | 已公布 PMI/CPI/M2 回看 | 仅背景，**不得当作未来日历** |
-| `ak.macro_china_pmi` | 中国 PMI | A1 硬宏观 |
+| `ak.macro_china_pmi` | 中国 PMI（Ak；须按最新期次取，防升序旧月） | A1 硬宏观对照源 |
 | `ak.macro_china_cpi` | 中国 CPI | 同上 |
 | `ak.macro_china_money_supply` | M2 / 货币供应量 | 同上 |
-| `ak.macro_china_shrzgm` | 社会融资规模增量及分项 | A1 宽信用旁路（`macro_hard.social_financing`） |
-| `ak.macro_china_new_financial_credit` | 新增信贷 | 与社融交叉 |
+| `ak.macro_china_shrzgm` | 社会融资规模增量及分项 | A1 宽信用旁路对照（`macro_hard.social_financing`） |
+| `ak.macro_china_new_financial_credit` | 新增信贷 | 与社融交叉（目前仍以 Ak 为主） |
+| `pro.cn_pmi` → 字段 `PMI010000`（制造业） | Tushare 官方 PMI 序列 | **`macro_hard.pmi` 主源**（`source_fuse.fuse_macro_series`） |
+| `pro.cn_cpi` → `nt_yoy` 等 | Tushare CPI | **`macro_hard.cpi` 主源** |
+| `pro.cn_m` → `m2_yoy` 等 | Tushare M2 | **`macro_hard.m2` 主源** |
+| `pro.sf_month` → `inc_month` 等 | Tushare 社融月增量 | **`macro_hard.social_financing` 主源** |
 | `ak.bond_zh_us_rate` | 中美利率（美 2Y/10Y、国开等） | A1 全球流动性 stance |
 | `ak.currency_boc_sina(symbol="美元")` | 中行美元兑人民币 | A1 流动性（USD/CNY） |
 | `ak.stock_index_pe_lg(symbol="沪深300")` | 沪深300 PE | 股债性价比 ERP → 总仓上限 |
-| `ak.macro_china_market_margin_sh` | 沪市两融余额趋势 | A1 杠杆情绪 |
-| `ak.macro_china_market_margin_sz` | 深市两融余额趋势 | 同上 |
+| `ak.macro_china_market_margin_sh` | 沪市两融余额趋势 | A1 杠杆情绪（**市场两融主源**） |
+| `ak.macro_china_market_margin_sz` | 深市两融余额趋势 | 同上（补充） |
+| `pro.margin(trade_date)` | 分交易所两融；需 SSE+SZSE 齐全才入序列 | Ak 失败时的市场两融备源；与 Ak 比近 5 日方向 |
 | `ak.stock_hsgt_fund_flow_summary_em` | 北向资金汇总 | A1 北向（痕迹非聪明钱） |
 | `ak.stock_hsgt_hist_em(symbol="北向资金")` | 北向历史净买 | 汇总失败备源；市场概览 |
 | `ak.stock_hsgt_hist_em(symbol="沪股通")` | 沪股通历史 | 北向历史再备源 |
@@ -121,10 +127,13 @@
 | `ak.stock_hot_follow_xq` | 雪球关注榜（多股复用） | 拥挤 |
 | `ak.stock_hot_deal_xq` | 雪球成交榜 | 拥挤 |
 | `ak.stock_lhb_detail_em(start_date, end_date)` | 龙虎榜明细 | 完备性（字段 `lhb_records`） |
-| `ak.stock_margin_detail_sse(date)` | 上交所个股两融（近若干交易日尝试） | B2 情报 |
+| `ak.stock_margin_detail_sse(date)` | 上交所个股两融（近若干交易日尝试） | B2；**备源**（Tushare `margin_detail` 优先） |
+| `pro.margin_detail(ts_code, start_date, end_date)` | 个股两融明细 | B2 `margin_detail` **主源** |
 | `ak.stock_hsgt_hold_stock_em(market="北向"\|"沪股通"\|"深股通", indicator="今日排行"\|"5日排行")` | 北向个股持股排行 | B2；东财常空/「服务器繁忙」 |
-| `ak.stock_gpzy_pledge_ratio_em(date)` | 全市场质押比例表（按日缓存） | 硬门禁：≥40% 观察 / ≥60% 禁买 |
-| `ak.stock_shareholder_change_ths(symbol)` | 股东增减持 | 近窗减持 → `force_watch` |
+| `ak.stock_gpzy_pledge_ratio_em(date)` | 全市场质押比例表（按日缓存） | 硬门禁一侧；与 `pledge_stat` **取 max** |
+| `pro.pledge_stat(ts_code)` | 股权质押统计（比例单位 %） | 硬门禁另一侧；`fuse_pledge` |
+| `ak.stock_shareholder_change_ths(symbol)` | 股东增减持（同花顺） | 近窗减持 → `force_watch`（并集一侧） |
+| `pro.stk_holdertrade(ts_code, …)` | 结构化增减持（`in_de=DE/IN`） | 近窗 DE → `recent_share_reduce`（并集） |
 | `ak.stock_financial_analysis_indicator(symbol)` | 东财财务分析指标 | B2、现金流备源 |
 | `ak.stock_financial_abstract(symbol)` | 东财财务摘要 | B2、因子质量备源 |
 | `ak.stock_individual_fund_flow(stock, market="sh"\|"sz")` | 个股主力净流入 3/5/20 日 | 因子 `fund_flow`（短窗痕迹，非聪明钱） |
@@ -147,8 +156,13 @@
 | `pro.stock_company(ts_code)` | 公司基本信息 | 行业/公司上下文 |
 | `pro.forecast` | 业绩预告 | 暴雷硬门禁、盈利修正 |
 | `pro.share_float` | 解禁日程 | ≤30 日 `force_watch` |
+| `pro.pledge_stat` | 质押统计 | 见 §5；门禁保守合并 |
+| `pro.stk_holdertrade` | 股东增减持 | 见 §5 |
+| `pro.cn_pmi` / `pro.cn_cpi` / `pro.cn_m` / `pro.sf_month` | 宏观硬序列 | 见 §3；写入 `macro_hard` + `macro_hard_meta` |
+| `pro.margin` / `pro.margin_detail` | 市场/个股两融 | 见 §3 / §5 |
 
-可用性取决于账号积分/权限。常见限制：部分接口「无权限」；部分「1 次/分钟」。探测失败勿再写成「未配置 token」。
+可用性取决于账号积分/权限。常见限制：部分接口「无权限」；部分「1 次/分钟」。探测失败勿再写成「未配置 token」。  
+双源合并约定见 `money_more.data.source_fuse`（门禁取严；序列主源优先；冲突标 `agreement=conflict`，**不平均**）。
 
 ---
 
@@ -165,6 +179,8 @@
 | `equity_bond`（ERP） | 股债性价比 → 总仓上限 | 组合纪律 |
 | `info_completeness` | 大波动是否有公告/新闻解释 | 缺口 → 观望 |
 | `build_data_sources_ledger` | 本轮各源成功/降级摘要 | `*-datasources.md` |
+| `macro_hard_meta` | 硬指标双源：`primary` / `agreement` / 期次差 | A1 / 台账；冲突不平均 |
+| `source_fuse.*` | 质押 max、减持并集、宏观/两融融合 | `intelligence` 接线后供门禁与上下文 |
 
 ---
 
@@ -174,7 +190,7 @@
 |------|------|
 | `intelligence.enabled` | 宏观/板块/个股情报总闸 |
 | `screen.enabled` | 全市场筛股与现货宇宙 |
-| `tushare.enabled` + `TUSHARE_TOKEN` | 公告/财务/估值/预告/解禁增强 |
+| `tushare.enabled` + `TUSHARE_TOKEN` | 公告/财务/估值/预告/解禁；质押·增减持·宏观硬指标·两融双源 |
 | `rss.*` / `rss.use_fallback_rss` | 快讯与 RSSHub 备源 |
 | `sentiment.enabled` | 词典舆情与拥挤相关打分 |
 

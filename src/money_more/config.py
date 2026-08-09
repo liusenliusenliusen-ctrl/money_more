@@ -135,7 +135,7 @@ class AgentsConfig:
     parallel: bool = True
     primary_provider: str = "deepseek"  # openai_compat / deepseek
     primary_model: str = ""
-    # 默认同模型异 prompt；Cursor secondary 见 docs/TODO_optimizations.md
+    # 默认同模型异 prompt；Cursor secondary 见 docs/optimization/TODO_optimizations.md
     secondary_provider: str = "deepseek"  # deepseek | cursor | claude | none
     secondary_model: str = ""  # 空则跟 llm_model；cursor 时可填 composer-2.5
     # 综合用 DeepSeek：便宜、JSON 稳

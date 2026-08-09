@@ -3,7 +3,7 @@
 > 状态：实施对照文档（先定语义，再改代码）  
 > 日期：2026-08-02  
 > 原则：**认清本质 → 精准使用**。名字只能指一种本质；混装必须拆开或改名。  
-> 相关：[`data-sources-guide.md`](data-sources-guide.md)（采什么/从哪来）· [`data-interfaces-catalog.md`](data-interfaces-catalog.md)（精确接口名）· [`midlong-desensitize-draft.md`](midlong-desensitize-draft.md)（去短线灵敏度）
+> 相关：[`data-sources-guide.md`](data-sources-guide.md)（采什么/从哪来）· [`data-interfaces-catalog.md`](data-interfaces-catalog.md)（精确接口名）· [`optimization/midlong-desensitize-draft.md`](optimization/midlong-desensitize-draft.md)（去短线灵敏度）
 
 本文件回答三问：
 
@@ -69,7 +69,9 @@
 |------|----------|------|
 | 交易所融资余额等**杠杆存量/变化** | A1 杠杆情绪；与跌停潮交叉 | 当成机构调研结论或基本面改善 |
 
-**应用状态**：准确。保持。
+**双源（已落地）**：市场层 Ak 沪/深为主，Tushare `margin` 备源（仅纳入 SSE+SZSE 齐全日，避免半边数据伪暴跌）；近 5 日变化方向冲突标 `conflict`，**以 Ak 主序列为准**。个股层默认 Tushare `margin_detail` 优先。
+
+**应用状态**：准确。保持双源标注。
 
 ---
 
@@ -105,13 +107,15 @@
 
 ---
 
-### 1.8 国内宏观硬指标（PMI/CPI/M2）
+### 1.8 国内宏观硬指标（PMI/CPI/M2/社融）
 
 | 本质 | 正确用途 | 禁止 |
 |------|----------|------|
-| **已发布**的滞后宏观统计 | A1 中长线背景 | 当成未发布的「即将公布」日程 |
+| **已发布**的滞后宏观统计 | A1 中长线背景；社融为宽信用旁路 | 当成未发布的「即将公布」日程；两源数值**平均抹平** |
 
-**应用状态**：作硬数据准确；被误塞进经济日历时危险 → §1.9。
+**双源（已落地）**：Tushare（`cn_pmi` 制造业码 `PMI010000`、`cn_cpi`、`cn_m`、`sf_month`）优先写入 `macro_hard` 序列；Ak 作对照。期次差过大 → `macro_hard_meta.*.agreement=conflict`，仍用主源序列，**不平均**。新增信贷目前多为 Ak。字段 `macro_hard_meta` 记录 primary/agreement。
+
+**应用状态**：作硬数据准确；日历误用见 §1.9。
 
 ---
 
@@ -126,9 +130,9 @@
 **正确语义拆分**：
 
 - `economic_calendar`：**仅**前瞻日程  
-- `macro_hard_recent`：近期已公布硬指标（背景，不是日历）
+- `macro_hard_echo`：近期已公布硬指标回看（背景，不是日历；旧名勿再写 `macro_hard_recent`）
 
-**应用状态**：高风险误用 → §3 P0。
+**应用状态**：S1 已落地；读报告时仍勿把 echo 当未来日程。
 
 ---
 
@@ -178,7 +182,18 @@
 |------|----------|------|
 | 报告期财务与现金流质量；预告方向 | 中长线主线；弱 OCF/暴雷预告硬门禁 | 摘要级数据假装完整审计；未鉴别「造假」却写成已证实造假 |
 
-**应用状态**：准确。高负债/质押/减持结构化门禁见 S12（已落地）。
+**应用状态**：准确。高负债/质押/减持结构化门禁见 S12；质押与减持**双源**见下节。
+
+---
+
+### 1.13b 股权质押 · 股东减持（门禁双源）
+
+| 字段 | 本质 | 正确用途 | 禁止 |
+|------|------|----------|------|
+| `pledge_ratio` | 质押股份占比（%）；东财表与 Tushare `pledge_stat` 口径/日期可能不同 | 硬门禁：合并后 `ratio=max(可用源)`；≥40 观察 / ≥60 禁买 | 静默只留一侧；两源冲突时取平均 |
+| `recent_share_reduce` | 近窗（约 90 日）减持痕迹 | 任一侧有记录 → `force_watch`（并集：同花顺 + `stk_holdertrade` DE + 减持类公告） | 假定三源覆盖相同、互相抵消 |
+
+**应用状态**：S12 + Tushare 双源融合已落地（`source_fuse`）；台账/errors 可出现 `*_conflict`。
 
 ---
 
@@ -293,7 +308,8 @@
 | ID | 改动 | 验收 |
 |----|------|------|
 | S11 | 数库 `index_news_sentiment_scope` → `market_news_sentiment_scope`，仅 A1 旁路 | ✅ |
-| S12 | 负债率（≥75 观察 / ≥90 禁买，金融豁免）、质押（≥40/≥60）、近窗减持 `force_watch` | ✅ |
+| S12 | 负债率（≥75 观察 / ≥90 禁买，金融豁免）、质押（≥40/≥60）、近窗减持 `force_watch`；质押/减持已接 Tushare 双源（max / 并集） | ✅ |
+| S14 | `macro_hard` Tushare 主源 + Ak 期次对照（`macro_hard_meta`）；两融市场/个股双源 | ✅ |
 | S13 | 报告因子卡分列「拥挤风险」与「新闻语调」 | ✅ |
 
 ---
@@ -313,3 +329,4 @@
 | 日期 | 说明 |
 |------|------|
 | 2026-08-02 | 首版：全库语义审计 + P0/P1 改造清单 |
+| 2026-08-09 | 对齐 Tushare 双源：宏观硬指标 / 两融 / 质押 / 减持；纠正 `macro_hard_echo` 命名；增补 §1.13b、S14 |

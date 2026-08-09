@@ -2,7 +2,7 @@
 
 > 状态：**第一波已落地代码**（2026-08-08）；第二波及以后仍待排期  
 > 日期：2026-08-08  
-> 依据：`TODO_optimizations.md`、`midlong-desensitize-draft.md`、近两轮复盘经验、与 DeepSeek 的报告点评（`docs/talk2.txt`）
+> 依据：`TODO_optimizations.md`、`midlong-desensitize-draft.md`、近两轮复盘经验、与 DeepSeek 的报告点评（`talk2.txt`）
 
 目标只抓两条：
 
