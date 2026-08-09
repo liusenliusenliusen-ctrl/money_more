@@ -193,6 +193,9 @@ class ScreenConfig:
     exclude_surge_pct: float = 0.0
     # P1：成交额改近 N 日均（0=仍用当日）；过滤与打分共用
     amount_avg_days: int = 20
+    # 深度池定稿后：池内有票但本轮无 B1 的细板块，补跑同规格板块分析
+    deep_sector_backfill: bool = True
+    max_deep_sector_backfill: int = 8
 
 
 @dataclass
@@ -521,6 +524,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             exclude_surge_chi_star_pct=float(screen_raw.get("exclude_surge_chi_star_pct", 14.0)),
             exclude_surge_pct=float(screen_raw.get("exclude_surge_pct", 0.0)),
             amount_avg_days=int(screen_raw.get("amount_avg_days", 20)),
+            deep_sector_backfill=bool(screen_raw.get("deep_sector_backfill", True)),
+            max_deep_sector_backfill=int(screen_raw.get("max_deep_sector_backfill", 8)),
         ),
         review_lookback_days=int(raw.get("review_lookback_days", 60)),
         paths=PathsConfig(

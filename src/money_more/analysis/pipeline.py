@@ -27,6 +27,10 @@ from money_more.analysis.narrative_radar import (
     merge_contested_narratives,
     merge_policy_market_scenario,
 )
+from money_more.analysis.sector_backfill import (
+    infer_deep_pool_sectors,
+    sectors_needing_backfill,
+)
 from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
@@ -307,56 +311,18 @@ class DecisionPipeline:
         for sector, src in [(s, "watch") for s in watch_sectors] + [
             (s, auto_src_map.get(s, "auto_flow")) for s in auto_sectors
         ]:
-            try:
-                snap = self.fetcher.fetch_sector_data(sector)
-            except Exception as exc:
-                log.warning("fetch_sector_data %s failed: %s", sector, exc)
-                snap = {"sector": sector, "errors": [str(exc)]}
-            sector_intel: dict[str, Any] = {}
-            if intel_enabled:
-                try:
-                    sector_intel = self.intelligence.fetch_sector_intelligence(sector)
-                    snap["intelligence"] = sector_intel
-                except Exception as exc:
-                    log.warning("fetch_sector_intelligence %s failed: %s", sector, exc)
-                    sector_intel = {"errors": [str(exc)]}
-                    snap["intelligence"] = sector_intel
-
-            try:
-                sector_payload = {
-                    "date": run_date.isoformat(),
-                    "sector_data": snap,
-                    "sector_intelligence": sector_intel,
-                    "intelligence_digest": intel_digest,
-                    "market_context": market_analysis,
-                    "past_lessons": result["lessons_used"],
-                    "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
-                    "sector_source": src,
-                }
-                if src == "auto_observe":
-                    sector_payload = self._compact_sector_llm_payload(sector_payload)
-                analysis = self.llm.analyze_json(
-                    SECTOR_SYSTEM if src != "auto_observe" else self._sector_system_compact(),
-                    sector_payload,
-                    required_keys=["sector", "worth_research", "summary", "confidence"],
-                )
-            except Exception as exc:
-                log.error("sector LLM failed sector=%s, degrading: %s", sector, exc)
-                analysis = self._degraded_sector_analysis(sector, str(exc))
-                self._note_llm_degraded(result, f"板块分析降级[{sector}]: {exc}")
-            analysis["sector_source"] = src
-            try:
-                self.db.save_sector_snapshot(run_id, sector, snap, analysis)
-            except Exception as db_exc:
-                log.warning("save_sector_snapshot %s: %s", sector, db_exc)
             sector_analyses.append(
-                {
-                    "sector": sector,
-                    "source": src,
-                    "snapshot": snap,
-                    "intelligence": sector_intel,
-                    "analysis": analysis,
-                }
+                self._analyze_one_sector(
+                    sector,
+                    src=src,
+                    run_id=run_id,
+                    run_date=run_date,
+                    market_analysis=market_analysis,
+                    intel_digest=intel_digest,
+                    lessons=result["lessons_used"],
+                    intel_enabled=intel_enabled,
+                    result=result,
+                )
             )
             result["sectors"] = list(sector_analyses)
 
@@ -404,6 +370,48 @@ class DecisionPipeline:
             screen_result.get("universe_size"),
             screen_result.get("ok"),
         )
+
+        # 深度池定稿后：池内有票但本轮尚无 B1 的细板块 → 补跑同规格板块分析（供个股 sector_context）
+        backfilled: list[str] = []
+        if bool(getattr(screen_cfg, "deep_sector_backfill", True)) and stock_codes:
+            deep_secs = infer_deep_pool_sectors(
+                stock_codes,
+                screen_result.get("top_candidates") or [],
+            )
+            missing_secs = sectors_needing_backfill(
+                deep_secs,
+                sector_analyses,
+                max_backfill=int(getattr(screen_cfg, "max_deep_sector_backfill", 8) or 8),
+            )
+            for sector in missing_secs:
+                sector_analyses.append(
+                    self._analyze_one_sector(
+                        sector,
+                        src="deep_backfill",
+                        run_id=run_id,
+                        run_date=run_date,
+                        market_analysis=market_analysis,
+                        intel_digest=intel_digest,
+                        lessons=result["lessons_used"],
+                        intel_enabled=intel_enabled,
+                        result=result,
+                    )
+                )
+                backfilled.append(sector)
+                result["sectors"] = list(sector_analyses)
+            if backfilled:
+                log.info("run_id=%s deep_sector_backfill=%s", run_id, backfilled)
+        su = result.get("sector_universe")
+        if isinstance(su, dict):
+            su["deep_pool_sectors"] = infer_deep_pool_sectors(
+                stock_codes, screen_result.get("top_candidates") or []
+            )
+            su["deep_backfill_sectors"] = list(backfilled)
+            if backfilled:
+                su["note"] = (
+                    str(su.get("note") or "")
+                    + f" 深度池补板块 B1：{'、'.join(backfilled)}。"
+                ).strip()
 
         stock_analyses: list[dict[str, Any]] = []
         quotes: dict[str, float | None] = {}
@@ -1791,6 +1799,71 @@ class DecisionPipeline:
             "degraded": True,
             "error": error[:500],
             "market_microstructure": microstructure or {},
+        }
+
+    def _analyze_one_sector(
+        self,
+        sector: str,
+        *,
+        src: str,
+        run_id: int,
+        run_date: date,
+        market_analysis: dict[str, Any],
+        intel_digest: dict[str, Any] | None,
+        lessons: list[Any],
+        intel_enabled: bool,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """单板块：取数 +（可选）情报 + 完整 SECTOR_SYSTEM（观察扩仍用短 payload）。"""
+        try:
+            snap = self.fetcher.fetch_sector_data(sector)
+        except Exception as exc:
+            log.warning("fetch_sector_data %s failed: %s", sector, exc)
+            snap = {"sector": sector, "errors": [str(exc)]}
+        sector_intel: dict[str, Any] = {}
+        if intel_enabled:
+            try:
+                sector_intel = self.intelligence.fetch_sector_intelligence(sector)
+                snap["intelligence"] = sector_intel
+            except Exception as exc:
+                log.warning("fetch_sector_intelligence %s failed: %s", sector, exc)
+                sector_intel = {"errors": [str(exc)]}
+                snap["intelligence"] = sector_intel
+
+        try:
+            sector_payload = {
+                "date": run_date.isoformat(),
+                "sector_data": snap,
+                "sector_intelligence": sector_intel,
+                "intelligence_digest": intel_digest,
+                "market_context": market_analysis,
+                "past_lessons": lessons,
+                "prior_sector_series": self.db.get_sector_analysis_series(sector, limit=5),
+                "sector_source": src,
+            }
+            if src == "auto_observe":
+                sector_payload = self._compact_sector_llm_payload(sector_payload)
+            # deep_backfill / watch / auto_promote：完整板块分析，不用观察扩短 schema
+            analysis = self.llm.analyze_json(
+                SECTOR_SYSTEM if src != "auto_observe" else self._sector_system_compact(),
+                sector_payload,
+                required_keys=["sector", "worth_research", "summary", "confidence"],
+            )
+        except Exception as exc:
+            log.error("sector LLM failed sector=%s, degrading: %s", sector, exc)
+            analysis = self._degraded_sector_analysis(sector, str(exc))
+            self._note_llm_degraded(result, f"板块分析降级[{sector}]: {exc}")
+        analysis["sector_source"] = src
+        try:
+            self.db.save_sector_snapshot(run_id, sector, snap, analysis)
+        except Exception as db_exc:
+            log.warning("save_sector_snapshot %s: %s", sector, db_exc)
+        return {
+            "sector": sector,
+            "source": src,
+            "snapshot": snap,
+            "intelligence": sector_intel,
+            "analysis": analysis,
         }
 
     @staticmethod

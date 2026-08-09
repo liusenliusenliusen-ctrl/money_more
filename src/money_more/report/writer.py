@@ -1679,6 +1679,10 @@ def render_daily_report(result: dict[str, Any]) -> str:
             f"- 关注板块: {'、'.join(su.get('watch_sectors') or []) or '—'}"
             f" · 资金流自动扩: {'；'.join(auto_bits) or '—'}"
         )
+        if su.get("deep_backfill_sectors"):
+            lines.append(
+                "- 深度池补板块: " + "、".join(su.get("deep_backfill_sectors") or [])
+            )
         lines.append("")
     by_sec = _recs_by_sector(result)
     sectors = result.get("sectors") or []
@@ -1699,6 +1703,7 @@ def render_daily_report(result: dict[str, Any]) -> str:
             "auto_observe": "观察扩",
             "auto_flow": "自动扩",
             "watch": "关注",
+            "deep_backfill": "深度池补",
         }.get(str(src), str(src))
         lines.append(
             f"- {worth} **{sec_name}** "

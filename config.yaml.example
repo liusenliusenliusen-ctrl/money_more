@@ -34,6 +34,8 @@ screen:
   exclude_surge_chi_star_pct: 14.0 # 创业板/科创；约 70%×涨跌停
   # exclude_surge_pct: 7.0         # 若设置则两板共用（不推荐）
   amount_avg_days: 20              # 成交额用近 N 日均（0=当日）；P1 中长线
+  deep_sector_backfill: true       # 深度池定稿后，缺 B1 的细板块补跑同规格分析
+  max_deep_sector_backfill: 8      # 每轮最多补几个板块
 
 # 行情通路（第四波深治）
 data:
