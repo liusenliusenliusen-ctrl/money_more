@@ -8,8 +8,8 @@ from typing import Any
 import pandas as pd
 
 from money_more.analysis.valuation import build_valuation_percentiles
-from money_more.data.as_of import parse_as_of, ymd, ymd_hms
-from money_more.data.fetcher import _df_row_to_dict, normalize_code
+from money_more.data.as_of import parse_as_of, recent_weekdays, ymd, ymd_hms
+from money_more.data.fetcher import _df_row_to_dict, _safe_float, normalize_code
 
 
 def to_ts_code(code: str) -> str:
@@ -266,4 +266,249 @@ class TushareSource:
                 result["items"] = _records(matched if not matched.empty else df, limit)
         except Exception as exc:
             result["errors"].append(str(exc))
+        return result
+
+    def fetch_pledge_stat(self, code: str) -> dict[str, Any]:
+        """股权质押统计（pledge_stat）；返回最新一期比例（单位 %）。"""
+        ts_code = to_ts_code(code)
+        result: dict[str, Any] = {"items": [], "latest": None, "errors": []}
+        try:
+            df = self._safe_call("pledge_stat", ts_code=ts_code)
+            if df is None or df.empty:
+                return result
+            if "end_date" in df.columns:
+                df = df.sort_values("end_date", ascending=False)
+            items = _records(df, 6)
+            result["items"] = items
+            latest = items[0] if items else None
+            if latest:
+                # pledge_ratio 字段一般为百分比数值（如 4.35）
+                ratio = _safe_float(latest.get("pledge_ratio") or latest.get("pledge_ratio_unrest"))
+                result["latest"] = {
+                    "ratio": ratio,
+                    "end_date": latest.get("end_date"),
+                    "pledge_count": latest.get("pledge_count"),
+                    "unrest_pledge_ratio": _safe_float(latest.get("unrest_pledge_ratio")),
+                    "as_of": latest.get("end_date"),
+                    "source": "tushare_pledge_stat",
+                    "raw": latest,
+                }
+        except Exception as exc:
+            result["errors"].append(f"pledge_stat: {exc}")
+        return result
+
+    def fetch_holder_trades(self, code: str, lookback_days: int = 90) -> dict[str, Any]:
+        """股东增减持（stk_holdertrade）；默认近 lookback_days。"""
+        ts_code = to_ts_code(code)
+        result: dict[str, Any] = {"items": [], "reduce_items": [], "errors": []}
+        start = ymd(self.as_of, -lookback_days)
+        end = ymd(self.as_of)
+        try:
+            df = self._safe_call(
+                "stk_holdertrade",
+                ts_code=ts_code,
+                start_date=start,
+                end_date=end,
+            )
+            if df is None or df.empty:
+                return result
+            if "ann_date" in df.columns:
+                df = df.sort_values("ann_date", ascending=False)
+            items = _records(df, 40)
+            result["items"] = items
+            result["reduce_items"] = [
+                r for r in items if str(r.get("in_de") or "").upper() == "DE"
+            ]
+        except Exception as exc:
+            result["errors"].append(f"stk_holdertrade: {exc}")
+        return result
+
+    def fetch_macro_hard(self, limit: int = 6) -> dict[str, Any]:
+        """宏观硬指标：PMI/CPI/M2/社融 → 规范化序列（新→旧）。"""
+        result: dict[str, Any] = {
+            "pmi": [],
+            "cpi": [],
+            "m2": [],
+            "social_financing": [],
+            "errors": [],
+        }
+        # —— PMI：制造业 PMI010000 ——
+        try:
+            df = self._safe_call("cn_pmi", start_m="200001", end_m=ymd(self.as_of)[:6])
+            if df is not None and not df.empty:
+                month_col = "month" if "month" in df.columns else ("MONTH" if "MONTH" in df.columns else None)
+                val_col = "PMI010000" if "PMI010000" in df.columns else None
+                if month_col and val_col:
+                    work = df[[month_col, val_col]].dropna()
+                    work = work.sort_values(month_col, ascending=False)
+                    rows = []
+                    for _, row in work.head(limit).iterrows():
+                        month = str(row[month_col]).strip().replace("-", "")[:6]
+                        val = _safe_float(row[val_col])
+                        rows.append(
+                            {
+                                "月份": month,
+                                "制造业": val,
+                                "value": val,
+                                "label": "制造业PMI",
+                                "source": "tushare_cn_pmi",
+                            }
+                        )
+                    result["pmi"] = rows
+        except Exception as exc:
+            result["errors"].append(f"cn_pmi: {exc}")
+
+        # —— CPI：全国同比 nt_yoy ——
+        try:
+            df = self._safe_call("cn_cpi", start_m="200001", end_m=ymd(self.as_of)[:6])
+            if df is not None and not df.empty:
+                month_col = "month" if "month" in df.columns else None
+                if month_col:
+                    work = df.sort_values(month_col, ascending=False)
+                    rows = []
+                    for _, row in work.head(limit).iterrows():
+                        month = str(row[month_col]).strip().replace("-", "")[:6]
+                        yoy = _safe_float(row["nt_yoy"]) if "nt_yoy" in work.columns else None
+                        rows.append(
+                            {
+                                "月份": month,
+                                "全国同比": yoy,
+                                "value": yoy,
+                                "label": "CPI同比",
+                                "source": "tushare_cn_cpi",
+                            }
+                        )
+                    result["cpi"] = rows
+        except Exception as exc:
+            result["errors"].append(f"cn_cpi: {exc}")
+
+        # —— M2：m2_yoy ——
+        try:
+            df = self._safe_call("cn_m", start_m="200001", end_m=ymd(self.as_of)[:6])
+            if df is not None and not df.empty:
+                month_col = "month" if "month" in df.columns else None
+                if month_col:
+                    work = df.sort_values(month_col, ascending=False)
+                    rows = []
+                    for _, row in work.head(limit).iterrows():
+                        month = str(row[month_col]).strip().replace("-", "")[:6]
+                        yoy = _safe_float(row["m2_yoy"]) if "m2_yoy" in work.columns else None
+                        rows.append(
+                            {
+                                "月份": month,
+                                "M2同比": yoy,
+                                "value": yoy,
+                                "label": "M2同比",
+                                "source": "tushare_cn_m",
+                            }
+                        )
+                    result["m2"] = rows
+        except Exception as exc:
+            result["errors"].append(f"cn_m: {exc}")
+
+        # —— 社融：sf_month.inc_month ——
+        try:
+            df = self._safe_call("sf_month", start_m="200001", end_m=ymd(self.as_of)[:6])
+            if df is not None and not df.empty:
+                month_col = "month" if "month" in df.columns else None
+                if month_col:
+                    work = df.sort_values(month_col, ascending=False)
+                    rows = []
+                    for _, row in work.head(limit).iterrows():
+                        month = str(row[month_col]).strip().replace("-", "")[:6]
+                        inc = _safe_float(row["inc_month"]) if "inc_month" in work.columns else None
+                        rows.append(
+                            {
+                                "月份": month,
+                                "社融增量": inc,
+                                "value": inc,
+                                "label": "社会融资规模增量",
+                                "source": "tushare_sf_month",
+                            }
+                        )
+                    result["social_financing"] = rows
+        except Exception as exc:
+            result["errors"].append(f"sf_month: {exc}")
+
+        return result
+
+    def fetch_margin_market(self, lookback: int = 15) -> dict[str, Any]:
+        """市场两融：按日汇总沪+深融资余额，构造与 Ak margin_trend 近似结构。
+
+        注意：部分交易日 Tushare 可能只返回 SSE（数据未齐），不可与完整日直接比变化。
+        仅纳入同时含 SSE+SZSE 的交易日，余额取二者之和（不含北交所，贴近沪/深主序列）。
+        """
+        result: dict[str, Any] = {
+            "latest": None,
+            "financing_balance_change_5d_pct": None,
+            "recent": [],
+            "as_of": None,
+            "source": "tushare_margin",
+            "errors": [],
+        }
+        by_date: dict[str, float] = {}
+        for day in recent_weekdays(self.as_of, lookback):
+            try:
+                df = self._safe_call("margin", trade_date=day)
+            except Exception as exc:
+                result["errors"].append(f"margin@{day}: {exc}")
+                continue
+            if df is None or df.empty or "rzye" not in df.columns:
+                continue
+            if "exchange_id" in df.columns:
+                ex = set(str(x) for x in df["exchange_id"].tolist())
+                if not {"SSE", "SZSE"}.issubset(ex):
+                    continue
+                work = df[df["exchange_id"].isin(["SSE", "SZSE"])]
+            else:
+                work = df
+            total = float(pd.to_numeric(work["rzye"], errors="coerce").fillna(0).sum())
+            if total > 0:
+                by_date[day] = total
+        if not by_date:
+            return result
+        dates = sorted(by_date.keys())
+        recent_dates = dates[-10:]
+        series = [{"trade_date": d, "融资余额": by_date[d]} for d in recent_dates]
+        result["recent"] = series[-5:]
+        latest = series[-1]
+        result["latest"] = latest
+        result["as_of"] = latest["trade_date"]
+        result["trade_date"] = latest["trade_date"]
+        if len(series) >= 5:
+            prev = series[-5]
+            cur = _safe_float(latest.get("融资余额"))
+            old = _safe_float(prev.get("融资余额"))
+            if cur is not None and old not in (None, 0):
+                result["financing_balance_change_5d_pct"] = round((cur - old) / old * 100, 2)
+        return result
+
+    def fetch_margin_detail(self, code: str, lookback_days: int = 10) -> dict[str, Any]:
+        """个股两融明细（margin_detail）。"""
+        ts_code = to_ts_code(code)
+        result: dict[str, Any] = {"items": [], "errors": []}
+        start = ymd(self.as_of, -lookback_days)
+        end = ymd(self.as_of)
+        try:
+            df = self._safe_call(
+                "margin_detail",
+                ts_code=ts_code,
+                start_date=start,
+                end_date=end,
+            )
+            if df is None or df.empty:
+                return result
+            if "trade_date" in df.columns:
+                df = df.sort_values("trade_date", ascending=False)
+            items = _records(df, 5)
+            for item in items:
+                item["source"] = "tushare_margin_detail"
+                # 兼容中文字段名供下游阅读
+                if "rzye" in item and "融资余额" not in item:
+                    item["融资余额"] = item.get("rzye")
+                if "rqye" in item and "融券余额" not in item:
+                    item["融券余额"] = item.get("rqye")
+            result["items"] = items
+        except Exception as exc:
+            result["errors"].append(f"margin_detail: {exc}")
         return result

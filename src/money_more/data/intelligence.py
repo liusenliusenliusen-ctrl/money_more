@@ -36,6 +36,13 @@ from money_more.data.fetcher import (
     normalize_code,
 )
 from money_more.data.rss_feeds import RssFeedFetcher
+from money_more.data.source_fuse import (
+    fuse_macro_series,
+    fuse_margin_detail,
+    fuse_margin_trend,
+    fuse_pledge,
+    fuse_share_reduce,
+)
 from money_more.data.tushare_source import TushareSource
 
 
@@ -389,8 +396,8 @@ class IntelligenceFetcher:
                 except Exception:
                     continue
 
-        # 宏观硬数据：PMI / CPI / M2 / 社融（失败则跳过）
-        macro_hard: dict[str, Any] = {}
+        # 宏观硬数据：PMI / CPI / M2 / 社融（Ak + Tushare 双源；序列类主源优先+期次校验）
+        ak_macro: dict[str, list[dict[str, Any]]] = {}
         for label, fn in [
             ("pmi", getattr(ak, "macro_china_pmi", None)),
             ("cpi", getattr(ak, "macro_china_cpi", None)),
@@ -401,31 +408,65 @@ class IntelligenceFetcher:
             try:
                 df = fn()
                 if df is not None and not df.empty:
-                    macro_hard[label] = _macro_records_from_df(df, 6)
+                    # PMI/CPI/M2 也可能升序；统一按最新期次取，避免掉到历史旧月
+                    ak_macro[label] = _macro_records_newest(df, 6)
             except Exception as exc:
                 result["errors"].append(f"宏观{label}: {exc}")
-        # 社融：国内宽信用旁路（注意部分接口为时间升序）
         try:
             shr_fn = getattr(ak, "macro_china_shrzgm", None)
             if shr_fn is not None:
                 shr_df = shr_fn()
                 shr_recs = _macro_records_newest(shr_df, 6)
                 if shr_recs:
-                    macro_hard["social_financing"] = shr_recs
-                    macro_hard["shrzgm"] = shr_recs  # 兼容别名
+                    ak_macro["social_financing"] = shr_recs
         except Exception as exc:
             result["errors"].append(f"宏观社融: {exc}")
         try:
             credit_fn = getattr(ak, "macro_china_new_financial_credit", None)
             if credit_fn is not None:
                 credit_df = credit_fn()
-                # 第五波 C11：与社融一致用「最新月份排序」，避免升序表取到最旧 6 条
                 credit_recs = _macro_records_newest(credit_df, 6)
                 if credit_recs:
-                    macro_hard["new_credit"] = credit_recs
+                    ak_macro["new_credit"] = credit_recs
         except Exception as exc:
             result["errors"].append(f"宏观信贷: {exc}")
+
+        ts_macro: dict[str, Any] = {}
+        if self.tushare and self.tushare.available:
+            try:
+                ts_macro = self.tushare.fetch_macro_hard(limit=6)
+                result["errors"].extend(ts_macro.get("errors") or [])
+            except Exception as exc:
+                result["errors"].append(f"Tushare宏观硬指标: {exc}")
+
+        macro_hard: dict[str, Any] = {}
+        macro_hard_meta: dict[str, Any] = {}
+        # PMI 建议 Tushare 优先（Ak 排序坑）；其余双源比期次，默认 Tushare 优先
+        for key, primary in (
+            ("pmi", "tushare"),
+            ("cpi", "tushare"),
+            ("m2", "tushare"),
+            ("social_financing", "tushare"),
+        ):
+            series, meta = fuse_macro_series(
+                ak_macro.get(key),
+                ts_macro.get(key) if isinstance(ts_macro, dict) else None,
+                primary=primary,
+            )
+            if series:
+                macro_hard[key] = series
+                macro_hard_meta[key] = meta
+                if key == "social_financing":
+                    macro_hard["shrzgm"] = series  # 兼容别名
+                if meta.get("agreement") == "conflict":
+                    result["errors"].append(
+                        f"macro_hard_{key}_conflict:gap={meta.get('period_gap_months')}"
+                    )
+        if ak_macro.get("new_credit"):
+            macro_hard["new_credit"] = ak_macro["new_credit"]
+            macro_hard_meta["new_credit"] = {"primary": "akshare", "agreement": "single"}
         result["macro_hard"] = macro_hard
+        result["macro_hard_meta"] = macro_hard_meta
 
         # 全球流动性硬指标（美债 + USD/CNY）——主线宏观外因
         try:
@@ -442,24 +483,42 @@ class IntelligenceFetcher:
                 result["macro_hard_echo"] = echo[: self.max_items]
                 result["errors"].append("economic_calendar_empty_macro_hard_echo_only")
 
+        ak_margin: dict[str, Any] | None = None
         try:
             margin = ak.macro_china_market_margin_sh()
             if not margin.empty:
                 tail = margin.tail(10)
                 latest = tail.iloc[-1]
                 prev = tail.iloc[-5] if len(tail) >= 5 else tail.iloc[0]
-                result["margin_trend"] = {
+                ak_margin = {
                     "latest": _df_row_to_dict(latest),
                     "financing_balance_change_5d_pct": _pct_change(
                         _safe_float(latest.get("融资余额")),
                         _safe_float(prev.get("融资余额")),
                     ),
                     "recent": _records(tail, 5),
+                    "source": "akshare",
                 }
         except Exception as exc:
             result["errors"].append(f"两融数据: {exc}")
 
-        # 深市两融（补充沪市）
+        ts_margin: dict[str, Any] | None = None
+        if self.tushare and self.tushare.available:
+            try:
+                ts_bundle = self.tushare.fetch_margin_market(lookback=15)
+                result["errors"].extend(ts_bundle.get("errors") or [])
+                if ts_bundle.get("latest"):
+                    ts_margin = ts_bundle
+            except Exception as exc:
+                result["errors"].append(f"Tushare两融: {exc}")
+
+        fused_margin = fuse_margin_trend(ak_margin, ts_margin)
+        if fused_margin:
+            result["margin_trend"] = fused_margin
+            if fused_margin.get("agreement") == "conflict":
+                result["errors"].append("margin_trend_conflict")
+
+        # 深市两融（补充沪市；仍以 Ak 为主）
         try:
             margin_sz = ak.macro_china_market_margin_sz()
             if margin_sz is not None and not margin_sz.empty:
@@ -467,6 +526,7 @@ class IntelligenceFetcher:
                 result["margin_trend_sz"] = {
                     "latest": _df_row_to_dict(tail.iloc[-1]),
                     "recent": _records(tail, 5),
+                    "source": "akshare",
                 }
         except Exception as exc:
             result["errors"].append(f"深市两融: {exc}")
@@ -777,18 +837,33 @@ class IntelligenceFetcher:
         except Exception as exc:
             result["errors"].append(f"龙虎榜: {exc}")
 
+        ak_margin_detail: list[dict[str, Any]] = []
         try:
             for date_str in recent_weekdays(self.as_of, 3):
                 try:
                     margin = ak.stock_margin_detail_sse(date=date_str)
                     matched = _filter_df(margin, code, ("标的证券代码",))
                     if not matched.empty:
-                        result["margin_detail"].append(_df_row_to_dict(matched.iloc[0]))
+                        row = _df_row_to_dict(matched.iloc[0])
+                        row["source"] = "akshare_sse"
+                        ak_margin_detail.append(row)
                         break
                 except Exception:
                     continue
         except Exception as exc:
             result["errors"].append(f"融资融券: {exc}")
+
+        ts_margin_detail: list[dict[str, Any]] = []
+        if self.tushare and self.tushare.available:
+            try:
+                md = self.tushare.fetch_margin_detail(code, lookback_days=10)
+                result["errors"].extend(md.get("errors") or [])
+                ts_margin_detail = list(md.get("items") or [])
+            except Exception as exc:
+                result["errors"].append(f"Tushare个股两融: {exc}")
+        result["margin_detail"] = fuse_margin_detail(
+            ak_margin_detail, ts_margin_detail, prefer="tushare"
+        )
 
         # 北向持股个股排行（合法 market=北向；失败写入可读原因，不抛裸 TypeError）
         try:
@@ -812,34 +887,53 @@ class IntelligenceFetcher:
             result["tushare"] = ts_bundle
             result["errors"].extend(ts_bundle.get("errors") or [])
 
-        # 股权质押比例（东财全市场表缓存查询）
+        # 股权质押比例（东财表 + Tushare pledge_stat；门禁取 max）
+        ak_pledge: dict[str, Any] | None = None
         try:
             pledge_df = self._get_pledge_ratio_df()
             if not pledge_df.empty:
                 matched = _filter_df(pledge_df, code, ("股票代码", "代码"))
                 if not matched.empty:
                     row = _df_row_to_dict(matched.iloc[0])
-                    result["pledge_ratio"] = {
+                    ak_pledge = {
                         "ratio": _safe_float(row.get("质押比例")),
                         "shares": row.get("质押股数"),
                         "market_value": row.get("质押市值"),
                         "trade_date": row.get("交易日期"),
                         "industry": row.get("所属行业"),
                         "source": "em_gpzy_pledge_ratio",
+                        "as_of": row.get("交易日期"),
                     }
             elif self._pledge_ratio_error:
                 result["errors"].append(f"股权质押: {self._pledge_ratio_error}")
         except Exception as exc:
             result["errors"].append(f"股权质押: {exc}")
 
-        # 股东增减持（同花顺）；近窗减持进硬门禁
+        ts_pledge: dict[str, Any] | None = None
+        if self.tushare and self.tushare.available:
+            try:
+                ps = self.tushare.fetch_pledge_stat(code)
+                result["errors"].extend(ps.get("errors") or [])
+                ts_pledge = ps.get("latest")
+            except Exception as exc:
+                result["errors"].append(f"Tushare质押: {exc}")
+
+        fused_pledge = fuse_pledge(ak_pledge, ts_pledge)
+        if fused_pledge:
+            result["pledge_ratio"] = fused_pledge
+            if fused_pledge.get("agreement") == "conflict":
+                result["errors"].append(
+                    f"pledge_ratio_conflict:ak={fused_pledge.get('ak_ratio')},ts={fused_pledge.get('ts_ratio')}"
+                )
+
+        # 股东增减持（同花顺 + Tushare stk_holdertrade）；近窗减持进硬门禁（并集）
+        ak_reduce: list[dict[str, Any]] = []
         try:
             holder_df = ak.stock_shareholder_change_ths(symbol=code)
             if holder_df is not None and not holder_df.empty:
                 recs = _records(holder_df.head(12), 12)
                 result["shareholder_changes"] = recs
                 as_cutoff = self.as_of - timedelta(days=90)
-                recent_reduce: list[dict[str, Any]] = []
                 for item in recs:
                     if not isinstance(item, dict):
                         continue
@@ -850,11 +944,25 @@ class IntelligenceFetcher:
                         item, date_keys=("公告日期", "date", "日期", "变动期间")
                     )
                     if d is None or d >= as_cutoff:
-                        recent_reduce.append(item)
-                if recent_reduce:
-                    result["recent_share_reduce"] = recent_reduce[:5]
+                        ak_reduce.append(item)
         except Exception as exc:
             result["errors"].append(f"股东增减持: {exc}")
+
+        ts_reduce: list[dict[str, Any]] = []
+        if self.tushare and self.tushare.available:
+            try:
+                ht = self.tushare.fetch_holder_trades(code, lookback_days=90)
+                result["errors"].extend(ht.get("errors") or [])
+                ts_reduce = list(ht.get("reduce_items") or [])
+                if ht.get("items"):
+                    # 结构化增减持写入旁路，不覆盖同花顺原表
+                    result["tushare_holder_trades"] = ht.get("items")[:12]
+            except Exception as exc:
+                result["errors"].append(f"Tushare增减持: {exc}")
+
+        fused_reduce = fuse_share_reduce(ak_reduce, ts_reduce, limit=5)
+        if fused_reduce:
+            result["recent_share_reduce"] = fused_reduce
 
         if self.config.sentiment.enabled:
             pool: list[dict[str, Any]] = []

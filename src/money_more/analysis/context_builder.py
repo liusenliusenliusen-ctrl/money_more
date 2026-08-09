@@ -18,6 +18,7 @@ def compact_macro_intel(macro: dict[str, Any], max_news: int = 6) -> dict[str, A
         "northbound_summary": (macro.get("northbound_summary") or [])[:3],
         "sector_money_flow": _compact_sector_flow(macro.get("sector_money_flow") or {}),
         "macro_hard": _tail_macro_hard(macro.get("macro_hard") or {}),
+        "macro_hard_meta": _compact_macro_hard_meta(macro.get("macro_hard_meta") or {}),
         "global_liquidity": _compact_global_liquidity(macro.get("global_liquidity") or {}),
         "economic_calendar": (macro.get("economic_calendar") or [])[:5],
         "macro_hard_echo": (macro.get("macro_hard_echo") or [])[:5],
@@ -150,8 +151,9 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
             "market_comment": intel.get("market_comment"),
             "xueqiu_hot": intel.get("xueqiu_hot"),
             "participation_desire": (intel.get("participation_desire") or [])[-2:],
-            "pledge_ratio": intel.get("pledge_ratio"),
+            "pledge_ratio": _compact_pledge(intel.get("pledge_ratio") or {}),
             "recent_share_reduce": (intel.get("recent_share_reduce") or [])[:3],
+            "margin_detail": (intel.get("margin_detail") or [])[:2],
             "research_reports": (intel.get("research_reports") or [])[:3],
             "rss_matches": (intel.get("rss_matches") or [])[:4],
             "tushare": {
@@ -191,7 +193,7 @@ def _compact_sector_flow(flow: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tail_macro_hard(hard: dict[str, Any]) -> dict[str, Any]:
-    """macro_hard 序列来自 AkShare 降序，保留最新 3 期。"""
+    """macro_hard 序列（新→旧），保留最新 3 期。"""
     out = {}
     for k, v in hard.items():
         if isinstance(v, list):
@@ -199,6 +201,36 @@ def _tail_macro_hard(hard: dict[str, Any]) -> dict[str, Any]:
         else:
             out[k] = v
     return out
+
+
+def _compact_macro_hard_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(meta, dict) or not meta:
+        return {}
+    out: dict[str, Any] = {}
+    for k, v in meta.items():
+        if not isinstance(v, dict):
+            continue
+        out[k] = {
+            "primary": v.get("primary"),
+            "agreement": v.get("agreement"),
+            "period_gap_months": v.get("period_gap_months"),
+        }
+    return out
+
+
+def _compact_pledge(pledge: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(pledge, dict) or not pledge:
+        return {}
+    return {
+        "ratio": pledge.get("ratio"),
+        "as_of": pledge.get("as_of") or pledge.get("trade_date") or pledge.get("end_date"),
+        "industry": pledge.get("industry"),
+        "source": pledge.get("source"),
+        "sources": pledge.get("sources"),
+        "agreement": pledge.get("agreement"),
+        "ak_ratio": pledge.get("ak_ratio"),
+        "ts_ratio": pledge.get("ts_ratio"),
+    }
 
 
 def _compact_global_liquidity(gl: dict[str, Any]) -> dict[str, Any]:

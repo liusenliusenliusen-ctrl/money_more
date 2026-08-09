@@ -78,7 +78,12 @@ def parse_macro_period_date(item: dict) -> date | None:
         text = str(raw).strip()
         if not text:
             continue
-        for fmt in ("%Y年%m月份", "%Y年%m月", "%Y-%m", "%Y/%m"):
+        if len(text) == 6 and text.isdigit():
+            try:
+                return date(int(text[:4]), int(text[4:6]), 1)
+            except ValueError:
+                pass
+        for fmt in ("%Y年%m月份", "%Y年%m月", "%Y-%m", "%Y/%m", "%Y%m"):
             try:
                 dt = datetime.strptime(text, fmt)
                 return date(dt.year, dt.month, 1)

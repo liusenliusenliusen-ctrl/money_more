@@ -159,19 +159,39 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             used_in="A1 流动性段落会弱化外资维度",
         )
 
-    if macro.get("margin_trend") or macro.get("margin_trend_sz"):
+    mt_raw = macro.get("margin_trend") or {}
+    mt = mt_raw if isinstance(mt_raw, dict) else {}
+    mt_src = str(mt.get("source") or "")
+    mt_agree = str(mt.get("agreement") or "")
+    if mt_raw or macro.get("margin_trend_sz"):
+        if mt_agree == "conflict":
+            m_status = "degraded"
+            m_detail = "沪/深两融已取到；Ak 与 Tushare 近5日变化方向不一致（以 Ak 为准）"
+            m_provider = "AkShare 沪/深 + Tushare margin（conflict）"
+        elif "tushare" in mt_src and "ak" not in mt_src:
+            m_status = "fallback"
+            m_detail = "Ak 空，已用 Tushare margin 汇总"
+            m_provider = "Tushare margin"
+        elif mt.get("sources") or mt_agree == "match":
+            m_status = "ok"
+            m_detail = f"已取到两融趋势（source={mt_src or 'akshare'}；agreement={mt_agree or 'single'}）"
+            m_provider = "AkShare 沪/深 + Tushare margin"
+        else:
+            m_status = "ok"
+            m_detail = "已取到两融趋势序列"
+            m_provider = "宏观两融序列（沪/深）"
         add(
             name="融资融券",
-            provider="宏观两融序列（沪/深）",
-            fetches="融资余额等杠杆情绪",
-            status="ok",
-            detail="已取到两融趋势序列",
+            provider=m_provider,
+            fetches="融资余额等杠杆情绪（市场层；个股 margin_detail 另见深度池）",
+            status=m_status,
+            detail=m_detail,
             used_in="A1 风险偏好 / 去杠杆或加杠杆判断",
         )
     else:
         add(
             name="融资融券",
-            provider="宏观两融序列（沪/深）",
+            provider="AkShare 沪/深 + Tushare margin",
             fetches="融资余额等杠杆情绪",
             status="fail",
             detail="未取到两融趋势",
@@ -299,32 +319,54 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
         )
 
     hard = macro.get("macro_hard") or {}
+    hard_meta = macro.get("macro_hard_meta") or {}
     if hard:
         hard_keys = [k for k in ("pmi", "cpi", "m2", "social_financing", "new_credit") if hard.get(k)]
+        conflict_keys = [k for k, m in hard_meta.items() if isinstance(m, dict) and m.get("agreement") == "conflict"]
+        primaries = sorted(
+            {
+                str(m.get("primary"))
+                for m in hard_meta.values()
+                if isinstance(m, dict) and m.get("primary")
+            }
+        )
+        h_status = "degraded" if conflict_keys else "ok"
+        h_detail = "已写入 macro_hard：" + ("、".join(hard_keys) or "有数据")
+        if primaries:
+            h_detail += f"；primary={','.join(primaries)}"
+        if conflict_keys:
+            h_detail += f"；期次冲突: {','.join(conflict_keys)}"
         add(
             name="国内宏观硬指标",
-            provider="AkShare PMI / CPI / M2 / 社融等",
+            provider="AkShare + Tushare（cn_pmi/cn_cpi/cn_m/sf_month）",
             fetches="景气、通胀、货币供应量、社融/信贷",
-            status="ok",
-            detail="已写入 macro_hard：" + ("、".join(hard_keys) or "有数据"),
-            used_in="A1 中长线宏观背景；社融为宽信用旁路，不单独驱动买入",
+            status=h_status,
+            detail=h_detail,
+            used_in="A1 中长线宏观背景；社融为宽信用旁路，不单独驱动买入；冲突不平均",
         )
     else:
         add(
             name="国内宏观硬指标",
-            provider="AkShare PMI / CPI / M2 / 社融等",
+            provider="AkShare + Tushare（cn_pmi/cn_cpi/cn_m/sf_month）",
             fetches="景气、通胀、货币供应量、社融/信贷",
             status="fail",
             detail="macro_hard 为空",
             used_in="宏观判断更多依赖新闻叙事",
         )
     if hard.get("social_financing") or hard.get("shrzgm"):
+        sf_meta = hard_meta.get("social_financing") or {}
+        sf_provider = "AkShare + Tushare sf_month"
+        if sf_meta.get("primary") == "tushare":
+            sf_provider = "Tushare sf_month（主）+ AkShare"
+        elif sf_meta.get("primary") == "akshare":
+            sf_provider = "AkShare macro_china_shrzgm（主）+ Tushare"
         add(
             name="社会融资规模",
-            provider="AkShare macro_china_shrzgm（+信贷交叉）",
+            provider=sf_provider,
             fetches="社融增量及分项；可选新增信贷",
-            status="ok",
+            status="degraded" if sf_meta.get("agreement") == "conflict" else "ok",
             detail="已写入 macro_hard.social_financing"
+            + (f"；agreement={sf_meta.get('agreement')}" if sf_meta else "")
             + ("；含 new_credit" if hard.get("new_credit") else ""),
             used_in="A1 国内宽信用旁路；与 M2/两融/全球流动性交叉",
         )
