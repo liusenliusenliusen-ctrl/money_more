@@ -131,6 +131,7 @@ def build_contradiction_branches(
         if "PMI" in flag:
             branches.append(
                 {
+                    "branch_id": "pmi_contraction",
                     "topic": "景气（PMI）",
                     "fact": flag,
                     "if_improves": "PMI 回 50 上方且新订单改善 → 解除「禁进攻」，phase 可升档",
@@ -140,6 +141,7 @@ def build_contradiction_branches(
         elif "融资" in flag:
             branches.append(
                 {
+                    "branch_id": "margin_shrink",
                     "topic": "杠杆资金",
                     "fact": flag,
                     "if_improves": "融资余额止跌回升 5 日 → 矛盾权重下调，可评估进攻仓位",
@@ -149,6 +151,7 @@ def build_contradiction_branches(
         else:
             branches.append(
                 {
+                    "branch_id": f"hard_{len(branches)}",
                     "topic": "硬事实",
                     "fact": flag,
                     "if_improves": "该指标回到中性区 → 解除对应闸",
@@ -156,9 +159,10 @@ def build_contradiction_branches(
                 }
             )
     if not branches and contradiction_active:
-        for c in llm_contras[:2]:
+        for i, c in enumerate(llm_contras[:2]):
             branches.append(
                 {
+                    "branch_id": f"narrative_{i}",
                     "topic": "叙事矛盾",
                     "fact": str(c)[:80],
                     "if_improves": "叙事被硬数据证实 → 升权",
@@ -166,6 +170,38 @@ def build_contradiction_branches(
                 }
             )
     return branches
+
+
+def evaluate_prior_contradiction_branches(
+    prior_branches: list[dict[str, Any]] | None,
+    macro_intel: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """跨轮：对上轮分支用公开序列打 improved / worsened / unchanged。"""
+    macro = macro_intel or {}
+    hard = macro.get("macro_hard") or {}
+    pmi = _latest_macro_value(hard, "pmi", ("制造业", "PMI", "指数"))
+    margin = macro.get("margin_trend") or {}
+    chg5 = _safe_float(margin.get("financing_balance_change_5d_pct"))
+    out: list[dict[str, Any]] = []
+    for b in prior_branches or []:
+        if not isinstance(b, dict):
+            continue
+        row = dict(b)
+        bid = str(row.get("branch_id") or "")
+        status = "unchanged"
+        if bid == "pmi_contraction":
+            if pmi is not None and pmi >= 50:
+                status = "improved"
+            elif pmi is not None and pmi < 50:
+                status = "worsened"
+        elif bid == "margin_shrink":
+            if chg5 is not None and chg5 >= 0:
+                status = "improved"
+            elif chg5 is not None and chg5 < 0:
+                status = "worsened"
+        row["status"] = status
+        out.append(row)
+    return out
 
 
 def detect_hard_contradictions(macro_intel: dict[str, Any] | None) -> list[str]:
@@ -210,11 +246,35 @@ def has_hard_resonance(macro_intel: dict[str, Any] | None, microstructure: dict[
 
 
 def sector_money_flow_ok(flow: Any) -> bool:
-    if not flow:
+    """硬共振用：须有带符号的净流入（不能仅因 top_inflow 列表非空）。"""
+    if not flow or not isinstance(flow, dict):
         return False
-    if isinstance(flow, dict):
-        return bool(flow.get("top_inflow") or flow.get("industries") or flow.get("rows"))
-    return bool(flow)
+    rows = flow.get("top_inflow") or flow.get("rank_by_inflow") or []
+    if not isinstance(rows, list) or not rows:
+        return False
+    signed = 0
+    for row in rows[:8]:
+        if not isinstance(row, dict):
+            continue
+        for key in ("净流入", "主力净流入", "净额"):
+            if key in row:
+                try:
+                    v = float(row.get(key))
+                except (TypeError, ValueError):
+                    continue
+                if v > 0:
+                    signed += 1
+                break
+    # 至少 2 条正净流入，或 rank_by_inflow 明确按净流入排序的前 3 有值
+    if signed >= 2:
+        return True
+    ranked = flow.get("rank_by_inflow") or []
+    if isinstance(ranked, list) and len(ranked) >= 3:
+        # 有独立净流入排名且非空，视为有方向性资金信号
+        return signed >= 1 or any(
+            isinstance(r, dict) and r.get("净流入") is not None for r in ranked[:3]
+        )
+    return False
 
 
 def build_framework_gate_state(
@@ -231,15 +291,28 @@ def build_framework_gate_state(
     hard_flags = detect_hard_contradictions(macro_intel)
     llm_contras = market.get("contradictions") or market.get("key_contradictions") or []
     contra_texts = [str(x) for x in llm_contras if x][:6]
-    contradiction_active = bool(hard_flags or contra_texts)
+
+    prior = prior_context or {}
+    prior_branches_raw = prior.get("contradiction_branches") or []
+    prior_resolved = evaluate_prior_contradiction_branches(prior_branches_raw, macro_intel)
+    # 上轮硬分支未确认改善 → 继续压进攻（确认一条动一条）
+    hard_ids = {"pmi_contraction", "margin_shrink"}
+    unresolved_prior = [
+        b
+        for b in prior_resolved
+        if str(b.get("branch_id") or "") in hard_ids and str(b.get("status") or "") != "improved"
+    ]
+    keep_from_prior = bool(unresolved_prior)
+
+    contradiction_active = bool(hard_flags or contra_texts) or keep_from_prior
 
     resonance = has_hard_resonance(macro_intel, microstructure)
-    prior_hist = (prior_context or {}).get("market_history") or []
-    prior = prior_hist[0] if prior_hist else {}
-    prior_phase = str(prior.get("phase") or "").lower()
-    prior_style = str(prior.get("style") or "")
-    prior_risk = str(prior.get("risk_level") or "").lower()
-    prior_micro = str(prior.get("micro_regime") or prior.get("microstructure_regime") or "")
+    prior_hist = prior.get("market_history") or []
+    prior_row = prior_hist[0] if prior_hist else {}
+    prior_phase = str(prior_row.get("phase") or "").lower()
+    prior_style = str(prior_row.get("style") or "")
+    prior_risk = str(prior_row.get("risk_level") or "").lower()
+    prior_micro = str(prior_row.get("micro_regime") or prior_row.get("microstructure_regime") or "")
 
     cur_phase = str(market.get("phase") or "").lower()
     cur_style = str(market.get("style") or "")
@@ -257,8 +330,21 @@ def build_framework_gate_state(
     block_phase_upgrade = bool(
         config.phase_upgrade_needs_confirm
         and phase_upgrade
-        and (micro_blocks or contradiction_active or prior_micro in ("liquidity_stress", "crowded_sync"))
+        and (
+            micro_blocks
+            or contradiction_active
+            or prior_micro in ("liquidity_stress", "crowded_sync")
+            or keep_from_prior
+        )
     )
+
+    branches = build_contradiction_branches(contradiction_active, hard_flags, contra_texts)
+    # 合并上轮状态到同 id 分支，便于报告展示
+    status_by_id = {str(b.get("branch_id")): b.get("status") for b in prior_resolved}
+    for b in branches:
+        bid = str(b.get("branch_id") or "")
+        if bid in status_by_id:
+            b["prior_status"] = status_by_id[bid]
 
     return {
         "contradiction_active": contradiction_active,
@@ -277,9 +363,11 @@ def build_framework_gate_state(
         "prosperity_by_code": build_code_prosperity_map(sector_analyses, stock_analyses),
         "inflection_by_code": build_code_inflection_map(sector_analyses, stock_analyses),
         "prosperity_block_adds": config.prosperity_block_adds,
-        "contradiction_branches": build_contradiction_branches(
-            contradiction_active, hard_flags, contra_texts
-        ),
+        "contradiction_branches": branches,
+        "prior_branch_status": prior_resolved,
+        "unresolved_prior_branches": [
+            str(b.get("branch_id")) for b in unresolved_prior if b.get("branch_id")
+        ],
         "plain_note": _plain_note(
             contradiction_active, resonance, block_phase_upgrade, hard_flags
         ),

@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS sim_snapshots (
     run_id INTEGER,
     run_date TEXT NOT NULL UNIQUE,
     cash REAL NOT NULL,
-    equity REAL NOT NULL,
+    equity REAL,
     nav_return_pct REAL,
     positions_json TEXT NOT NULL,
     fills_json TEXT NOT NULL,
@@ -185,6 +185,27 @@ POST_MIGRATIONS = [
     """,
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_recommendation_id ON reviews(recommendation_id)",
 ]
+
+# 取价失败时 equity 可为 NULL；旧库 NOT NULL 需重建
+_SIM_SNAPSHOTS_NULLABLE_EQUITY = """
+CREATE TABLE IF NOT EXISTS sim_snapshots__mtm (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER,
+    run_date TEXT NOT NULL UNIQUE,
+    cash REAL NOT NULL,
+    equity REAL,
+    nav_return_pct REAL,
+    positions_json TEXT NOT NULL,
+    fills_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+INSERT OR IGNORE INTO sim_snapshots__mtm
+    (id, run_id, run_date, cash, equity, nav_return_pct, positions_json, fills_json, created_at)
+SELECT id, run_id, run_date, cash, equity, nav_return_pct, positions_json, fills_json, created_at
+FROM sim_snapshots;
+DROP TABLE sim_snapshots;
+ALTER TABLE sim_snapshots__mtm RENAME TO sim_snapshots;
+"""
 
 
 class Database:
@@ -211,7 +232,24 @@ class Database:
                     conn.execute(sql)
                 except (sqlite3.OperationalError, sqlite3.IntegrityError):
                     pass
+            self._migrate_sim_snapshots_nullable_equity(conn)
             conn.commit()
+
+    @staticmethod
+    def _migrate_sim_snapshots_nullable_equity(conn: sqlite3.Connection) -> None:
+        """旧库 equity NOT NULL → 允许 NULL（取价失败时不落伪权益）。"""
+        import re
+
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='sim_snapshots'"
+        ).fetchone()
+        ddl = (row[0] if row else "") or ""
+        if not re.search(r"equity\s+REAL\s+NOT\s+NULL", ddl, flags=re.IGNORECASE):
+            return
+        try:
+            conn.executescript(_SIM_SNAPSHOTS_NULLABLE_EQUITY)
+        except sqlite3.Error:
+            pass
 
     @contextmanager
     def session(self) -> Iterator[sqlite3.Connection]:
@@ -988,7 +1026,7 @@ class Database:
                     snap.get("run_id"),
                     snap["run_date"],
                     float(snap["cash"]),
-                    float(snap["equity"]),
+                    None if snap.get("equity") is None else float(snap["equity"]),
                     snap.get("nav_return_pct"),
                     dumps_json(snap.get("positions") or []),
                     dumps_json(snap.get("fills") or []),

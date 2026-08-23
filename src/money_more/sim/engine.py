@@ -290,13 +290,16 @@ class SimPortfolioEngine:
             quotes=quotes,
             persist=True,
         )
+        eq = snap.get("equity")
+        nav = snap.get("nav_return_pct")
         log.info(
-            "sim apply date=%s equity=%.2f cash=%.2f return=%.2f%% fills=%s",
+            "sim apply date=%s equity=%s cash=%.2f return=%s fills=%s%s",
             run_date,
-            snap.get("equity"),
+            f"{eq:.2f}" if eq is not None else "mtm_failed",
             snap.get("cash"),
-            snap.get("nav_return_pct"),
+            f"{nav:.2f}%" if nav is not None else "n/a",
             len([f for f in fills if not f.get("skipped")]),
+            f" ({snap.get('mtm_error')})" if snap.get("mtm_error") else "",
         )
         return snap
 
@@ -421,10 +424,11 @@ class SimPortfolioEngine:
         positions: dict[str, dict[str, Any]],
         quotes: dict[str, float | None],
     ) -> float:
+        """下单用的权益近似：无行情时用成本占位（仅调仓计算，不作盈亏结论）。"""
         total = float(cash)
         for code, pos in positions.items():
             px = quotes.get(code)
-            if px is None:
+            if px is None or float(px) <= 0:
                 px = float(pos.get("avg_cost") or 0)
             total += float(pos["shares"]) * float(px)
         return round(total, 2)
@@ -441,19 +445,40 @@ class SimPortfolioEngine:
         persist: bool,
     ) -> dict[str, Any]:
         if isinstance(positions, list):
-            pos_map = {p["stock_code"]: p for p in positions}
+            pos_map = {
+                str(p.get("stock_code") or p.get("code") or ""): p for p in positions
+            }
+            pos_map.pop("", None)
         else:
             pos_map = positions
         cash = float(account["cash"])
         initial = float(account.get("initial_cash") or self.config.initial_cash)
         pos_rows: list[dict[str, Any]] = []
         mtm = 0.0
+        failed_codes: list[str] = []
         for code, pos in pos_map.items():
             px = quotes.get(code)
-            mark = float(px) if px is not None else float(pos.get("avg_cost") or 0)
             sh = float(pos["shares"])
-            value = round(sh * mark, 2)
             cost = float(pos.get("avg_cost") or 0)
+            if px is None or float(px) <= 0:
+                failed_codes.append(code)
+                pos_rows.append(
+                    {
+                        "code": code,
+                        "shares": sh,
+                        "avg_cost": cost,
+                        "mark": None,
+                        "value": None,
+                        "pnl_pct": None,
+                        "weight_pct": None,
+                        "mark_ok": False,
+                        "mark_error": "取价失败",
+                        "opened_at": pos.get("opened_at"),
+                    }
+                )
+                continue
+            mark = float(px)
+            value = round(sh * mark, 2)
             pnl_pct = round((mark - cost) / cost * 100, 2) if cost else None
             pos_rows.append(
                 {
@@ -463,22 +488,48 @@ class SimPortfolioEngine:
                     "mark": mark,
                     "value": value,
                     "pnl_pct": pnl_pct,
+                    "mark_ok": True,
+                    "mark_error": None,
                     "opened_at": pos.get("opened_at"),
                 }
             )
             mtm += value
-        equity = round(cash + mtm, 2)
-        for row in pos_rows:
-            row["weight_pct"] = round(row["value"] / equity * 100, 2) if equity else 0.0
-        nav_return_pct = round((equity - initial) / initial * 100, 2) if initial else 0.0
+
+        mtm_ok = not failed_codes
+        if mtm_ok:
+            equity: float | None = round(cash + mtm, 2)
+            market_value: float | None = round(mtm, 2)
+            nav_return_pct: float | None = (
+                round((equity - initial) / initial * 100, 2) if initial else 0.0
+            )
+            mtm_error = None
+            for row in pos_rows:
+                if equity:
+                    row["weight_pct"] = round(float(row["value"]) / equity * 100, 2)
+                else:
+                    row["weight_pct"] = 0.0
+        else:
+            # 任一只持仓取价失败：不把成本当现价，组合盈亏结论失败
+            equity = None
+            market_value = None
+            nav_return_pct = None
+            codes_s = "、".join(f"`{c}`" for c in failed_codes)
+            mtm_error = f"盈亏计算失败：持仓取价失败（{codes_s}）"
+            for row in pos_rows:
+                if row.get("mark_ok"):
+                    row["weight_pct"] = None
+
         snap = {
             "run_id": run_id,
             "run_date": run_date,
             "initial_cash": initial,
             "cash": cash,
             "equity": equity,
-            "market_value": round(mtm, 2),
+            "market_value": market_value,
             "nav_return_pct": nav_return_pct,
+            "mtm_ok": mtm_ok,
+            "mtm_error": mtm_error,
+            "quote_failed_codes": failed_codes,
             "positions": pos_rows,
             "fills": fills,
             "fill_count": len([f for f in fills if not f.get("skipped")]),
@@ -645,6 +696,9 @@ def build_sim_round_explanation(
     if key_ov and not fills:
         bullets.append("关键风控覆写：" + "；".join(str(x) for x in key_ov))
 
+    if sim.get("mtm_ok") is False and sim.get("mtm_error"):
+        bullets.append(str(sim["mtm_error"]))
+
     # 未成交明细（含 watch/hold 解释）— 压缩展示
     idle_lines: list[str] = []
     for f in skips:
@@ -735,11 +789,26 @@ def render_sim_section(
         if sim.get("initial_cash") is not None
         else "- **初始资金**: —"
     )
-    lines.append(
-        f"- **模拟总权益**: {sim.get('equity'):,.2f} 元 · 现金 {sim.get('cash'):,.2f} · "
-        f"市值 {sim.get('market_value'):,.2f}"
-    )
-    lines.append(f"- **相对初始盈亏**: {sim.get('nav_return_pct')}%")
+    cash = sim.get("cash")
+    cash_s = f"{cash:,.2f}" if cash is not None else "—"
+    if sim.get("mtm_ok") is False:
+        lines.append(f"- **模拟总权益**: 盈亏计算失败 · 现金 {cash_s} · 市值 —")
+        lines.append(
+            f"- **相对初始盈亏**: 盈亏计算失败"
+            + (f"（{sim.get('mtm_error')}）" if sim.get("mtm_error") else "")
+        )
+    else:
+        eq = sim.get("equity")
+        mv = sim.get("market_value")
+        lines.append(
+            f"- **模拟总权益**: {eq:,.2f} 元 · 现金 {cash_s} · 市值 {mv:,.2f}"
+            if eq is not None and mv is not None
+            else f"- **模拟总权益**: — · 现金 {cash_s} · 市值 —"
+        )
+        nav = sim.get("nav_return_pct")
+        lines.append(
+            f"- **相对初始盈亏**: {nav}%" if nav is not None else "- **相对初始盈亏**: —"
+        )
     lines.append("")
 
     positions = sim.get("positions") or []
@@ -747,11 +816,18 @@ def render_sim_section(
         lines.append("## 模拟持仓（非真实）")
         lines.append("")
         for p in positions:
-            lines.append(
-                f"- `{p.get('code')}` {p.get('shares'):.0f}股 · 成本 {p.get('avg_cost')} · "
-                f"现价 {p.get('mark')} · 市值 {p.get('value'):,.2f} · "
-                f"浮盈亏 {p.get('pnl_pct')}% · 仓位 {p.get('weight_pct')}%"
-            )
+            if p.get("mark_ok") is False or p.get("mark") is None:
+                err = p.get("mark_error") or "取价失败"
+                lines.append(
+                    f"- `{p.get('code')}` {p.get('shares'):.0f}股 · 成本 {p.get('avg_cost')} · "
+                    f"现价 — · 市值 — · **浮盈亏：{err}（盈亏计算失败）** · 仓位 —"
+                )
+            else:
+                lines.append(
+                    f"- `{p.get('code')}` {p.get('shares'):.0f}股 · 成本 {p.get('avg_cost')} · "
+                    f"现价 {p.get('mark')} · 市值 {p.get('value'):,.2f} · "
+                    f"浮盈亏 {p.get('pnl_pct')}% · 仓位 {p.get('weight_pct')}%"
+                )
         lines.append("")
     else:
         lines.append("_模拟盘当前空仓（现金待命）_")

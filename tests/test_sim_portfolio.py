@@ -94,6 +94,41 @@ def test_sim_skips_buy_without_position_pct(tmp_path: Path) -> None:
     assert any("position_pct" in str(f.get("note") or "") for f in snap["fills"])
 
 
+def test_sim_quote_missing_marks_pnl_failed(tmp_path: Path) -> None:
+    """取价失败不得用成本冒充现价/持平盈亏。"""
+    db = Database(tmp_path / "sim_mtm.db")
+    engine = SimPortfolioEngine(db, SimConfig(initial_cash=50_000))
+    engine.apply_recommendations(
+        run_id=1,
+        run_date="2026-07-01",
+        recommendations=[{"code": "300059", "action": "buy", "position_pct": 8}],
+        quotes={"300059": 20.0},
+    )
+    snap = engine.apply_recommendations(
+        run_id=2,
+        run_date="2026-07-08",
+        recommendations=[{"code": "300059", "action": "hold", "position_pct": 8}],
+        quotes={},  # 本轮无行情
+    )
+    assert snap["mtm_ok"] is False
+    assert snap["equity"] is None
+    assert snap["nav_return_pct"] is None
+    assert snap["market_value"] is None
+    assert "盈亏计算失败" in str(snap.get("mtm_error") or "")
+    pos = snap["positions"][0]
+    assert pos["code"] == "300059"
+    assert pos["mark"] is None
+    assert pos["pnl_pct"] is None
+    assert pos["mark_ok"] is False
+    assert pos["avg_cost"] == 20.0  # 成本仍保留，但不用于伪造成交价
+
+    text = "\n".join(render_sim_section(snap))
+    assert "盈亏计算失败" in text
+    assert "浮盈亏：取价失败" in text
+    assert "浮盈亏 0.0%" not in text
+    assert "现价 20.0" not in text
+
+
 def test_render_sim_section() -> None:
     lines = render_sim_section(
         {

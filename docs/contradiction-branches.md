@@ -153,7 +153,7 @@ PMI 收缩既可能激活宏观矛盾分支，也可能通过板块景气映射�
 
 ---
 
-## 8. 「确认一条动一条」怎么执行（读法）
+## 8. 「确认一条动一条」怎么执行（读法 + 代码）
 
 以 PMI 分支为例：
 
@@ -165,6 +165,13 @@ PMI 收缩既可能激活宏观矛盾分支，也可能通过板块景气映射�
 4. **另一条矛盾**（若有融资分支）单独看；PMI 修好了不等于融资分支自动解除。
 
 这就是「确认一条动一条」：**按开关逐个松/紧，不打包平均。**
+
+### 跨轮机读（已落地）
+
+- 每轮 `decision_digest` 写入带稳定 `branch_id` 的 `contradiction_branches`。  
+- 下轮 `evaluate_prior_contradiction_branches`：用 PMI / 融资余额近 5 日变化标 `improved` / `worsened` / `unchanged`。  
+- **硬分支（`pmi_contraction` / `margin_shrink`）未 `improved` 时继续 `contradiction_active`**，即使本轮 LLM 散文矛盾已空、或缺宏观字段（`unchanged`）也不得靠叙事单独松闸。  
+- 报告可展示 `prior_status`；`unresolved_prior_branches` 可审计。
 
 ---
 

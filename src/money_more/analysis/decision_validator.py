@@ -31,6 +31,9 @@ def validate_recommendations(
     framework_gates: dict[str, Any] | None = None,
     sector_analyses: list[dict[str, Any]] | None = None,
     research_by_code: dict[str, Any] | None = None,
+    verify_ledger: dict[str, Any] | None = None,
+    macro_hard_meta: dict[str, Any] | None = None,
+    margin_trend: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -41,8 +44,10 @@ def validate_recommendations(
     fw = framework_gates or {}
     max_single = float(constraints.get("max_single_position_pct", 20))
     max_total = float(constraints.get("max_total_position_pct", 80))
-    stop_loss_pct = float(constraints.get("stop_loss_pct", 8))
-    take_profit_pct = float(constraints.get("take_profit_pct", 25))
+    # 中长线默认与 TradingConfig 对齐（15/40）；字段语义为失效价带/观察目标，非短线止损
+    stop_loss_pct = float(constraints.get("stop_loss_pct", 15))
+    take_profit_pct = float(constraints.get("take_profit_pct", 40))
+    max_theme_names = int(constraints.get("max_theme_names") or constraints.get("max_deep_per_theme") or 5)
 
     # 数据质量 / 风险环境 → 收紧总仓位
     score = float(dq.get("score") or 1.0)
@@ -99,6 +104,19 @@ def validate_recommendations(
         regime_mult *= 0.85
         overrides.append("global_liquidity=tightening → 总仓位×0.85")
 
+    # 双源冲突发丝：与矛盾分支同族，不新造叙事
+    hard_meta = macro_hard_meta or {}
+    conflict_keys = [
+        k for k, m in hard_meta.items() if isinstance(m, dict) and m.get("agreement") == "conflict"
+    ]
+    if conflict_keys:
+        regime_mult *= 0.95
+        overrides.append(f"macro_hard_meta conflict={','.join(conflict_keys[:4])} → 总仓×0.95")
+    mt = margin_trend or {}
+    if str(mt.get("agreement") or "") == "conflict":
+        regime_mult *= 0.95
+        overrides.append("margin_trend agreement=conflict → 总仓×0.95")
+
     effective_max_total = max_total * regime_mult
     # 股债相对价值：硬封顶（可审计），再与 regime 收紧取小
     eb = equity_bond or gl.get("equity_bond") or {}
@@ -118,6 +136,31 @@ def validate_recommendations(
                 )
         except (TypeError, ValueError):
             pass
+    # 硬现金地板：implied_min_cash_pct 强制总仓 ≤ 100-min_cash
+    if eb.get("ok") and eb.get("implied_min_cash_pct") is not None:
+        try:
+            min_cash = float(eb["implied_min_cash_pct"])
+            cash_cap = max(0.0, 100.0 - min_cash)
+            if cash_cap < effective_max_total - 1e-6:
+                overrides.append(
+                    f"现金地板 min_cash={min_cash:.0f}% → 总仓硬上限{cash_cap:.0f}%"
+                )
+                effective_max_total = cash_cap
+        except (TypeError, ValueError):
+            pass
+
+    # verify → 先验
+    v_priors = (verify_ledger or {}).get("priors") or {}
+    forbid_verify_sectors = {
+        str(s).strip() for s in (v_priors.get("forbid_sectors") or []) if str(s).strip()
+    }
+    verify_conf_mult = 1.0
+    try:
+        verify_conf_mult = float(v_priors.get("confidence_mult") or 1.0)
+    except (TypeError, ValueError):
+        verify_conf_mult = 1.0
+    for note in v_priors.get("notes") or []:
+        overrides.append(f"verify_prior: {note}")
 
     # 微观分档：以 enrich 后的 forbid_new_buys 为准；无该字段时回退旧 stress 逻辑
     if "forbid_new_buys" in micro:
@@ -256,7 +299,28 @@ def validate_recommendations(
                 overrides.append(f"{code}: 信息完备性 haircut -{ih}")
         except (TypeError, ValueError):
             pass
+        if verify_conf_mult < 0.999 and action in ("buy", "add", "hold"):
+            conf_f = max(0.05, conf_f * verify_conf_mult)
+            overrides.append(f"{code}: verify先验置信×{verify_conf_mult}")
         rec["confidence"] = conf_f
+
+        # verify 赛道低命中：禁新开
+        sector_tag = str(
+            rec.get("sector_tag")
+            or (rec.get("sector_link") or {}).get("sector")
+            or rec.get("sector")
+            or ""
+        ).strip()
+        if (
+            sector_tag
+            and sector_tag in forbid_verify_sectors
+            and action in ("buy", "add")
+            and code not in holding_by_code
+        ):
+            overrides.append(f"{code}: 赛道[{sector_tag}]验证先验禁新开 → watch")
+            action = "watch"
+            rec["action"] = "watch"
+            rec["position_pct"] = 0.0
 
         pos = rec.get("position_pct")
         try:
@@ -356,7 +420,7 @@ def validate_recommendations(
 
         rec["position_pct"] = round(pos_f, 2)
 
-        # 止损/止盈相对成本或现价
+        # 失效价带 / 观察目标：相对成本或现价做合理性夹逼（不作短线自动平仓依据）
         holding = holding_by_code.get(code)
         px = quotes.get(code)
         cost = None
@@ -369,17 +433,19 @@ def validate_recommendations(
 
         if ref and action in ("buy", "hold", "add"):
             min_stop = round(ref * (1 - stop_loss_pct / 100), 4)
-            max_target = round(ref * (1 + take_profit_pct / 100 * 2), 4)  # 允许略超配置止盈
+            max_target = round(ref * (1 + take_profit_pct / 100 * 2), 4)  # 允许略超配置观察目标
             stop = rec.get("stop_loss")
             try:
                 stop_f = float(stop) if stop is not None else min_stop
             except (TypeError, ValueError):
                 stop_f = min_stop
-            if stop_f < min_stop * 0.98:  # 止损过宽
-                overrides.append(f"{code}: stop_loss {stop_f}→{min_stop} (max {stop_loss_pct}%)")
+            if stop_f < min_stop * 0.98:  # 失效价带过宽
+                overrides.append(
+                    f"{code}: 失效价带 {stop_f}→{min_stop} (max 偏离 {stop_loss_pct}%)"
+                )
                 stop_f = min_stop
             if stop_f >= ref:
-                overrides.append(f"{code}: stop_loss >= ref → {min_stop}")
+                overrides.append(f"{code}: 失效价带 >= ref → {min_stop}")
                 stop_f = min_stop
             rec["stop_loss"] = stop_f
 
@@ -390,9 +456,9 @@ def validate_recommendations(
                 tgt_f = round(ref * (1 + take_profit_pct / 100), 4)
             if tgt_f <= ref:
                 tgt_f = round(ref * (1 + take_profit_pct / 100), 4)
-                overrides.append(f"{code}: target_price 过低 → {tgt_f}")
+                overrides.append(f"{code}: 观察目标过低 → {tgt_f}")
             if tgt_f > max_target:
-                overrides.append(f"{code}: target_price {tgt_f}→{max_target}")
+                overrides.append(f"{code}: 观察目标 {tgt_f}→{max_target}")
                 tgt_f = max_target
             rec["target_price"] = tgt_f
 
@@ -469,6 +535,37 @@ def validate_recommendations(
             overrides.append(f"板块[{tag}]仓位 {ssum:.1f}%→{sector_cap:.1f}%")
             for r in rows:
                 r["position_pct"] = round(float(r["position_pct"]) * scale, 2)
+
+    # 主题集中度：同一主题 buy/add 只数不超过 max_theme_names（对齐筛股 max_deep_per_theme）
+    by_theme: dict[str, list[dict[str, Any]]] = {}
+    for r in out:
+        if str(r.get("action")).lower() not in ("buy", "add"):
+            continue
+        if float(r.get("position_pct") or 0) <= 0 and str(r.get("action")).lower() == "add":
+            continue
+        if str(r.get("action")).lower() == "buy" and float(r.get("position_pct") or 0) <= 0:
+            continue
+        theme = str(
+            r.get("sector_tag")
+            or (r.get("sector_link") or {}).get("sector")
+            or r.get("sector")
+            or "unknown"
+        )
+        if theme == "unknown":
+            continue
+        by_theme.setdefault(theme, []).append(r)
+    for theme, rows in by_theme.items():
+        if len(rows) <= max_theme_names:
+            continue
+        # 保留置信度更高的前 N，其余压 watch
+        ranked = sorted(rows, key=lambda x: float(x.get("confidence") or 0), reverse=True)
+        for r in ranked[max_theme_names:]:
+            if str(r.get("action")).lower() == "buy" and r["code"] not in holding_by_code:
+                overrides.append(
+                    f"{r['code']}: 主题[{theme}]超限(≤{max_theme_names}) → watch"
+                )
+                r["action"] = "watch"
+                r["position_pct"] = 0.0
 
     if overrides:
         for r in out:

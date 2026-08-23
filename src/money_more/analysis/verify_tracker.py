@@ -176,4 +176,66 @@ def build_verify_ledger(
             "avoid_rate_pct": _rate(avoided, avoided + avoid_failed),
         },
         "rows": evaluated[-60:],
+        "priors": build_verify_priors(evaluated),
+    }
+
+
+def build_verify_priors(
+    rows: list[dict[str, Any]],
+    *,
+    min_sector_samples: int = 3,
+    sector_hit_rate_floor_pct: float = 30.0,
+    consecutive_miss_limit: int = 3,
+) -> dict[str, Any]:
+    """由验证台账生成下一轮先验：赛道低命中 / 连续 miss → 降置信或禁新开。"""
+    forbid_sectors: list[str] = []
+    haircut_sectors: dict[str, float] = {}
+    notes: list[str] = []
+
+    by_sector: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        if str(r.get("action") or "") not in ("buy", "add", "hold"):
+            continue
+        if r.get("verdict") not in ("hit", "miss", "flat"):
+            continue
+        sec = str(r.get("sector") or "").strip() or "unknown"
+        by_sector.setdefault(sec, []).append(r)
+
+    for sec, items in by_sector.items():
+        if sec == "unknown":
+            continue
+        decided = [x for x in items if x.get("verdict") in ("hit", "miss")]
+        if len(decided) < min_sector_samples:
+            continue
+        hits = sum(1 for x in decided if x.get("verdict") == "hit")
+        rate = hits / len(decided) * 100
+        if rate < sector_hit_rate_floor_pct:
+            forbid_sectors.append(sec)
+            notes.append(f"赛道[{sec}]验证命中率{rate:.0f}%<{sector_hit_rate_floor_pct:.0f}% → 禁新开")
+
+    # 按 run_date 排序看连续 miss（全市场）
+    timed = sorted(
+        [r for r in rows if r.get("verdict") == "miss" and str(r.get("action")) in ("buy", "add", "hold")],
+        key=lambda x: str(x.get("run_date") or ""),
+    )
+    streak = 0
+    last_dates: list[str] = []
+    for r in timed[-consecutive_miss_limit:]:
+        streak += 1
+        last_dates.append(str(r.get("run_date") or ""))
+    if streak >= consecutive_miss_limit and len(timed) >= consecutive_miss_limit:
+        # 最近 N 条到期 buy-like 均为 miss
+        recent = [
+            r
+            for r in sorted(rows, key=lambda x: str(x.get("run_date") or ""))
+            if r.get("verdict") in ("hit", "miss") and str(r.get("action")) in ("buy", "add", "hold")
+        ][-consecutive_miss_limit:]
+        if recent and all(r.get("verdict") == "miss" for r in recent):
+            haircut_sectors["*"] = 0.75
+            notes.append(f"连续{consecutive_miss_limit}次 buy-like miss → 全局置信×0.75")
+
+    return {
+        "forbid_sectors": forbid_sectors,
+        "confidence_mult": haircut_sectors.get("*", 1.0),
+        "notes": notes[:6],
     }

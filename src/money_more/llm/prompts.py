@@ -253,7 +253,8 @@ ADVICE_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」经理（PM�
 3. **矛盾时保守**：cross_check.ok=false → watch/hold（有仓）或 watch（空仓）；硬事实(PMI/融资等)与软叙事冲突时禁止进攻向 buy/add
 4. **仓位纪律**：遵守 trading_constraints 与 equity_bond 上限；系统会再 clamp
 5. **硬门禁**：hard_gates.block_buy / force_watch 时不得 buy/add
-6. **失效条件**：优先盈利下修/政策转向/估值失真等中期条件；勿因近 5 日浮亏改写中期失效
+6. **失效条件**：优先盈利下修/政策转向/估值失真等中期条件；勿因近 5 日浮亏改写中期失效；**禁止**把「跌破 MA5 / 单日大跌」写成主失效
+6b. **`stop_loss` / `target_price` 语义**：分别为「中期失效价带」与「观察目标价」，**不是**短线止损止盈；系统不会因触达该价自动平仓
 7. **数据降级**：data_quality.degraded=true 时禁止新开仓
 8. **侧栏尾部**：未确认叙事不得当买入主因；政策/联播须有流动性或资金等硬共振才可 buy/add
 9. **微观结构 / 流动性 / 股债 / 盈利修正 / OCF**：与既有中长线闸门一致，写进 market_regime_note / rationale
@@ -280,7 +281,7 @@ ADVICE_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」经理（PM�
       "rationale": "建议段理由：链到研究评级；空仓勿提浮亏；有仓区分持仓操作",
       "evidence_chain": ["证据1", "证据2"],
       "key_risk": "最大中期风险",
-      "invalidation": "中期失效条件",
+      "invalidation": "中期失效条件（基本面/政策/估值；禁止「跌破MA5/单日大跌」作主失效）",
       "verify_in_days": 14,
       "verify_signals": ["14日内可核对信号，如板块资金连续两周净流入"],
       "sector_link": {{
@@ -323,6 +324,7 @@ ADVICE_SECONDARY_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」�
 5. 未确认叙事不得当买入主因
 6. 仍须对深度池给出完整 action 草案，整体偏审慎
 7. 每条须含 sector_link 与 verify_in_days / verify_signals（同主建议）
+8. `stop_loss`/`target_price`=失效价带/观察目标（非短线止损止盈）；invalidation 禁 MA5/单日大跌主因
 
 ## 输出 JSON
 {{
@@ -342,7 +344,7 @@ ADVICE_SECONDARY_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」�
       "rationale": "风控建议理由；空仓勿提浮亏",
       "evidence_chain": ["证据1", "证据2"],
       "key_risk": "最大中期风险（必填且具体）",
-      "invalidation": "中期失效条件",
+      "invalidation": "中期失效条件（禁 MA5/单日大跌作主因）",
       "verify_in_days": 14,
       "verify_signals": ["可核对验证信号"],
       "sector_link": {{

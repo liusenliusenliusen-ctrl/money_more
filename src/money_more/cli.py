@@ -371,8 +371,16 @@ def _print_sim_status(config, db) -> None:
         table.add_row("现金", f"{float(account['cash']):,.2f}")
     if latest:
         table.add_row("最近结算日", str(latest.get("run_date")))
-        table.add_row("总权益", f"{float(latest['equity']):,.2f}")
-        table.add_row("相对初始盈亏%", str(latest.get("nav_return_pct")))
+        eq = latest.get("equity")
+        table.add_row(
+            "总权益",
+            f"{float(eq):,.2f}" if eq is not None else "盈亏计算失败（取价失败）",
+        )
+        nav = latest.get("nav_return_pct")
+        table.add_row(
+            "相对初始盈亏%",
+            str(nav) if nav is not None else "盈亏计算失败",
+        )
     table.add_row("成交笔数", str(summary.get("fill_count")))
     table.add_row("快照数", str(summary.get("snapshot_count")))
     console.print(table)

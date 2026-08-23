@@ -53,6 +53,30 @@ from money_more.utils.logging_util import setup_logging
 log = setup_logging()
 
 
+def _dq_as_of(macro_intel: dict[str, Any]) -> date:
+    raw = macro_intel.get("as_of") or macro_intel.get("run_date")
+    if raw:
+        try:
+            return date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            pass
+    return date.today()
+
+
+def _social_financing_lag_months(hard: dict[str, Any], *, as_of: date) -> int | None:
+    """社融最新期相对跑日的滞后天数（按月近似）。无记录返回 None。"""
+    from money_more.data.as_of import parse_macro_period_date
+
+    rows = hard.get("social_financing") or hard.get("shrzgm") or []
+    if not rows or not isinstance(rows[0], dict):
+        return None
+    period = parse_macro_period_date(rows[0])
+    if period is None:
+        return None
+    # 期次用月初；滞后期 = (as_of.year*12+as_of.month) - (period.year*12+period.month)
+    return (as_of.year - period.year) * 12 + (as_of.month - period.month)
+
+
 class DecisionPipeline:
     """情报 → 市场 → 板块 → 个股 → 交易 → 复盘 → 趋势更新。"""
 
@@ -145,6 +169,8 @@ class DecisionPipeline:
 
     def _run_daily_body(self, run_id: int, run_date: date, result: dict[str, Any]) -> None:
         prior_context = result.get("prior_context") or self.db.get_prior_context(limit=5)
+        prior_context = self._attach_prior_contradiction_branches(prior_context)
+        result["prior_context"] = prior_context
         existing_trend = self.db.get_trend_report()
         if existing_trend:
             existing_trend.pop("_meta", None)
@@ -652,6 +678,9 @@ class DecisionPipeline:
             "max_total_position_pct": self.config.trading.max_total_position_pct,
             "stop_loss_pct": self.config.trading.stop_loss_pct,
             "take_profit_pct": self.config.trading.take_profit_pct,
+            "max_deep_per_theme": int(
+                getattr(getattr(self.config, "screen", None), "max_deep_per_theme", 5) or 5
+            ),
         }
 
         from money_more.analysis.decision_stages import build_research_book
@@ -881,6 +910,9 @@ class DecisionPipeline:
             framework_gates=fw_state,
             sector_analyses=sector_analyses,
             research_by_code=research_by_code,
+            verify_ledger=result.get("verify_ledger") or {},
+            macro_hard_meta=(macro_intel or {}).get("macro_hard_meta") or {},
+            margin_trend=(macro_intel or {}).get("margin_trend") or {},
         )
         result["sector_coverage"] = build_sector_coverage(
             sector_analyses,
@@ -1044,9 +1076,12 @@ class DecisionPipeline:
         result["action_lifecycles"] = review_result.get("action_lifecycles")
         result["dimension_diff_table"] = review_result.get("dimension_diff_table") or []
 
-        # 更新纸面持仓盯市
+        # 更新纸面持仓盯市（结案：失效机检 / 终局 sell / 持有期满；不用价触达止损止盈）
         try:
-            self._mark_paper_trades(run_date)
+            self._mark_paper_trades(
+                run_date,
+                recommendations=list(result.get("recommendations") or []),
+            )
         except Exception as exc:
             log.warning("mark_paper_trades failed: %s", exc)
 
@@ -1400,11 +1435,24 @@ class DecisionPipeline:
                     default_buy_pct=float(sim_cfg.default_buy_pct),
                 ),
             )
+            # 模拟已有持仓未必在本轮深度池：补取现价，避免盯市时用成本冒充
+            quotes_full: dict[str, float | None] = dict(quotes)
+            for pos in self.db.sim_get_positions():
+                code = str(pos.get("stock_code") or "")
+                if not code:
+                    continue
+                if quotes_full.get(code) is not None:
+                    continue
+                try:
+                    quotes_full[code] = self.fetcher.fetch_current_price(code)
+                except Exception as exc:
+                    log.warning("sim quote fetch %s failed: %s", code, exc)
+                    quotes_full[code] = None
             return engine.apply_recommendations(
                 run_id=run_id,
                 run_date=run_date.isoformat(),
                 recommendations=recommendations,
-                quotes=quotes,
+                quotes=quotes_full,
                 max_single_pct=float(self.config.trading.max_single_position_pct),
                 max_total_pct=float(self.config.trading.max_total_position_pct),
             )
@@ -1412,8 +1460,28 @@ class DecisionPipeline:
             log.warning("sim portfolio failed: %s", exc)
             return {"skipped": True, "error": str(exc)}
 
-    def _mark_paper_trades(self, run_date: date) -> None:
+    def _mark_paper_trades(
+        self,
+        run_date: date,
+        *,
+        recommendations: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """盯市更新；结案仅：中期失效机检 / 终局 sell / 持有期满。不用价格止损止盈自动平仓。"""
         open_trades = self.db.get_open_paper_trades()
+        recs = recommendations or []
+        sell_codes = {
+            str(r.get("code") or r.get("stock_code") or "")
+            for r in recs
+            if str(r.get("action") or "").lower() == "sell"
+        }
+        inv_by_code: dict[str, bool] = {}
+        for r in recs:
+            code = str(r.get("code") or "")
+            if not code:
+                continue
+            chk = r.get("invalidation_check") or {}
+            if chk.get("invalidated") or chk.get("fired"):
+                inv_by_code[code] = True
         for trade in open_trades:
             code = trade["stock_code"]
             px = self.fetcher.fetch_current_price(code)
@@ -1425,16 +1493,14 @@ class DecisionPipeline:
                 from money_more.analysis.costs import apply_ashare_costs
 
                 ret = apply_ashare_costs(ret, side="roundtrip")
-            stop = trade.get("stop_loss")
-            target = trade.get("target_price")
             status = "open"
             exit_reason = None
-            if stop is not None and px <= float(stop):
+            if code in sell_codes:
                 status = "closed"
-                exit_reason = "stop_loss"
-            elif target is not None and px >= float(target):
+                exit_reason = "final_sell"
+            elif inv_by_code.get(code):
                 status = "closed"
-                exit_reason = "take_profit"
+                exit_reason = "invalidation_fired"
             else:
                 try:
                     ed = date.fromisoformat(str(trade["entry_date"])[:10])
@@ -1470,11 +1536,22 @@ class DecisionPipeline:
         limit: int = 3,
         prior_context: dict[str, Any] | None = None,
     ) -> dict[str, list[str]]:
-        """资金流自动扩：单日流入=观察扩；升权需双榜/叙事/上轮观察确认。"""
+        """资金流自动扩：近 5 日流入=观察扩；升权需双榜/叙事/上轮观察确认。
+
+        若已标明窗口/来源且非 5 日，返回空扩池（不回落「今日」）。
+        无窗口元数据时兼容旧测试/历史 digest。
+        """
         empty: dict[str, list[str]] = {"all": [], "observe": [], "promote": []}
         if limit <= 0:
             return empty
         flow = macro_intel.get("sector_money_flow") or {}
+        window = str(macro_intel.get("sector_money_flow_window") or "").strip()
+        source = str(macro_intel.get("sector_money_flow_source") or "").strip()
+        is_5d = window == "5d" or "_5d" in source
+        if (window or source) and not is_5d:
+            return empty
+        if not (flow.get("top_inflow") or flow.get("top_gainers")):
+            return empty
         seen = {str(s).strip() for s in watch_sectors if s}
         skip_keys = ("沪深", "上证", "深证", "创业板指", "科创50", "中证", "北证")
 
@@ -1637,7 +1714,6 @@ class DecisionPipeline:
         return out
 
     @staticmethod
-    @staticmethod
     def _prior_microstructure(prior_context: dict[str, Any] | None) -> dict[str, Any] | None:
         hist = (prior_context or {}).get("market_history") or []
         if not hist:
@@ -1653,6 +1729,30 @@ class DecisionPipeline:
             "pending_confirm": bool(first.get("micro_pending_confirm")),
             "forbid_new_buys": bool(first.get("micro_forbid_new_buys")),
         }
+
+    def _attach_prior_contradiction_branches(
+        self, prior_context: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """从上轮 digest 注入 contradiction_branches，供跨轮确认改善。"""
+        ctx = dict(prior_context or {})
+        if ctx.get("contradiction_branches"):
+            return ctx
+        try:
+            dig_dir = self.config.project_root / "reports" / "digests"
+            if not dig_dir.exists():
+                return ctx
+            files = sorted(dig_dir.glob("????-??-??.json"))
+            if not files:
+                return ctx
+            import json as _json
+
+            raw = _json.loads(files[-1].read_text(encoding="utf-8"))
+            branches = raw.get("contradiction_branches") or []
+            if branches:
+                ctx["contradiction_branches"] = branches
+        except Exception as exc:
+            log.warning("load prior contradiction_branches failed: %s", exc)
+        return ctx
 
     @staticmethod
     def _assess_data_quality(macro_intel: dict[str, Any]) -> dict[str, Any]:
@@ -1728,18 +1828,30 @@ class DecisionPipeline:
             notes.append("政策源=快讯抽取(≠正式联播)")
         if macro_intel.get("tushare_macro_backfill"):
             notes.append("Tushare宏观新闻已用替代源回填")
+
+        # 社融期次滞后：机读扣分 + 禁止叙事称「最新社融」
+        sf_lag = _social_financing_lag_months(hard, as_of=_dq_as_of(macro_intel))
+        if sf_lag is not None and sf_lag >= 2:
+            score = round(max(0.0, score - 0.08), 2)
+            missing.append("social_financing_fresh")
+            notes.append(f"社融期次滞后约{sf_lag}月（勿称最新社融）")
+            checks["social_financing_fresh"] = False
+        elif sf_lag is not None:
+            checks["social_financing_fresh"] = True
+
         return {
             "score": score,
             "checks": checks,
             "missing": missing,
             "error_count": len(errors),
             "errors_sample": errors[:8],
-            "degraded": degraded,
+            "degraded": degraded or score < 0.6,
             "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
             "tushare_perm_issue": bool(tushare_bad),
             "research_fields": research_fields,
             "research_score": research_score,
             "policy_news_source": policy_src or None,
+            "social_financing_lag_months": sf_lag,
             "note": "；".join(notes),
         }
 

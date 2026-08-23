@@ -83,29 +83,55 @@ def _normalize_sector_summary(df: pd.DataFrame, column_map: dict[str, str]) -> p
     return out.dropna(subset=["板块"]).reset_index(drop=True)
 
 
-def fetch_sector_board_summary() -> tuple[pd.DataFrame, str, list[str]]:
-    """板块行业摘要：THS 汇总 → THS 行业资金流 → 东财板块排名，多源回退。"""
+def fetch_sector_board_summary(
+    *,
+    prefer_window: str = "5d",
+) -> tuple[pd.DataFrame, str, list[str]]:
+    """板块行业资金流汇总。
+
+    中长线默认 prefer_window=\"5d\"：主用近 5 日；失败时**不**静默回落到「今日」
+    （返回空表 + sector_flow_5d_unavailable），避免一日热度驱动扩池。
+    """
     errors: list[str] = []
-    attempts: list[tuple[str, Any, dict[str, str]]] = [
+    attempts_5d: list[tuple[str, Any, dict[str, str]]] = [
         (
-            "ths_summary",
+            "ths_industry_flow_5d",
+            lambda: ak.stock_fund_flow_industry(symbol="5日"),
+            {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+        ),
+        (
+            "em_rank_5d",
+            lambda: ak.stock_sector_fund_flow_rank(indicator="5日", sector_type="行业资金流"),
+            {
+                "名称": "板块",
+                "5日涨跌幅": "涨跌幅",
+                "今日涨跌幅": "涨跌幅",
+                "5日主力净流入-净额": "净流入",
+                "今日主力净流入-净额": "净流入",
+            },
+        ),
+    ]
+    attempts_1d: list[tuple[str, Any, dict[str, str]]] = [
+        (
+            "ths_summary_1d",
             lambda: ak.stock_board_industry_summary_ths(),
             {"板块": "板块", "涨跌幅": "涨跌幅", "净流入": "净流入"},
         ),
         (
-            "ths_industry_flow",
+            "ths_industry_flow_1d",
             lambda: ak.stock_fund_flow_industry(symbol="即时"),
             {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
         ),
         (
-            "em_rank",
+            "em_rank_1d",
             lambda: ak.stock_sector_fund_flow_rank(indicator="今日", sector_type="行业资金流"),
             {"名称": "板块", "今日涨跌幅": "涨跌幅", "今日主力净流入-净额": "净流入"},
         ),
     ]
+    attempts = attempts_5d if prefer_window == "5d" else attempts_1d
     for source, caller, column_map in attempts:
         try:
-            if source == "em_rank":
+            if "em_rank" in source:
                 with eastmoney_direct_session():
                     raw = caller()
             else:
@@ -120,6 +146,8 @@ def fetch_sector_board_summary() -> tuple[pd.DataFrame, str, list[str]]:
             return normalized, source, errors
         except Exception as exc:
             errors.append(annotate_em_error(f"板块资金({source})", exc))
+    if prefer_window == "5d":
+        errors.append("sector_flow_5d_unavailable")
     return pd.DataFrame(), "", errors
 
 

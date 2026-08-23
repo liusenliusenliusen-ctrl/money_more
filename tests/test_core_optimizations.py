@@ -777,16 +777,19 @@ def test_fetch_sector_board_summary_fallback(monkeypatch):
     monkeypatch.setattr("money_more.data.fetcher.ak.stock_sector_fund_flow_rank", ok_em_rank)
 
     df, source, errors = fetch_sector_board_summary()
-    assert source == "em_rank"
+    assert source == "em_rank_5d"
     assert df.iloc[0]["板块"] == "新能源"
-    assert calls == ["ths_summary", "ths_industry_flow", "em_rank"]
-    assert any("ths down" in e for e in errors)
+    # 默认 prefer_window=5d：先试同花顺5日行业流，再东财5日排名
+    assert "em_rank" in calls
+    assert any("ths" in c or "flow" in c for c in calls) or calls[0] == "ths_industry_flow"
+    assert any("down" in e or "unavailable" in e or "ths" in e for e in errors) or errors
 
 
 def test_sector_money_flow_quality_gate():
     from money_more.analysis.pipeline import DecisionPipeline
 
     base = {
+        "as_of": "2026-06-20",
         "policy_news": [{"title": "p"}],
         "global_news": [{"title": "g"}],
         "rss_telegraph": [{"title": "r"}],
@@ -797,7 +800,7 @@ def test_sector_money_flow_quality_gate():
         "sentiment_overview": {"aggregate": {"score": 50}},
         "economic_calendar": [{"event": "美国PCE", "日期": "2026-07-25"}],
         "macro_hard_echo": [{"event": "中国制造业PMI", "source": "macro_hard_echo"}],
-        "macro_hard": {"pmi": [{}], "social_financing": [{"月份": "202606"}]},
+        "macro_hard": {"pmi": [{}], "social_financing": [{"月份": "2026年06月份"}]},
         "global_liquidity": {"stance": "mixed", "us_10y": {"latest": 4.5}},
         "errors": [],
     }

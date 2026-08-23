@@ -90,6 +90,12 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
         "micro_regime": (result.get("market_microstructure") or {}).get("regime"),
         "micro_severity": (result.get("market_microstructure") or {}).get("severity"),
         "synthesis_audit_brief": _synthesis_brief(result),
+        "contradiction_branches": list(
+            (result.get("framework_gates") or {}).get("contradiction_branches") or []
+        )[:6],
+        "prior_branch_status": list(
+            (result.get("framework_gates") or {}).get("prior_branch_status") or []
+        )[:6],
     }
 
 

@@ -661,11 +661,11 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
             lines.append(f"- **周期**: {final.get('time_horizon') or rec.get('time_horizon')}")
         if final.get("target_price") is not None or rec.get("target_price") is not None:
             lines.append(
-                f"- **目标价**: {final.get('target_price') if final.get('target_price') is not None else rec.get('target_price')}"
+                f"- **观察目标价**: {final.get('target_price') if final.get('target_price') is not None else rec.get('target_price')}"
             )
         if final.get("stop_loss") is not None or rec.get("stop_loss") is not None:
             lines.append(
-                f"- **止损**: {final.get('stop_loss') if final.get('stop_loss') is not None else rec.get('stop_loss')}"
+                f"- **失效价带**: {final.get('stop_loss') if final.get('stop_loss') is not None else rec.get('stop_loss')}"
             )
         sector = str(final.get("sector_tag") or rec.get("sector_tag") or infer_sector(code) or "")
         if sector:
@@ -840,13 +840,29 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             bits.append(f"watch 规避率 {wl.get('avoid_rate_pct')}%（{wl.get('avoided')}/{wl.get('count')}）")
         if bits:
             a0_bits.append("验证窗口 " + "；".join(bits))
-    # A0-5：社融期次落后告警（数据可能滞后于跑日，叙事别写「最新社融」）
-    sf = ((result.get("intelligence") or {}).get("macro_raw") or {}).get("macro_hard") or {}
-    sf_recs = sf.get("social_financing") or sf.get("shrzgm") or []
-    if sf_recs:
-        latest = str((sf_recs[0] or {}).get("月份") or (sf_recs[0] or {}).get("month") or "")
-        if latest and latest < result.get("run_date", "")[:7].replace("-", ""):
-            a0_bits.append(f"社融最新期={latest}（早于跑日，勿称「最新社融」）")
+    # A0-5：社融期次落后告警（机读滞后期，勿称「最新社融」）
+    dq_sf = result.get("data_quality") or {}
+    sf_lag = dq_sf.get("social_financing_lag_months")
+    if sf_lag is None:
+        from datetime import date as _date
+
+        from money_more.data.as_of import parse_macro_period_date
+
+        sf = ((result.get("intelligence") or {}).get("macro_raw") or {}).get("macro_hard") or {}
+        rows = sf.get("social_financing") or sf.get("shrzgm") or []
+        run_d = str(result.get("run_date") or "")[:10]
+        try:
+            as_of_d = _date.fromisoformat(run_d) if run_d else _date.today()
+        except ValueError:
+            as_of_d = _date.today()
+        if rows and isinstance(rows[0], dict):
+            period = parse_macro_period_date(rows[0])
+            if period is not None:
+                sf_lag = (as_of_d.year - period.year) * 12 + (as_of_d.month - period.month)
+    if sf_lag is not None and int(sf_lag) >= 2:
+        a0_bits.append(f"社融期次滞后约{int(sf_lag)}月（勿称「最新社融」）")
+    elif sf_lag is not None and int(sf_lag) >= 1:
+        a0_bits.append(f"社融最新期落后约{int(sf_lag)}月（非当日最新）")
     # A0-5：现货 cache 红字
     if str(screen.get("spot_source") or "").lower() in ("cache", "stale_cache"):
         lines.append(

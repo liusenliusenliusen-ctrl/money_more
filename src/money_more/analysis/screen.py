@@ -702,7 +702,10 @@ def _score_universe(
     priority_sectors: list[str],
     sector_boost: float,
 ) -> pd.DataFrame:
-    """中长线打分：估值权重大，成交额次之；当日涨跌不进主分（暴涨已硬剔除）。"""
+    """中长线打分：估值权重大，成交额次之；当日涨跌不进主分（暴涨已硬剔除）。
+
+    缺 PE/PB 打低分（40）且估值维度×0.5，对齐因子卡 S6，避免新浪无估值票虚高。
+    """
     out = df.copy()
     scores: list[float] = []
     pe = out["pe"] if "pe" in out.columns else pd.Series([None] * len(out))
@@ -714,11 +717,17 @@ def _score_universe(
     amt_rank = amt.rank(pct=True, method="average").fillna(0.5) * 100
 
     for i in range(len(out)):
-        s = (
-            0.45 * float(pe_score.iloc[i] if pe_score.iloc[i] == pe_score.iloc[i] else 50)
-            + 0.30 * float(pb_score.iloc[i] if pb_score.iloc[i] == pb_score.iloc[i] else 50)
-            + 0.25 * float(amt_rank.iloc[i] if amt_rank.iloc[i] == amt_rank.iloc[i] else 50)
-        )
+        pe_v = pe.iloc[i] if i < len(pe) else None
+        pb_v = pb.iloc[i] if i < len(pb) else None
+        pe_s = float(pe_score.iloc[i] if pe_score.iloc[i] == pe_score.iloc[i] else 40.0)
+        pb_s = float(pb_score.iloc[i] if pb_score.iloc[i] == pb_score.iloc[i] else 40.0)
+        amt_s = float(amt_rank.iloc[i] if amt_rank.iloc[i] == amt_rank.iloc[i] else 50)
+        val_part = 0.45 * pe_s + 0.30 * pb_s
+        pe_miss = pe_v is None or (isinstance(pe_v, float) and pe_v != pe_v)
+        pb_miss = pb_v is None or (isinstance(pb_v, float) and pb_v != pb_v) or _safe_float(pb_v) is None
+        if pe_miss and pb_miss:
+            val_part *= 0.5
+        s = val_part + 0.25 * amt_s
         scores.append(round(s, 3))
     out["screen_score"] = scores
     if priority_sectors and "name" in out.columns:
@@ -727,10 +736,10 @@ def _score_universe(
 
 
 def _pe_to_score(pe: Any) -> float:
-    """分桶：低估值加分；负 PE（亏损扩张）给中性偏弱而非清零；超高 PE 降权但不归零。"""
+    """分桶：低估值加分；负 PE 中性偏弱；缺失=40（非 50 伪装中性）。"""
     v = _safe_float(pe)
     if v is None:
-        return 50.0
+        return 40.0
     if v <= 0:
         return 48.0  # 成长/亏损期：可进池，不系统性出局
     if v < 12:
@@ -749,7 +758,7 @@ def _pe_to_score(pe: Any) -> float:
 def _pb_to_score(pb: Any) -> float:
     v = _safe_float(pb)
     if v is None or v <= 0:
-        return 50.0
+        return 40.0
     if v < 1.0:
         return 85.0
     if v < 2.0:

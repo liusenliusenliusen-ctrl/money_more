@@ -211,7 +211,7 @@ class IntelligenceFetcher:
     def _get_sector_summary(self) -> tuple[pd.DataFrame, str, list[str]]:
         if self._sector_summary_cache is not None:
             return self._sector_summary_cache
-        self._sector_summary_cache = fetch_sector_board_summary()
+        self._sector_summary_cache = fetch_sector_board_summary(prefer_window="5d")
         return self._sector_summary_cache
 
     def _get_pledge_ratio_df(self) -> pd.DataFrame:
@@ -566,10 +566,16 @@ class IntelligenceFetcher:
         if not summary_df.empty:
             result["sector_money_flow"] = build_sector_money_flow(summary_df, limit=10)
             result["sector_money_flow_source"] = flow_source
-            if flow_source != "ths_summary":
-                result["errors"].append(f"sector_money_flow_fallback:{flow_source}")
+            result["sector_money_flow_window"] = (
+                "5d" if "_5d" in str(flow_source) else ("1d" if flow_source else "")
+            )
+            if flow_source and "_5d" not in str(flow_source):
+                result["errors"].append(f"sector_money_flow_non_5d:{flow_source}")
         elif flow_errors:
             result["errors"].append("sector_money_flow_all_sources_failed")
+            result["sector_money_flow"] = {}
+            result["sector_money_flow_source"] = ""
+            result["sector_money_flow_window"] = "5d"
 
         rss_bundle = self._get_rss_bundle()
         result["rss_telegraph"] = rss_bundle.get("cls_telegraph") or []
