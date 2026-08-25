@@ -34,6 +34,7 @@ def validate_recommendations(
     verify_ledger: dict[str, Any] | None = None,
     macro_hard_meta: dict[str, Any] | None = None,
     margin_trend: dict[str, Any] | None = None,
+    paper_holdings: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (修正后的建议列表, 覆盖说明)。"""
     overrides: list[str] = []
@@ -182,7 +183,15 @@ def validate_recommendations(
         for h in holdings
         if h.get("code")
     }
-    is_empty_book = len(holding_by_code) == 0
+    paper_by_code = {
+        "".join(ch for ch in str(h.get("code") or h.get("stock_code") or "") if ch.isdigit())[
+            -6:
+        ].zfill(6): h
+        for h in (paper_holdings or [])
+        if h.get("code") or h.get("stock_code")
+    }
+    operable_by_code = {**paper_by_code, **holding_by_code}
+    is_empty_book = len(holding_by_code) == 0 and len(paper_by_code) == 0
     allow: set[str] | None = None
     if allowed_codes is not None:
         allow = {
@@ -190,7 +199,7 @@ def validate_recommendations(
             for c in allowed_codes
             if c
         }
-        allow |= set(holding_by_code.keys())
+        allow |= set(operable_by_code.keys())
     out: list[dict[str, Any]] = []
 
     for raw in recommendations:
@@ -225,10 +234,11 @@ def validate_recommendations(
         if verify_note:
             overrides.append(verify_note)
 
-        # 空仓硬校验：禁止 hold/sell/add（无真实持仓可操作）
-        if is_empty_book and action in ("hold", "sell", "add"):
+        # 空仓硬校验：无真实/纸面持仓时禁止 hold/sell/add
+        if action in ("hold", "sell", "add") and code not in operable_by_code:
             new_act = "buy" if action == "add" else "watch"
-            overrides.append(f"{code}: 空仓禁止 {action}→{new_act}")
+            why = "空仓" if is_empty_book else "非持仓/非纸面仓"
+            overrides.append(f"{code}: {why}禁止 {action}→{new_act}")
             action = new_act
             rec["action"] = new_act
             if new_act == "watch":
@@ -329,7 +339,7 @@ def validate_recommendations(
             pos_f = 0.0
 
         if action in ("buy", "hold", "add"):
-            if forbid_new_buys and action == "buy" and code not in holding_by_code:
+            if forbid_new_buys and action == "buy" and code not in operable_by_code:
                 reason = (
                     f"微观结构{severity or micro_regime}禁新买"
                     if micro.get("forbid_new_buys")
@@ -462,10 +472,22 @@ def validate_recommendations(
                 tgt_f = max_target
             rec["target_price"] = tgt_f
 
-        # 已持仓却标 buy → 改为 add/hold
-        if code in holding_by_code and action == "buy":
+        # 已持仓/纸面仓却标 buy → 改为 add
+        if code in operable_by_code and action == "buy":
             rec["action"] = "add"
-            overrides.append(f"{code}: 已持仓 buy→add")
+            action = "add"
+            src = "纸面持仓" if code in paper_by_code and code not in holding_by_code else "已持仓"
+            overrides.append(f"{code}: {src} buy→add")
+
+        # 纸面仓不得晾成 watch：无卖出/失效时改为 hold，保证 A3 每轮有调仓指令
+        if code in paper_by_code and action == "watch":
+            rec["action"] = "hold"
+            action = "hold"
+            rec.setdefault("rationale", "")
+            rec["rationale"] = (
+                str(rec.get("rationale") or "") + " | 纸面持仓：watch→hold（非真实账户）"
+            ).strip(" |")
+            overrides.append(f"{code}: 纸面持仓 watch→hold")
 
         rec.setdefault("validation", {})
         rec["validation"] = {
@@ -477,20 +499,25 @@ def validate_recommendations(
         refresh_sector_link_rationale(rec, research_by_code=research_by_code)
         out.append(rec)
 
-    # 确保每个持仓都有建议
+    # 确保每个真实/纸面持仓都有建议
     present = {r["code"] for r in out}
-    for code, h in holding_by_code.items():
+    for code, h in operable_by_code.items():
         if code not in present:
-            ref = float(h.get("cost") or 0) or quotes.get(code)
+            ref = float(h.get("cost") or h.get("avg_cost") or 0) or quotes.get(code)
+            is_paper = code in paper_by_code and code not in holding_by_code
             filled = {
                 "code": code,
                 "action": "hold",
                 "confidence": 0.4,
                 "position_pct": 0.0,
-                "rationale": "系统补全：持仓未出现在 LLM 建议中，默认 hold",
+                "rationale": (
+                    "系统补全：纸面持仓未出现在 LLM 建议中，默认 hold（非真实账户）"
+                    if is_paper
+                    else "系统补全：持仓未出现在 LLM 建议中，默认 hold"
+                ),
                 "stop_loss": round(float(ref) * (1 - stop_loss_pct / 100), 4) if ref else None,
                 "target_price": round(float(ref) * (1 + take_profit_pct / 100), 4) if ref else None,
-                "validation": {"auto_filled": True},
+                "validation": {"auto_filled": True, "paper": is_paper},
             }
             link, _ = enrich_sector_link(
                 filled, sector_analyses=sector_analyses, research_by_code=research_by_code
@@ -501,7 +528,9 @@ def validate_recommendations(
             vf, _ = enrich_verify_window(filled)
             filled.update(vf)
             out.append(filled)
-            overrides.append(f"{code}: 补全缺失持仓建议 → hold")
+            overrides.append(
+                f"{code}: 补全缺失{'纸面' if is_paper else ''}持仓建议 → hold"
+            )
 
     # 总仓位缩放
     deployable = [

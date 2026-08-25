@@ -146,6 +146,15 @@ def assess_market_microstructure(
     if extreme_crowding:
         implication += " 涨跌停比极端，属拥挤扩散，不宜追涨式加仓。"
 
+    # 升乐观双确认：未回到 normal 且传导可用 → 禁新开仓（elevated 不得一日转买）
+    if regime != "normal" or not fundamental_channel_ok:
+        if not forbid_new_buys:
+            forbid_new_buys = True
+            confirm_note = (
+                (confirm_note + "；" if confirm_note else "")
+                + "微观未回到normal/传导可用：禁新开仓"
+            )
+
     regime_mult = {"none": 1.0, "mild": 0.85, "moderate": 0.85, "severe": 0.7}.get(
         severity, 1.0
     )

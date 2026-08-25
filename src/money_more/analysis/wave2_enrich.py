@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from money_more.analysis.sector_map import infer_sector, theme_bucket
+from money_more.analysis.sector_map import infer_sector, is_known_sector_label, theme_bucket
 from money_more.data.fetcher import normalize_code
 
 
@@ -235,13 +235,13 @@ def build_dimension_diff_table(
     then_secs = {
         str(s.get("sector") or ""): str(s.get("priority") or "").lower()
         for s in (oldest.get("sectors") or [])
-        if s.get("sector")
+        if s.get("sector") and is_known_sector_label(str(s.get("sector") or ""))
     }
     now_secs_src = newest.get("sectors") if newest is not oldest else (cur.get("sectors") or [])
     now_secs = {
         str(s.get("sector") or ""): str(s.get("priority") or "").lower()
         for s in (now_secs_src or [])
-        if s.get("sector")
+        if s.get("sector") and is_known_sector_label(str(s.get("sector") or ""))
     }
     for name in sorted(set(then_secs) | set(now_secs)):
         if not name:

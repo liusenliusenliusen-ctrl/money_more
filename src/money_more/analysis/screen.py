@@ -29,6 +29,7 @@ log = setup_logging()
 
 # 中长线防御主题：出现在 watch/priority 时，深度池尽量留席
 _DEFENSIVE_SECTOR_KEYS = ("银行", "白酒", "医药", "保险", "食品饮料", "家电")
+_DEFAULT_DEFENSIVE_FLOOR = ("银行", "白酒", "医药")
 
 
 def run_stock_screen(
@@ -162,6 +163,7 @@ def run_stock_screen(
         config=config,
         watch_sectors=watch_sectors,
         priority_sectors=priority_sectors,
+        floor_pool=universe_df,
     )
     if not deep:
         deep = quant_codes[: config.max_deep]
@@ -211,10 +213,12 @@ def run_stock_screen(
         )
         if diversify_meta.get("floor_filled"):
             diversify_plain += (
-                " 防御软保底："
+                " 防御保底："
                 + "、".join(str(x) for x in diversify_meta["floor_filled"])
                 + "。"
             )
+        elif diversify_meta.get("floor_missed"):
+            diversify_plain += " 防御保底未命中（宇宙无合格防御票或被主题帽挡住）。"
     out = {
         "enabled": True,
         "ok": True,
@@ -239,6 +243,7 @@ def run_stock_screen(
             "top_share": diversify_meta.get("top_share"),
             "max_deep_per_theme": config.max_deep_per_theme if config.deep_diversify else None,
             "floor_filled": diversify_meta.get("floor_filled") or [],
+            "floor_missed": bool(diversify_meta.get("floor_missed")),
             "applied": bool(diversify_meta.get("applied")),
             "note": diversify_meta.get("note") or "",
         },
@@ -285,7 +290,10 @@ def run_stock_screen(
     if spot_source:
         out["spot_source"] = spot_source
         if spot_source not in ("em_all", "cache"):
-            out["plain_note"] += f" 行情备源={spot_source}（PE/PB 可能缺失，打分已中性处理）。"
+            out["fallback_source"] = True
+            out["plain_note"] += (
+                f" 行情备源={spot_source}（PE/PB 常缺失，估值分已降权，非中性=齐备）。"
+            )
     log.info("screen %s", out["note"])
     return out
 
@@ -334,6 +342,7 @@ def _select_deep_codes(
     config: ScreenConfig,
     watch_sectors: list[str],
     priority_sectors: list[str],
+    floor_pool: pd.DataFrame | None = None,
 ) -> tuple[list[str], int, dict[str, Any]]:
     """深度池：持仓强制 + 量化新票；可选主题上限与防御软保底。"""
     deep: list[str] = list(force)
@@ -357,6 +366,7 @@ def _select_deep_codes(
     max_deep = max(0, int(config.max_deep))
     max_per = max(1, int(config.max_deep_per_theme))
     apply_div = bool(config.deep_diversify) and max_deep > 0
+    floor_n = max(0, int(config.deep_theme_floor))
 
     def _try_add(code: str, theme: str, *, respect_cap: bool) -> bool:
         nonlocal screened_added
@@ -377,10 +387,19 @@ def _select_deep_codes(
         for name in list(watch_sectors or []) + list(priority_sectors or []):
             if _is_defensive_sector_name(name) and name not in floor_sources:
                 floor_sources.append(name)
+        # 关注/优先为空时仍从宇宙保底银行/白酒，避免科技排序把防御挤出
+        if floor_n > 0 and not floor_sources:
+            floor_sources = list(_DEFAULT_DEFENSIVE_FLOOR)
+        pool = floor_pool if floor_pool is not None and not floor_pool.empty else quant_df
+        if not pool.empty:
+            for _, r in pool.iterrows():
+                c = normalize_code(str(r.get("code") or ""))
+                if c and c not in by_code:
+                    by_code[c] = r
         if floor_n > 0:
             for watch_name in floor_sources:
                 taken = 0
-                for _, row in quant_df.iterrows():
+                for _, row in pool.iterrows():
                     if taken >= floor_n or screened_added >= max_deep:
                         break
                     code = normalize_code(str(row["code"]))
@@ -448,6 +467,8 @@ def _select_deep_codes(
         note_parts.append(f"单主题上限{max_per}")
         if floor_filled:
             note_parts.append(f"防御保底{len(floor_filled)}")
+        elif floor_n > 0:
+            note_parts.append("防御保底未命中")
     meta = {
         "applied": apply_div,
         "theme_counts": report_counts,
@@ -455,6 +476,7 @@ def _select_deep_codes(
         "top_theme": top_theme,
         "top_share": top_share,
         "floor_filled": floor_filled,
+        "floor_missed": bool(apply_div and int(config.deep_theme_floor) > 0 and not floor_filled),
         "note": "；".join(note_parts) if note_parts else "未启用主题分散",
     }
     return deep, screened_added, meta

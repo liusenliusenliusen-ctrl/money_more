@@ -107,7 +107,7 @@ def test_validate_recommendations_refresh_rationale_end_to_end() -> None:
 
 
 def test_dq_split_research_fields_on_tushare_fail() -> None:
-    """A0-4：Tushare 无权限时 research_score 应 < 1 且 score 被压到 ≤0.85。"""
+    """A0-4：Tushare 无权限时 research_score 应 < 1 且连接分封顶 ≤0.55。"""
     from money_more.analysis.pipeline import DecisionPipeline
 
     macro = {
@@ -129,5 +129,6 @@ def test_dq_split_research_fields_on_tushare_fail() -> None:
     dq = DecisionPipeline._assess_data_quality(macro)
     assert dq["tushare_perm_issue"] is True
     assert dq["research_score"] < 1.0
-    assert dq["score"] <= 0.85
-    assert any("研究层降权" in str(dq.get("note", "")) for _ in [0])
+    assert dq["score"] <= 0.55
+    assert dq["degraded"] is True
+    assert "连接分封顶" in str(dq.get("note") or "") or "研究层降权" in str(dq.get("note") or "")

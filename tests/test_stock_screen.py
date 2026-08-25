@@ -244,6 +244,33 @@ def test_deep_diversify_caps_tech_and_floors_defensive() -> None:
     assert conc.get("theme_counts")
     assert any("银行" in str(x) for x in (conc.get("floor_filled") or []))
 
+
+def test_defensive_floor_without_watch_sectors() -> None:
+    """关注板块为空时，仍从宇宙保底银行/白酒。"""
+    cfg = ScreenConfig(
+        enabled=True,
+        universe_mode="spot_all",
+        max_universe=200,
+        max_quant=8,
+        max_deep=8,
+        min_amount=1e7,
+        pe_max=0,
+        deep_diversify=True,
+        max_deep_per_theme=3,
+        deep_theme_floor=1,
+        sector_priority_boost=0,
+    )
+    result = run_stock_screen(
+        _FakeFetcher(_tech_heavy_spot()),  # type: ignore[arg-type]
+        config=cfg,
+        watch_sectors=[],
+        force_codes=[],
+    )
+    assert "600036" in result["deep_codes"]
+    conc = result.get("theme_concentration") or {}
+    assert conc.get("floor_filled")
+    assert conc.get("floor_missed") is not True
+
 def test_theme_bucket_groups_optical_with_tech() -> None:
     assert theme_bucket("通信") == "科技硬件"
     assert theme_bucket("半导体") == "科技硬件"

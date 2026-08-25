@@ -414,6 +414,18 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             ),
             used_in="A1 市场温度旁路；不进个股打分、不抬买入分",
         )
+    elif scope.get("skipped") or any(
+        k in str(scope.get("error") or "").lower()
+        for k in ("ssl", "certificate", "certifi", "unexpected_eof")
+    ):
+        add(
+            name="数库新闻情绪指数",
+            provider="AkShare index_news_sentiment_scope（ChinaScope）",
+            fetches="全市场新闻情绪温度计",
+            status="skipped",
+            detail=str(scope.get("error") or "SSL/证书失败")[:120],
+            used_in="旁路跳过，不进失败噪声、不影响主链",
+        )
     elif scope or _err_has(errors, "market_news_sentiment_scope"):
         add(
             name="数库新闻情绪指数",

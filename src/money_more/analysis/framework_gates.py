@@ -97,6 +97,18 @@ def build_code_inflection_map(
     return out
 
 
+def _extract_flag_number(text: str) -> float | None:
+    import re
+
+    m = re.search(r"(-?\d+(?:\.\d+)?)", str(text or ""))
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
 def _latest_macro_value(macro_hard: dict[str, Any], key: str, field_hints: tuple[str, ...]) -> float | None:
     rows = macro_hard.get(key) or []
     if not rows or not isinstance(rows[0], dict):
@@ -134,6 +146,7 @@ def build_contradiction_branches(
                     "branch_id": "pmi_contraction",
                     "topic": "景气（PMI）",
                     "fact": flag,
+                    "value": _extract_flag_number(flag),
                     "if_improves": "PMI 回 50 上方且新订单改善 → 解除「禁进攻」，phase 可升档",
                     "if_worsens": "PMI 连续两月 <50 → 维持防御，成长升档继续被拦截",
                 }
@@ -222,6 +235,29 @@ def detect_hard_contradictions(macro_intel: dict[str, Any] | None) -> list[str]:
     return flags
 
 
+def us_10y_blocks_optimism(macro_intel: dict[str, Any] | None) -> dict[str, Any]:
+    """美债 10Y 高位且快速上行 → 禁止把 risk 降到 medium、禁止切成长。"""
+    gl = (macro_intel or {}).get("global_liquidity") or {}
+    us = gl.get("us_10y") or {}
+    latest = _safe_float(us.get("latest"))
+    chg20 = _safe_float(us.get("change_20d_bp"))
+    chg60 = _safe_float(us.get("change_60d_bp"))
+    level_high = latest is not None and latest >= 4.5
+    rapid = (chg20 is not None and chg20 >= 15.0) or (chg60 is not None and chg60 >= 25.0)
+    blocked = bool(level_high and rapid)
+    return {
+        "blocked": blocked,
+        "latest": latest,
+        "change_20d_bp": chg20,
+        "change_60d_bp": chg60,
+        "reason": (
+            f"美债10Y={latest}% 且快速上行(Δ20d={chg20}bp/Δ60d={chg60}bp)"
+            if blocked
+            else None
+        ),
+    }
+
+
 def has_hard_resonance(macro_intel: dict[str, Any] | None, microstructure: dict[str, Any] | None) -> bool:
     """买入所需硬共振：流动性/资金/微观传导至少一项尚可。"""
     macro = macro_intel or {}
@@ -304,7 +340,24 @@ def build_framework_gate_state(
     ]
     keep_from_prior = bool(unresolved_prior)
 
+    # 月频 PMI：同一期数值不作为本周「新点火」（仍经 keep_from_prior 维持矛盾）
+    monthly_repeat_flags: list[str] = []
+    pmi_now = _latest_macro_value((macro_intel or {}).get("macro_hard") or {}, "pmi", ("制造业", "PMI", "指数"))
+    prior_pmi = next(
+        (b for b in prior_resolved if str(b.get("branch_id") or "") == "pmi_contraction"),
+        None,
+    )
+    if prior_pmi and pmi_now is not None:
+        prior_val = _safe_float(prior_pmi.get("value"))
+        if prior_val is None:
+            prior_val = _extract_flag_number(str(prior_pmi.get("fact") or ""))
+        if prior_val is not None and abs(prior_val - pmi_now) < 0.051:
+            monthly_repeat_flags = [f for f in hard_flags if "PMI" in f]
+            hard_flags = [f for f in hard_flags if "PMI" not in f]
+
     contradiction_active = bool(hard_flags or contra_texts) or keep_from_prior
+
+    us_yield = us_10y_blocks_optimism(macro_intel)
 
     resonance = has_hard_resonance(macro_intel, microstructure)
     prior_hist = prior.get("market_history") or []
@@ -328,23 +381,37 @@ def build_framework_gate_state(
     )
 
     block_phase_upgrade = bool(
-        config.phase_upgrade_needs_confirm
-        and phase_upgrade
-        and (
-            micro_blocks
-            or contradiction_active
-            or prior_micro in ("liquidity_stress", "crowded_sync")
-            or keep_from_prior
+        (
+            config.phase_upgrade_needs_confirm
+            and phase_upgrade
+            and (
+                micro_blocks
+                or contradiction_active
+                or prior_micro in ("liquidity_stress", "crowded_sync")
+                or keep_from_prior
+            )
         )
+        or bool(us_yield.get("blocked"))
     )
 
     branches = build_contradiction_branches(contradiction_active, hard_flags, contra_texts)
-    # 合并上轮状态到同 id 分支，便于报告展示
+    # 合并上轮状态到同 id 分支，便于报告展示；月频未变则挂回 PMI 分支（非新点火）
     status_by_id = {str(b.get("branch_id")): b.get("status") for b in prior_resolved}
+    have_ids = {str(b.get("branch_id") or "") for b in branches}
+    for b in prior_resolved:
+        bid = str(b.get("branch_id") or "")
+        if bid == "pmi_contraction" and bid not in have_ids and str(b.get("status") or "") != "improved":
+            row = dict(b)
+            row["same_period"] = True
+            row["reactivated"] = False
+            branches.append(row)
+            have_ids.add(bid)
     for b in branches:
         bid = str(b.get("branch_id") or "")
         if bid in status_by_id:
             b["prior_status"] = status_by_id[bid]
+        if bid == "pmi_contraction" and pmi_now is not None:
+            b["value"] = pmi_now
 
     return {
         "contradiction_active": contradiction_active,
@@ -368,8 +435,16 @@ def build_framework_gate_state(
         "unresolved_prior_branches": [
             str(b.get("branch_id")) for b in unresolved_prior if b.get("branch_id")
         ],
+        "us_yield_blocks_optimism": bool(us_yield.get("blocked")),
+        "us_yield_note": us_yield.get("reason"),
+        "monthly_repeat_flags": monthly_repeat_flags,
         "plain_note": _plain_note(
-            contradiction_active, resonance, block_phase_upgrade, hard_flags
+            contradiction_active,
+            resonance,
+            block_phase_upgrade,
+            hard_flags,
+            us_yield_blocked=bool(us_yield.get("blocked")),
+            monthly_repeat=bool(monthly_repeat_flags),
         ),
     }
 
@@ -381,21 +456,26 @@ def clamp_market_optimism(
     """升乐观过快时压回：降 risk 上调、风格冲成长、phase 升档。"""
     overrides: list[str] = []
     out = dict(market_analysis or {})
-    if not gate_state.get("block_phase_upgrade"):
+    us_block = bool(gate_state.get("us_yield_blocks_optimism"))
+    if not gate_state.get("block_phase_upgrade") and not us_block:
         return out, overrides
 
     # 风险不得因本轮乐观而从 high 直接降到 medium/low
     risk = str(out.get("risk_level") or "").lower()
     if risk in ("medium", "low", "中", "低", "中性"):
         out["risk_level"] = "high"
-        overrides.append("framework: phase/style 升档受阻 → risk 维持 high")
+        why = "美债高位快速上行" if us_block else "phase/style 升档受阻"
+        overrides.append(f"framework: {why} → risk 维持 high")
 
     style = str(out.get("style") or "")
-    if gate_state.get("style_shift_to_growth") and any(
-        k in style for k in ("成长", "growth", "进攻", "科技")
-    ):
+    growth_hit = any(k in style for k in ("成长", "growth", "进攻", "科技"))
+    if growth_hit and (us_block or gate_state.get("style_shift_to_growth")):
         out["style"] = "偏防御/均衡（升档待周频确认）"
-        overrides.append("framework: 风格切换至成长被拦截，待周频确认")
+        overrides.append(
+            "framework: 风格切换至成长被拦截（"
+            + ("美债双确认" if us_block else "待周频确认")
+            + "）"
+        )
 
     vs = str(out.get("vs_prior") or out.get("relative_to_prior") or "")
     if vs.lower() in ("shift", "转向", "improve", "改善"):
@@ -461,6 +541,9 @@ def _plain_note(
     resonance: bool,
     block_phase_upgrade: bool,
     hard_flags: list[str],
+    *,
+    us_yield_blocked: bool = False,
+    monthly_repeat: bool = False,
 ) -> str:
     bits = []
     if contradiction_active:
@@ -469,6 +552,10 @@ def _plain_note(
         bits.append("硬共振不足→政策单独不够买")
     if block_phase_upgrade:
         bits.append("phase/风格升档待确认")
+    if us_yield_blocked:
+        bits.append("美债高位快速上行→禁降风险/切成长")
+    if monthly_repeat:
+        bits.append("月频矛盾未变（非本周新点火）")
     if hard_flags:
         bits.append("硬标志:" + ",".join(hard_flags[:3]))
     return "；".join(bits) if bits else "框架闸正常"

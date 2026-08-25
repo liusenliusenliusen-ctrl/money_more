@@ -96,6 +96,23 @@ def normalize_industry(hint: str | None) -> str | None:
     return text[:6]
 
 
+def is_known_sector_label(name: str | None) -> bool:
+    """行业短名 / 别名命中才算板块；个股名（东山精密、长鑫科技）不得进板块对照表。"""
+    text = str(name or "").strip()
+    if not text:
+        return False
+    stripped = text.replace("板块", "").replace("行业", "").strip()
+    known = _KNOWN_SECTOR_LABELS
+    if text in known or stripped in known:
+        return True
+    if any(tok in text for tok in ("股份", "集团", "控股", "有限", "精密")):
+        return False
+    for keys, label in _INDUSTRY_ALIASES:
+        if any(k in text for k in keys):
+            return label in known
+    return False
+
+
 def infer_sector(
     code: str,
     watch_sectors: list[str] | None = None,
@@ -118,6 +135,10 @@ _THEME_MEMBERS: dict[str, frozenset[str]] = {
     "医药": frozenset({"医药"}),
     "周期": frozenset({"有色", "煤炭", "石油石化", "军工", "电力", "汽车", "地产"}),
 }
+
+_KNOWN_SECTOR_LABELS = frozenset(
+    label for members in _THEME_MEMBERS.values() for label in members
+) | frozenset(label for _keys, label in _INDUSTRY_ALIASES)
 
 
 def theme_bucket(sector: str | None) -> str:

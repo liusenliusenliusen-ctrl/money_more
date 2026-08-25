@@ -9,7 +9,7 @@ from money_more.data.ak_direct import classify_em_error
 _SPOT_HINTS = {
     "em_all": "东财全量现货",
     "em_split": "东财分市场现货（全量失败后的次选）",
-    "sina": "新浪现货备源（通常无 PE/PB，估值打分中性）",
+    "sina": "新浪现货备源（通常无 PE/PB，估值分已降权，非中性=齐备）",
     "cache": "进程内/当日缓存现货",
     "stale_cache": "过期磁盘缓存现货（可信度低，建议修通路后重跑）",
 }

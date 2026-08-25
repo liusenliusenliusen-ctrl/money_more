@@ -696,7 +696,19 @@ def render_action_index_section(result: dict[str, Any]) -> list[str]:
     )
     lines.append("")
     basis = summary.get("holdings_basis") or {}
-    if basis.get("is_empty"):
+    if basis.get("paper_codes"):
+        paper = "、".join(str(c) for c in (basis.get("paper_codes") or [])[:8])
+        if basis.get("is_empty"):
+            lines.append(
+                f"> **持仓基准**：声明真实空仓；纸面仓 {paper} 须 hold/add/sell（≠真实账户）。"
+            )
+        else:
+            codes = "、".join(str(c) for c in (basis.get("codes") or []))
+            lines.append(
+                f"> **持仓基准**：声明真实持仓 {codes}；纸面仓 {paper}（与真实账户分开）。"
+            )
+        lines.append("")
+    elif basis.get("is_empty"):
         lines.append(
             "> **持仓基准**：声明空仓 → 建议段无调仓指令，仅研究向 buy/watch。"
         )
@@ -821,6 +833,12 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     fw = result.get("framework_gates") or {}
     if fw.get("plain_note"):
         a0_bits.append(str(fw.get("plain_note")))
+    if fw.get("us_yield_note"):
+        a0_bits.append(str(fw.get("us_yield_note")))
+    if fw.get("monthly_repeat_flags"):
+        a0_bits.append(
+            "月频矛盾未变（非本周新点火）: " + "、".join(str(x) for x in fw["monthly_repeat_flags"][:3])
+        )
     # C1：LLM 截断率（本轮进程内统计）
     lcs = dq.get("llm_call_stats") or {}
     if lcs.get("calls"):
@@ -877,7 +895,23 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     if err_sample:
         lines.append("> ⚠️ **数据错误抽样**: " + "；".join(str(e)[:80] for e in err_sample))
         lines.append("")
-    if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
+    if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("paper_codes"):
+        paper = (result.get("decision_summary") or {}).get("holdings_basis", {}).get("paper_codes") or []
+        paper_s = "、".join(str(c) for c in paper[:8])
+        if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
+            lines.append(
+                f"> **模块说明**: 本轮**研究**照常；**建议段**声明真实空仓，"
+                f"但对纸面仓（`{paper_s}`）给出 hold/add/sell。纸面≠真实账户。"
+            )
+        else:
+            codes = (result.get("decision_summary") or {}).get("holdings_basis", {}).get("codes") or []
+            code_s = "、".join(str(c) for c in codes[:8])
+            lines.append(
+                f"> **模块说明**: **研究**含声明持仓（`{code_s}`）与纸面仓（`{paper_s}`）；"
+                "**建议段**分别给出可执行动作。纸面≠真实账户。"
+            )
+        lines.append("")
+    elif (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
         lines.append(
             "> **模块说明**: 本轮**研究**照常（筛股+深度池）；**建议段**按空仓"
             "（`holdings` 未声明）→ 仅研究向 buy/watch，无持仓调仓指令。模拟盘≠真实账户。"
@@ -1126,7 +1160,20 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
         lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
-    if basis.get("is_empty"):
+    if basis.get("paper_codes"):
+        paper = "、".join(str(c) for c in (basis.get("paper_codes") or [])[:8])
+        if basis.get("is_empty"):
+            lines.append(
+                f"_本轮声明**真实空仓**；下列含纸面仓（{paper}）的 hold/add/sell + 研究向 buy/watch。"
+                "纸面≠真实账户；以④终局为准。_"
+            )
+        else:
+            codes = "、".join(str(c) for c in (basis.get("codes") or [])[:8])
+            lines.append(
+                f"_以下为针对声明持仓（{codes}）与纸面仓（{paper}）的可执行建议 + 深度池新开/观察；"
+                "纸面≠真实账户；以④终局为准。_"
+            )
+    elif basis.get("is_empty"):
         lines.append(
             "_本轮**无持仓调仓建议**（声明空仓）；下列为研究向 **buy/watch**，"
             "与模拟盘无关；以④终局为准。_"
@@ -1344,7 +1391,9 @@ def render_run_status_section(result: dict[str, Any], *, run_date: str | None = 
     score = dq.get("score")
     if score is not None:
         flag = "⚠️ 数据降级" if dq.get("degraded") else "数据完整度尚可"
-        lines.append(f"**数据台账**: {flag}（分 {score}）· 明细见 {ds_link}")
+        rs = dq.get("research_score")
+        extra = f" · 研究层 {rs}" if rs is not None else ""
+        lines.append(f"**数据台账**: {flag}（分 {score}{extra}）· 明细见 {ds_link}")
     else:
         lines.append(f"**数据台账**: 明细见 {ds_link}")
     lines.append("")
@@ -1944,7 +1993,11 @@ def render_review_report(result: dict[str, Any]) -> str:
                 continue
             lines.append(f"### {dim_labels.get(key, key)}")
             lines.append("")
+            from money_more.analysis.sector_map import is_known_sector_label
+
             for dr in group:
+                if key == "sector" and not is_known_sector_label(str(dr.get("subject") or "")):
+                    continue
                 subject = dr.get("subject") or ""
                 outcome = dr.get("outcome") or "pending"
                 as_of_f = dr.get("as_of_forecast") or ""
@@ -1982,7 +2035,13 @@ def render_review_report(result: dict[str, Any]) -> str:
     if not reviews:
         lines.append("_本轮无新增个股复盘（未满观察期，或暂无可跟踪建议）_")
     else:
+        seen_codes: set[str] = set()
         for rv in reviews:
+            code = str(rv.get("stock_code") or "")
+            if code and code in seen_codes:
+                continue
+            if code:
+                seen_codes.add(code)
             status = rv.get("status") or rv.get("outcome") or "tracking"
             cat = rv.get("diagnosis_category") or ""
             ret = rv.get("return_pct")

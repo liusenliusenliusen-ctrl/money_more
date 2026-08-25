@@ -301,7 +301,10 @@ def test_macro_news_backfill_and_quality():
     assert dq["checks"]["economic_calendar"] is False
     assert "tushare_available" not in dq["missing"]
     assert dq["tushare_macro_backfill"] is True
-    assert dq["score"] >= 0.7
+    assert dq["research_score"] == 0.0
+    assert dq["score"] <= 0.55
+    assert dq["degraded"] is True
+    assert "连接分封顶" in str(dq.get("note") or "")
 
 
 def test_parse_record_date():

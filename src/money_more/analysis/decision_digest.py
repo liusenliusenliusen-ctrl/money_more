@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from money_more.analysis.sector_map import is_known_sector_label
+
 
 def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
     market = (result.get("market") or {}).get("analysis") or {}
@@ -43,6 +45,9 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
     sectors = []
     for sec in result.get("sectors") or []:
         a = sec.get("analysis") or {}
+        name = a.get("sector") or sec.get("sector")
+        if not is_known_sector_label(str(name or "")):
+            continue
         sectors.append(
             {
                 "sector": a.get("sector") or sec.get("sector"),

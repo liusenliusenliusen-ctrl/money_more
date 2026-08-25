@@ -169,7 +169,7 @@ class DecisionPipeline:
 
     def _run_daily_body(self, run_id: int, run_date: date, result: dict[str, Any]) -> None:
         prior_context = result.get("prior_context") or self.db.get_prior_context(limit=5)
-        prior_context = self._attach_prior_contradiction_branches(prior_context)
+        prior_context = self._attach_prior_contradiction_branches(prior_context, as_of=run_date)
         result["prior_context"] = prior_context
         existing_trend = self.db.get_trend_report()
         if existing_trend:
@@ -352,11 +352,15 @@ class DecisionPipeline:
             )
             result["sectors"] = list(sector_analyses)
 
-        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（声明持仓强制进池）
+        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（声明持仓 + 纸面仓强制进池，不占 max_deep）
         from money_more.analysis.screen import run_stock_screen
 
+        paper_holdings_raw = self._load_paper_holdings()
         force_codes = list(
-            dict.fromkeys(normalize_code(h.code) for h in self.config.holdings if h.code)
+            dict.fromkeys(
+                [normalize_code(h.code) for h in self.config.holdings if h.code]
+                + [normalize_code(str(h.get("code") or "")) for h in paper_holdings_raw]
+            )
         )
         screen_cfg = getattr(self.config, "screen", None)
         if screen_cfg is None:
@@ -663,14 +667,26 @@ class DecisionPipeline:
             result["factor_scorecards"] = scorecards
 
         holdings_enriched = enrich_holdings(self.config.holdings, quotes)
+        paper_enriched = enrich_holdings(paper_holdings_raw, quotes)
+        paper_codes = [h.get("code") for h in paper_enriched]
         holdings_basis = {
             "source": "config.holdings",
             "is_empty": len(holdings_enriched) == 0,
             "codes": [h.get("code") for h in holdings_enriched],
+            "paper_codes": paper_codes,
+            "paper_source": "sim_positions" if paper_codes else None,
             "note": (
-                "用户声明真实持仓为空：建议段仅 buy/watch，禁止写「当前持有」。"
+                (
+                    "用户声明真实持仓为空：不得写「账户已持有」。"
+                    + (
+                        f" 纸面仓 {','.join(str(c) for c in paper_codes)} 须 hold/add/sell（非真实账户）。"
+                        if paper_codes
+                        else " 建议段仅 buy/watch。"
+                    )
+                )
                 if not holdings_enriched
-                else "以下为用户声明的真实持仓；hold/add/sell 仅针对这些代码。"
+                else "以下为用户声明的真实持仓；hold/add/sell 针对这些代码"
+                + (f"；纸面仓 {','.join(str(c) for c in paper_codes)} 同样须给调仓。" if paper_codes else "。")
             ),
         }
         trading_constraints = {
@@ -718,6 +734,7 @@ class DecisionPipeline:
             or {},
             "holdings": holdings_enriched,
             "holdings_basis": holdings_basis,
+            "paper_holdings": paper_enriched,
             "screen_summary": {
                 "note": screen_result.get("note"),
                 "deep_codes": stock_codes,
@@ -760,7 +777,9 @@ class DecisionPipeline:
                 )
         except Exception as exc:
             log.error("advice LLM/agent failed after retries: %s", exc)
-            decision = self._degraded_decision(holdings_enriched, str(exc))
+            decision = self._degraded_decision(
+                list(holdings_enriched) + list(paper_enriched), str(exc)
+            )
             self._note_llm_degraded(result, f"建议段降级: {exc}")
 
         # 两侧都失败时 orchestrator 返回 all_failed；补持仓 hold，便于报告可读
@@ -768,7 +787,7 @@ class DecisionPipeline:
             decision.get("recommendations") or []
         ):
             decision = self._degraded_decision(
-                holdings_enriched,
+                list(holdings_enriched) + list(paper_enriched),
                 "; ".join(decision.get("_multi_agent_errors") or [])
                 or str(decision.get("portfolio_summary") or "all_failed"),
                 base=decision,
@@ -867,7 +886,11 @@ class DecisionPipeline:
             inv = evaluate_invalidation(rec.get("invalidation"), snap_map.get(code))
             rec["invalidation_check"] = inv
             if inv.get("invalidated") and str(rec.get("action", "")).lower() in ("buy", "add", "hold"):
-                rec["action"] = "watch"
+                held = code in {
+                    normalize_code(str(h.get("code") or ""))
+                    for h in list(holdings_enriched) + list(paper_enriched)
+                }
+                rec["action"] = "sell" if held else "watch"
                 rec["position_pct"] = 0
                 rec["rationale"] = (
                     str(rec.get("rationale") or "")
@@ -913,6 +936,7 @@ class DecisionPipeline:
             verify_ledger=result.get("verify_ledger") or {},
             macro_hard_meta=(macro_intel or {}).get("macro_hard_meta") or {},
             margin_trend=(macro_intel or {}).get("margin_trend") or {},
+            paper_holdings=paper_enriched,
         )
         result["sector_coverage"] = build_sector_coverage(
             sector_analyses,
@@ -1123,7 +1147,7 @@ class DecisionPipeline:
             except Exception:
                 pass
             filtered.append(item)
-        pending = filtered
+        pending = dedupe_pending_by_code(filtered)
 
         lookback = int(self.config.review_lookback_days)
         from money_more.analysis.invalidation import evaluate_invalidation
@@ -1131,6 +1155,7 @@ class DecisionPipeline:
             build_action_lifecycles,
             build_prior_dimension_forecasts,
             compact_current_view,
+            dedupe_pending_by_code,
             load_db_market_history,
             load_historical_reports_corpus,
         )
@@ -1411,6 +1436,38 @@ class DecisionPipeline:
         out["excerpt"] = combined[:max_chars]
         out["matched_sections"] = len(chunks)
         return out
+
+    def _load_paper_holdings(self) -> list[dict[str, Any]]:
+        """模拟账本持仓（非真实账户）；数量>0 才进纸面通道。"""
+        sim_cfg = getattr(self.config, "sim", None)
+        if sim_cfg is None or not getattr(sim_cfg, "enabled", True):
+            return []
+        try:
+            rows: list[dict[str, Any]] = []
+            for pos in self.db.sim_get_positions():
+                code = normalize_code(str(pos.get("stock_code") or pos.get("code") or ""))
+                try:
+                    shares = float(pos.get("shares") or 0)
+                except (TypeError, ValueError):
+                    shares = 0.0
+                if not code or shares <= 0:
+                    continue
+                try:
+                    cost = float(pos.get("avg_cost") or pos.get("cost") or 0)
+                except (TypeError, ValueError):
+                    cost = 0.0
+                rows.append(
+                    {
+                        "code": code,
+                        "quantity": shares,
+                        "cost": cost,
+                        "source": "sim",
+                    }
+                )
+            return rows
+        except Exception as exc:
+            log.warning("load paper holdings failed: %s", exc)
+            return []
 
     def _apply_sim_portfolio(
         self,
@@ -1697,11 +1754,34 @@ class DecisionPipeline:
             out["screen_degraded"] = True
             out["screen_note"] = screen.get("plain_note") or screen.get("note") or "遴选失败"
         out["score"] = score
-        out["degraded"] = bool(score < 0.6 or out.get("screen_degraded"))
+        research_score = float(out.get("research_score") if out.get("research_score") is not None else 1.0)
+        if research_score < 0.4:
+            score = min(score, 0.55)
+            out["score"] = score
+            note = str(out.get("note") or "")
+            if "连接分封顶" not in note:
+                out["note"] = (note + "；" if note else "") + "连接分封顶：研究层不可用（降级≠首选）"
+        spot_src = str(screen.get("spot_source") or "").lower()
+        if spot_src in ("sina", "em_split", "stale_cache"):
+            score = round(max(0.0, float(out.get("score") or score) - 0.08), 2)
+            out["score"] = score
+            out["fallback_source"] = True
+            note = str(out.get("note") or "")
+            if "行情备源" not in note:
+                out["note"] = (note + "；" if note else "") + f"行情备源={spot_src}已发丝（非首选）"
+        conc = screen.get("theme_concentration") or {}
+        if conc.get("floor_missed") and "defensive_floor" not in missing:
+            missing.append("defensive_floor")
+            out["missing"] = missing
+        out["degraded"] = bool(score < 0.6 or out.get("screen_degraded") or research_score < 0.4)
         if out["degraded"]:
             note = "DEGRADED：数据完整度偏低，已收紧仓位/禁止激进开仓"
             if out.get("screen_degraded"):
                 note += "；个股遴选/行情覆盖不足"
+            if research_score < 0.4:
+                note += "；连接分封顶：研究层不可用（降级≠首选）"
+            if out.get("fallback_source") and spot_src:
+                note += f"；行情备源={spot_src}已发丝（非首选）"
             out["note"] = note
         else:
             out["note"] = out.get("note") or "数据完整度尚可"
@@ -1731,7 +1811,7 @@ class DecisionPipeline:
         }
 
     def _attach_prior_contradiction_branches(
-        self, prior_context: dict[str, Any] | None
+        self, prior_context: dict[str, Any] | None, as_of: date | None = None
     ) -> dict[str, Any]:
         """从上轮 digest 注入 contradiction_branches，供跨轮确认改善。"""
         ctx = dict(prior_context or {})
@@ -1745,11 +1825,18 @@ class DecisionPipeline:
             if not files:
                 return ctx
             import json as _json
+            from money_more.analysis.review_history import _parse_ymd
 
-            raw = _json.loads(files[-1].read_text(encoding="utf-8"))
-            branches = raw.get("contradiction_branches") or []
-            if branches:
-                ctx["contradiction_branches"] = branches
+            skip_on_or_after = as_of or date.today()
+            for p in reversed(files):
+                d = _parse_ymd(p.name)
+                if d is None or d >= skip_on_or_after:
+                    continue
+                raw = _json.loads(p.read_text(encoding="utf-8"))
+                branches = raw.get("contradiction_branches") or []
+                if branches:
+                    ctx["contradiction_branches"] = branches
+                    break
         except Exception as exc:
             log.warning("load prior contradiction_branches failed: %s", exc)
         return ctx
@@ -1824,6 +1911,12 @@ class DecisionPipeline:
             # 连接层分数不打穿（新闻还能用备源），但研究层显式降权并禁止满分
             score = min(score, 0.85)
             notes.append("Tushare 无权限/超限：盈利修正/业绩预告/双源估值不可用（研究层降权）")
+        # 降级 ≠ 首选：研究层近乎 0 时，连接分不得装成「齐备」
+        if research_score < 0.4:
+            if score > 0.55:
+                notes.append(f"连接分封顶：研究完整度 {research_score} → 主分≤0.55")
+            score = min(score, 0.55)
+            degraded = True
         if policy_src == "rss_global_extract":
             notes.append("政策源=快讯抽取(≠正式联播)")
         if macro_intel.get("tushare_macro_backfill"):

@@ -655,13 +655,17 @@ class IntelligenceFetcher:
             if not result["market_news_sentiment_scope"].get("ok"):
                 result["errors"].append("market_news_sentiment_scope_empty")
         except Exception as exc:
+            err = str(exc)
+            ssl_ish = any(k in err.lower() for k in ("ssl", "certificate", "certifi", "unexpected_eof"))
             result["market_news_sentiment_scope"] = {
                 "ok": False,
+                "skipped": ssl_ish,
                 "source": "chinascope_akshare",
                 "plain_note": "全市场新闻情绪温度计；仅作 A1 旁路，不进个股打分/不抬买入分",
-                "error": str(exc)[:200],
+                "error": err[:200],
             }
-            result["errors"].append(f"market_news_sentiment_scope: {exc}")
+            if not ssl_ish:
+                result["errors"].append(f"market_news_sentiment_scope: {exc}")
 
         sector_names = list(
             dict.fromkeys(

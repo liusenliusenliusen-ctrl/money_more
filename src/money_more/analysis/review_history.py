@@ -8,6 +8,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from money_more.analysis.sector_map import is_known_sector_label
+
 
 def _parse_ymd(name: str) -> date | None:
     m = re.match(r"^(\d{4}-\d{2}-\d{2})", name)
@@ -79,7 +81,7 @@ def _digest_to_item(d: date, raw: dict[str, Any]) -> dict[str, Any]:
                 "worth_research": s.get("worth_research"),
             }
             for s in (raw.get("sectors") or [])[:10]
-            if isinstance(s, dict)
+            if isinstance(s, dict) and is_known_sector_label(str(s.get("sector") or ""))
         ],
         "data_quality_score": raw.get("data_quality_score"),
         "recommendations": [
@@ -335,6 +337,22 @@ def build_prior_dimension_forecasts(
     return [x[1] for x in items]
 
 
+def dedupe_pending_by_code(pending: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同一代码只留最新一条待复盘建议，避免茅台/宁德复制十几遍。"""
+    best: dict[str, dict[str, Any]] = {}
+    for item in pending or []:
+        code = "".join(ch for ch in str(item.get("stock_code") or item.get("code") or "") if ch.isdigit())[-6:]
+        if not code:
+            continue
+        code = code.zfill(6)
+        prev = best.get(code)
+        if prev is None or str(item.get("run_date") or "") >= str(prev.get("run_date") or ""):
+            row = dict(item)
+            row["stock_code"] = code
+            best[code] = row
+    return list(best.values())
+
+
 def compact_current_view(current_view: dict[str, Any] | None) -> dict[str, Any]:
     """把本轮分析压缩成复盘对照用的「当前现实」。"""
     if not current_view:
@@ -344,6 +362,9 @@ def compact_current_view(current_view: dict[str, Any] | None) -> dict[str, Any]:
     sectors = []
     for sec in current_view.get("sectors") or []:
         a = sec.get("analysis") or sec
+        name = a.get("sector") or sec.get("sector")
+        if not is_known_sector_label(str(name or "")):
+            continue
         sectors.append(
             {
                 "sector": a.get("sector") or sec.get("sector"),
