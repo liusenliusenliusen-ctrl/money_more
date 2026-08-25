@@ -79,7 +79,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | 项 | 默认含义 |
 |----|----------|
 | `holdings` | 真实持仓；`[]` = 空仓（有仓则强制进深度池） |
-| `watch_sectors` | 板块叙事关注（≠个股必跟池） |
+| `watch_sectors` | B1 关注赛道；**`[]` = 不指定**（与空仓相同语义，B1 仅资金流自动扩） |
 | `screen.universe_mode` | 默认 `spot_all`（全 A 现货）；`sector_spot` 为窄池 |
 | `screen.max_quant` / `max_deep` | `50` / `15`（持仓强制进池时**不占** `max_deep`） |
 | `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |

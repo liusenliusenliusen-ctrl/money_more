@@ -21,6 +21,7 @@ rsync -az --delete \
   --exclude '.env' \
   --exclude 'config.yaml' \
   --exclude 'logs/' \
+  --exclude 'reports/' \
   "${ROOT}/" "${HOST}:${REMOTE}/"
 
 echo "==> ensure venv deps (if requirements.txt present)"
