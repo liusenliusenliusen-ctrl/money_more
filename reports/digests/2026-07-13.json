@@ -1,0 +1,164 @@
+{
+  "run_date": "2026-07-13",
+  "prompt_version": "v3-midlong-5d",
+  "market_phase": "range",
+  "market_phase_label": "震荡偏弱，结构性分化",
+  "market_style": "theme",
+  "market_style_label": "题材驱动，防御与科技自主可控并行",
+  "risk_level": "medium",
+  "confidence": 0.75,
+  "primary_driver": "政策与产业主题驱动（科技自主可控、碳达峰、消费刺激）",
+  "sector_allocation_hint": "偏成长",
+  "invalidation": [
+    "中东地缘冲突全面升级，导致全球风险资产大幅下跌",
+    "国内政策宽松力度不及预期，或经济数据显著恶化",
+    "融资余额持续大幅下降，市场流动性枯竭",
+    "北向资金恢复后持续净流出，外资信心恶化"
+  ],
+  "contradictions": [
+    "政策面积极但资金面谨慎（融资收缩、北向暂停），市场短期缺乏增量资金",
+    "防御性板块（医药、白酒）与科技成长主线并行，风格切换信号不明确",
+    "中东地缘风险压制风险偏好，但国内政策宽松形成对冲"
+  ],
+  "headline_themes": [
+    "数字中国与算力基建：国常会要求加快新一代通信网、算力网建设",
+    "中东地缘风险持续：霍尔木兹海峡关闭与美军空袭伊朗",
+    "AI产业链景气扩散：光纤量价齐升、智能体手机亮相、商业航天IPO密集"
+  ],
+  "market_narratives": [
+    "政策驱动数字中国与算力基建，科技自主可控主线强化",
+    "中东地缘风险推升能源与航运不确定性，避险情绪反复",
+    "AI产业链从算力向应用端扩散，光纤、智能体手机、商业航天等细分景气确认"
+  ],
+  "risk_flags": [
+    "中东地缘风险升级：霍尔木兹海峡关闭，科威特遭袭，能源供应不确定性增加",
+    "融资余额连续5日下降，市场杠杆资金趋于谨慎",
+    "北向资金因假期暂停，后续方向不明",
+    "国内多地汛情（沈阳、安徽）可能影响区域经济与基建进度"
+  ],
+  "macro_events_watchlist": [
+    {
+      "event": "长鑫科技新股申购",
+      "date": "2026-07-16",
+      "importance": "high"
+    },
+    {
+      "event": "2026世界人工智能大会（智能体手机展出）",
+      "date": "2026-07-13",
+      "importance": "high"
+    },
+    {
+      "event": "美军对伊朗空袭及霍尔木兹海峡局势演变",
+      "date": "2026-07-13",
+      "importance": "high"
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "半导体",
+      "priority": "high",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "expensive",
+      "worth_research": true,
+      "crowding_risk": "high",
+      "summary": "半导体受国产替代与AI需求驱动，景气向上，政策面支持。但7月10日板块大跌5.28%，资金大幅流出，与9日大涨形成剧烈反转，显示多空分歧极大。估值偏贵，短期涨幅过大，拥挤度风险高。核心矛盾是短期获利回吐与中长期逻辑的博弈，需关注资金面是否企稳及长鑫科技申购催化。"
+    },
+    {
+      "sector": "新能源",
+      "priority": "high",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "新能源板块政策面持续利好（碳达峰方案、地方规划），基本面景气度向上（出口高增、渗透率接近50%），估值处于低位。量化舆情偏正面，资金面数据缺失但无流出迹象。主要矛盾是短期资金面不确定性与长期政策景气支撑的博弈，当前是左侧布局窗口，需等待资金面确认。"
+    },
+    {
+      "sector": "白酒",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "白酒板块超跌反弹，五粮液百亿分红催化情绪，但基本面仍处下行周期，需求疲弱、政策压制宴席场景，估值修复逻辑待验证。短期情绪修复，中期需等待中秋旺季动销信号。建议关注但不宜追高。"
+    },
+    {
+      "sector": "银行",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "银行板块高股息防御逻辑仍在，估值低位，政策中性偏暖，但景气度平淡（息差承压、不良处置规模大），近20日跌幅6.32%显示中期趋势偏弱。短期资金面有所改善（净流入9.28亿），但涨幅排名靠后，缺乏强催化剂。主要矛盾是防御属性与资金流出趋势的博弈，中期需观察经济复苏力度和息差变化。"
+    }
+  ],
+  "data_quality_score": 1.0,
+  "degraded": false,
+  "recommendations": [
+    {
+      "code": "600519",
+      "action": "hold",
+      "confidence": 0.43,
+      "position_pct": 0.0,
+      "target_price": 2352.0,
+      "stop_loss": 1428.0,
+      "factor_total": 55.5,
+      "factor_signal": "constructive",
+      "debate_referee": "draw",
+      "sector_tag": "白酒",
+      "invalidation": "中秋国庆旺季动销数据大幅低于预期；茅台酒批价持续大幅下跌",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    },
+    {
+      "code": "300750",
+      "action": "watch",
+      "confidence": 0.55,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.7,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "新能源",
+      "invalidation": "2026年半年报业绩不及预期；新能源板块指数继续破位下跌",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    },
+    {
+      "code": "601318",
+      "action": "watch",
+      "confidence": 0.57,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 51.7,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "银行",
+      "invalidation": "NBV增速连续两个季度放缓至个位数；权益市场持续大跌",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    }
+  ],
+  "risk_check_ok": true,
+  "validation_override_count": 3,
+  "factor_weights_adapted": {
+    "valuation": 0.25,
+    "momentum": 0.1,
+    "fund_flow": 0.1,
+    "sentiment": 0.1,
+    "quality": 0.3,
+    "narrative": 0.15
+  },
+  "sector_coverage": [],
+  "micro_regime": null,
+  "micro_severity": null,
+  "synthesis_audit_brief": null
+}

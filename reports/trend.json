@@ -1,0 +1,4231 @@
+{
+  "as_of": "2026-08-25",
+  "updated_at": "2026-08-25T01:58:00",
+  "market_regime": {
+    "current_phase": "range",
+    "current_label": "震荡偏防御",
+    "current_style": "value",
+    "risk_level": "high",
+    "primary_driver": "国内稳增长政策能否扭转内需/信用收缩预期，辅以美债收益率与美元方向",
+    "allocation_hint": "降仓观望",
+    "regime_change": "none",
+    "change_note": "今日无新增宏观信号，延续昨日震荡防御格局"
+  },
+  "market_series": [
+    {
+      "date": "2026-07-11",
+      "phase": "range",
+      "style": "theme",
+      "risk": "medium",
+      "sentiment_score": 51.1,
+      "driver": "政策与产业主题驱动"
+    },
+    {
+      "date": "2026-07-12",
+      "phase": "range",
+      "style": "theme",
+      "risk": "medium",
+      "sentiment_score": 51.13,
+      "driver": "政策与产业主题驱动（科技自主可控、碳达峰、消费刺激）"
+    },
+    {
+      "date": "2026-07-13",
+      "phase": "range",
+      "style": "theme",
+      "risk": "medium",
+      "sentiment_score": 54.09,
+      "driver": "政策与产业主题驱动（科技自主可控、碳达峰、消费刺激）"
+    },
+    {
+      "date": "2026-07-16",
+      "phase": "range",
+      "style": "theme",
+      "risk": "medium",
+      "sentiment_score": 51.77,
+      "driver": "半年报业绩验证与政策催化共振"
+    },
+    {
+      "date": "2026-07-18",
+      "phase": "bear",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 53.49,
+      "driver": "中东地缘冲突升级与流动性收缩"
+    },
+    {
+      "date": "2026-07-19",
+      "phase": "bear",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 54.01,
+      "driver": "中东地缘冲突升级与流动性收缩"
+    },
+    {
+      "date": "2026-07-23",
+      "phase": "range",
+      "style": "value",
+      "risk": "medium",
+      "sentiment_score": 53.99,
+      "driver": "全球流动性分歧（美债收益率上行 vs 人民币汇率稳定）与地缘风险"
+    },
+    {
+      "date": "2026-07-25",
+      "phase": "bear",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 51.59,
+      "driver": "全球流动性方向（美债收益率与美元）与地缘风险演变"
+    },
+    {
+      "date": "2026-07-26",
+      "phase": "bear",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 53.01,
+      "driver": "全球流动性方向（美债收益率与美元走势）"
+    },
+    {
+      "date": "2026-07-27",
+      "phase": "bear",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 38.2,
+      "driver": "全球流动性方向（美债收益率与美元走势）"
+    },
+    {
+      "date": "2026-08-05",
+      "phase": "range",
+      "style": "growth",
+      "risk": "medium",
+      "sentiment_score": 51.6,
+      "driver": "未来1-2个季度：全球流动性边际变化（美债收益率区间）及中美科技竞争格局演变为第一驱动。国内稳增长与产业政策的持续性是内因支撑。"
+    },
+    {
+      "date": "2026-08-08",
+      "phase": "range",
+      "style": "growth",
+      "risk": "medium",
+      "sentiment_score": 53.62,
+      "driver": "全球流动性边际变化（美债收益率与美元）及中美科技竞争格局演变。国内产业政策与出口景气度为结构性行情的支撑。"
+    },
+    {
+      "date": "2026-08-09",
+      "phase": "range",
+      "style": "偏防御/均衡（升档待周频确认）",
+      "risk": "high",
+      "sentiment_score": 52.99,
+      "driver": "全球流动性边际变化（美债收益率与美元）及中美科技竞争格局演变；国内产业政策与出口景气度为结构性行情支撑。"
+    },
+    {
+      "date": "2026-08-11",
+      "phase": "range",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 52.09,
+      "driver": "全球流动性收紧预期（美债高位）与国内经济内生复苏疲软共同主导定价"
+    },
+    {
+      "date": "2026-08-14",
+      "phase": "range",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 53.56,
+      "driver": "全球流动性方向（美债10Y与美元）及国内稳增长政策能否扭转内需预期"
+    },
+    {
+      "date": "2026-08-18",
+      "phase": "range",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 50.0,
+      "driver": "未来1-2个季度定价第一因素：国内稳增长政策能否扭转内需/信用收缩预期，辅以美债收益率与美元方向。"
+    },
+    {
+      "date": "2026-08-21",
+      "phase": "range",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 56.63,
+      "driver": "国内稳增长政策能否扭转信用收缩与内需预期，辅以美债利率与美元方向"
+    },
+    {
+      "date": "2026-08-25",
+      "phase": "range",
+      "style": "value",
+      "risk": "high",
+      "sentiment_score": 55.4,
+      "driver": "国内信用收缩能否被稳增长政策扭转，以及美债利率/美元对成长估值的约束"
+    }
+  ],
+  "sentiment_trend": {
+    "latest_score_100": 50.0,
+    "direction": "stable",
+    "note": "宏观硬数据走弱与政策宽松预期博弈，情绪面未现方向突破"
+  },
+  "liquidity_trend": {
+    "margin": "扩张",
+    "northbound": "未知",
+    "note": "融资余额扩张，北向资金数据暂无更新"
+  },
+  "sector_trends": [
+    {
+      "sector": "半导体",
+      "status": "strengthening",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "国产替代与AI算力需求共振，硅晶圆涨价叠加设备景气上修，政策支持自主可控；但流动性偏紧与微观结构传导受阻压制估值，板块高波动调整，等待右侧信号。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "priority": "high",
+          "sentiment_score": 59.13,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-12",
+          "priority": "high",
+          "sentiment_score": 53.47,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-13",
+          "priority": "high",
+          "sentiment_score": 54.89,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-16",
+          "priority": "high",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-18",
+          "priority": "medium",
+          "sentiment_score": 55.15,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-19",
+          "priority": "medium",
+          "sentiment_score": 57.32,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-23",
+          "priority": "medium",
+          "sentiment_score": 51.71,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-25",
+          "priority": "medium",
+          "sentiment_score": 56.33,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "medium",
+          "sentiment_score": 56.33,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "medium",
+          "sentiment_score": 57.3,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "medium",
+          "sentiment_score": 57.4,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-08",
+          "priority": "medium",
+          "sentiment_score": 57.9,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 54.09,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 53.04,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 52.19,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 55.77,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 51.83,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "medium",
+          "sentiment_score": 50.8,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "新能源",
+      "status": "weakening",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "新能源车渗透率提升与储能全球领先驱动中长期向上，但流动性偏紧与信用收缩使估值修复反复，板块基本面强、资金弱，等待宏观与资金信号。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "priority": "high",
+          "sentiment_score": 61.95,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-12",
+          "priority": "high",
+          "sentiment_score": 66.73,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-13",
+          "priority": "high",
+          "sentiment_score": 60.07,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-16",
+          "priority": "high",
+          "sentiment_score": 53.81,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-18",
+          "priority": "high",
+          "sentiment_score": 64.08,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-19",
+          "priority": "high",
+          "sentiment_score": 61.58,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-23",
+          "priority": "high",
+          "sentiment_score": 54.44,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-25",
+          "priority": "medium",
+          "sentiment_score": 60.58,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "high",
+          "sentiment_score": 62.36,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "high",
+          "sentiment_score": 58.59,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "high",
+          "sentiment_score": 61.69,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-08",
+          "priority": "medium",
+          "sentiment_score": 54.62,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 54.34,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 64.34,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 56.92,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 52.12,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 56.5,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "low",
+          "sentiment_score": 57.96,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "白酒",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "narrative": "需求磨底、渠道去库存，批价低位、价格指数负增，盈利未出清；市场预期三重底部，临近中秋或有修复，但拐点未获硬数据与资金确认。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "priority": "medium",
+          "sentiment_score": 70.18,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-12",
+          "priority": "medium",
+          "sentiment_score": 70.18,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-13",
+          "priority": "medium",
+          "sentiment_score": 64.1,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-16",
+          "priority": "medium",
+          "sentiment_score": 70.59,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-18",
+          "priority": "medium",
+          "sentiment_score": 65.0,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-19",
+          "priority": "medium",
+          "sentiment_score": 65.0,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-23",
+          "priority": "low",
+          "sentiment_score": 45.77,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-25",
+          "priority": "low",
+          "sentiment_score": 45.77,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "low",
+          "sentiment_score": 45.77,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "low",
+          "sentiment_score": 57.57,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "low",
+          "sentiment_score": 56.1,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-08",
+          "priority": "low",
+          "sentiment_score": 56.41,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "low",
+          "sentiment_score": 54.04,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 57.37,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 68.69,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 40.17,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 44.83,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "low",
+          "sentiment_score": 51.16,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        }
+      ]
+    },
+    {
+      "sector": "银行",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "低估值高股息防御，Q2净息差企稳、中报营收回暖提供边际改善，但信用收缩未改、弹性有限，扮演弱市稳定器。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "priority": "medium",
+          "sentiment_score": 50.0,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-12",
+          "priority": "medium",
+          "sentiment_score": 44.32,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-13",
+          "priority": "medium",
+          "sentiment_score": 62.04,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-16",
+          "priority": "medium",
+          "sentiment_score": 57.74,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-18",
+          "priority": "medium",
+          "sentiment_score": 59.77,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-19",
+          "priority": "medium",
+          "sentiment_score": 52.92,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-23",
+          "priority": "medium",
+          "sentiment_score": 51.71,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-25",
+          "priority": "medium",
+          "sentiment_score": 53.67,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "medium",
+          "sentiment_score": 55.24,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "medium",
+          "sentiment_score": 46.25,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "low",
+          "sentiment_score": 45.21,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-08",
+          "priority": "low",
+          "sentiment_score": 61.28,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "low",
+          "sentiment_score": 55.36,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 47.92,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 50.79,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 59.68,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 57.12,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "medium",
+          "sentiment_score": "50.8",
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "元件",
+      "status": "strengthening",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "AI算力与消费电子核心基础，中长期受益AI资本开支与国产替代；短期受流动性偏紧、微观结构拥挤与防御风格压制，等待拐点。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "priority": "medium",
+          "sentiment_score": 58.07,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-25",
+          "priority": "medium",
+          "sentiment_score": 56.19,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "medium",
+          "sentiment_score": 56.19,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "medium",
+          "sentiment_score": 65.14,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 69.95,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 69.95,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "电力",
+      "status": "weakening",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "高股息防御+能源转型，弱宏观下具相对优势；市场化改革带来电价压力，守而非攻，等待估值与盈利修正。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "priority": "high",
+          "sentiment_score": 77.11,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 63.13,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "通信设备",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "AI算力网络核心，CPO/硅光升级驱动中期景气，政策加码；但流动性偏紧、估值安全边际不足，等待估值消化。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "priority": "medium",
+          "sentiment_score": 53.53,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 50.0,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "电池",
+      "status": "weakening",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "受益动力与储能需求，固态/钠电池打开空间，但宏观内需弱、流动性mixed压制估值弹性。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "priority": "high",
+          "sentiment_score": 49.14,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-27",
+          "priority": "high",
+          "sentiment_score": 65.44,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "high",
+          "sentiment_score": 56.64,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 59.71,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "工业金属",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "工业金属处于供给紧平衡与结构性需求增量共振的中期上行通道：AI算力、新能源电网建设带动铜铝锡等需求，铜矿供给收紧与低库存提供价格支撑；国内宽松政策与海外流动性预期缓和构成宏观助力，但中国内需偏弱与中美摩擦形成压制，板块将呈震荡上行格局。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "priority": "high",
+          "sentiment_score": 80.28,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-05",
+          "priority": "medium",
+          "sentiment_score": 53.68,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-08",
+          "priority": "medium",
+          "sentiment_score": 56.17,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 56.17,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 58.25,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "电网设备",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "电网设备板块处于政策与景气双轮驱动阶段：国内配电网升级改造加速，海外需求高增，二季度业绩反转在即。资金面确认流入，估值合理，拥挤度低，中期配置价值突出。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "priority": "high",
+          "sentiment_score": 64.83,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "电子化学品",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "半导体材料国产替代长逻辑不变，短期超跌后估值有吸引力，但受宏观流动性压制，需等待边际改善信号。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "priority": "medium",
+          "sentiment_score": 47.92,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "medium",
+          "sentiment_score": 47.92,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "汽车服务及其他",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "板块为汽车产业链后端服务，缺乏成长动能，在流动性偏紧环境下难获资金青睐。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-07-26",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "通用设备",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "narrative": "通用设备受益于制造业升级和自动化需求，景气持续强劲，估值低位提供安全边际，但短期受宏观流动性压制，需等待外部环境改善。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "priority": "medium",
+          "sentiment_score": 67.31,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "贵金属",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "全球地缘风险高企与央行创纪录购金共同驱动贵金属中期上涨，国内宽松流动性提供支持；尽管估值未知且全球利率仍高，但避险与实物需求超越利率压制，板块有望在波动中维持相对强势。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "priority": "medium",
+          "sentiment_score": 68.66,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 73.69,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 62.53,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "化学制药",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "narrative": "创新药出海License-out爆发式增长成为板块核心驱动，资金与情绪共振推升行情；但板块内部分化加大，需精选具备出海能力、管线兑现高的龙头企业。",
+      "series": [
+        {
+          "date": "2026-08-08",
+          "priority": "medium",
+          "sentiment_score": 59.75,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 59.75,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "医疗服务",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "医疗服务在政策制度完善（价格分类形成机制、检验类立项指南）与前期超跌资金轮动下呈现结构性复苏，中期核心看价格改革能否改善盈利预期，叠加创新药/CXO订单恢复；但景气与估值硬数据未验证，需业绩与政策配合才能形成趋势。",
+      "series": [
+        {
+          "date": "2026-08-08",
+          "priority": "medium",
+          "sentiment_score": "62.06",
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": "62.06",
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 63.75,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 68.5,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": "55.47",
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "消费电子",
+      "status": "weakening",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "narrative": "AI终端创新周期与半导体国产替代共振，驱动消费电子从元器件到整机的中期景气回升；但宏观内需弱、美债高压与微观结构拥挤三重约束下，右侧配置需等待风险释放与资金回流确认。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 61.69,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 59.42,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "军工电子",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "地缘政治紧张局势下，全球军备扩张及国内国防信息化推动军工电子需求，板块估值合理，资金持续流入。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 50.0,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "长鑫科技",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "unknown",
+      "narrative": "长鑫科技是存储芯片个股而非标准行业板块，无法用板块框架验证景气与估值。仅可作国产存储/半导体替代的个股观察，但当前宏观硬数据偏弱、全球流动性收紧、微观结构传导受限，缺乏板块级中期配置依据。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "low",
+          "sentiment_score": 47.25,
+          "fund_flow": "未知",
+          "policy_wind": "unknown",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 49.37,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 58.43,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 57.59,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "low",
+          "sentiment_score": 52.39,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        }
+      ]
+    },
+    {
+      "sector": "通信",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "全球AI算力投资驱动光模块、CPO、以太网交换芯片等需求扩张，国内适度超前建设通信网与自主可控提供政策支撑；但中美科技摩擦、传统运营商增长乏力及美债高位构成主要约束，板块内部结构性分化。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 54.15,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 56.02,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 52.35,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 61.6,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "medium",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "东山精密",
+      "status": "strengthening",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "narrative": "东山精密从PCB集约化切入AI光芯片/光模块，垂直整合逻辑获中报业绩验证，成为AI算力硬件链中景气兑现标的；但全球流动性偏紧、美国出口禁令不确定，中期定价取决于订单与Capex兑现而非短期情绪。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "low",
+          "sentiment_score": 54.34,
+          "fund_flow": "分歧",
+          "policy_wind": "headwind",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "headwind",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 51.05,
+          "fund_flow": "未知",
+          "policy_wind": "headwind",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 51.18,
+          "fund_flow": "未知",
+          "policy_wind": "headwind",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 51.57,
+          "fund_flow": "流出",
+          "policy_wind": "headwind",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "medium",
+          "sentiment_score": 72.33,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "长电科技",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "AI算力与存储周期上行驱动先进封装市场高速增长，国内龙头长电科技盈利改善、先进封装产能扩张，受益国产替代；但全球流动性偏紧与高估值待消化，中期逻辑仍强，需等待风险折价释放。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 70.36,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 69.46,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 69.46,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 74.46,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "medium",
+          "sentiment_score": 74.27,
+          "fund_flow": "未知",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "软件",
+      "status": "weakening",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "narrative": "AI从算力向软件应用扩散与国产替代逻辑，叠加上海软件十五五规划，构成中期方向；但盈利尚未验证、估值安全边际不明，且宏观流动性偏紧，属于主题跟踪而非配置加仓阶段。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 60.84,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 62.28,
+          "fund_flow": "流出",
+          "policy_wind": "tailwind",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 55.34,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "澜起科技",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "内存接口芯片龙头，受益于AI驱动高端存储需求，CXL 3.2打开新增长极，国产替代强化中期逻辑；但当前估值未明，宏观流动性偏紧，微观结构严重拥挤，传导受扰，需等待右侧资金与估值信号。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 60.31,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 60.31,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 61.87,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 50.49,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "亨通光电",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "光纤光缆/海缆潜在受益于AI数据中心建设、5G/6G与海洋经济，短期事件催化与资金流入明显，但行业景气、估值、盈利质量硬数据不足；宏观整体防御且微观结构传导受扰，中长线配置需等待硬数据与流动性改善。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "low",
+          "sentiment_score": 55.7,
+          "fund_flow": "分歧",
+          "policy_wind": "unknown",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 55.7,
+          "fund_flow": "分歧",
+          "policy_wind": "unknown",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 54.62,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 65.8,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 74.51,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "low",
+          "sentiment_score": 74.51,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "券商",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "市场活跃与股东增持提振信心，但监管趋严和宏观不确定性限制上行空间。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "priority": "medium",
+          "sentiment_score": 61.41,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "养殖业",
+      "status": "strengthening",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "narrative": "猪周期底部反转预期：产能去化实质进展+防御风格资金关注，但业绩尚未兑现，属左侧跟踪。",
+      "series": [
+        {
+          "date": "2026-08-11",
+          "priority": "low",
+          "sentiment_score": 74.11,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        },
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 62.9,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        }
+      ]
+    },
+    {
+      "sector": "化学制品",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "供给收缩叠加政策护航，化工行业走出底部，盈利弹性显现。",
+      "series": [
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 67.57,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "军工装备",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "国防现代化与商业航天双轮驱动，行业集中度提升与资产整合催生结构性机会",
+      "series": [
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 50,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "环境治理",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "绿色环保与城市运维升级带来结构性机会，但传统PPP模式收缩形成压力。",
+      "series": [
+        {
+          "date": "2026-08-11",
+          "priority": "medium",
+          "sentiment_score": 55.07,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "生物制品",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "弱宏观与防御风格下，医药作为内需+政策缓冲方向获得资金流入；生物制品因疫苗/创新产品事件催化，短期情绪偏热。但行业景气度需中报与批签发数据确认，当前更多是估值修复与轮动，不宜视为基本面反转。",
+      "series": [
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 71.41,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "计算机设备",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "narrative": "AI算力与国产替代驱动计算机设备需求，政策支持，但估值与盈利质量待验证，短期资金分歧。",
+      "series": [
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 50.0,
+          "fund_flow": "分歧",
+          "policy_wind": "tailwind",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "医药商业",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "narrative": "医药商业属防御板块，受益地方医药创新政策与处方外流预期，短线资金情绪共振；中长线需验证盈利改善与估值安全边际。",
+      "series": [
+        {
+          "date": "2026-08-14",
+          "priority": "medium",
+          "sentiment_score": 68.51,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "综合",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "综合板块缺乏中期产业叙事，由少量低价、题材股带动，景气与政策均无明确倾向，难以形成数周至数季的配置逻辑。",
+      "series": [
+        {
+          "date": "2026-08-14",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "流出",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "光学光电子",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "narrative": "光学光电子处于‘新周期预期’与短期盈利承压的拉扯，资金与舆情先行，需盈利与流动性双确认。",
+      "series": [
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 70.02,
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        }
+      ]
+    },
+    {
+      "sector": "小金属",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "战略小金属资源价值重估：供给受限+出口管制+AI/光伏需求，龙头盈利预增，中期独立行情。",
+      "series": [
+        {
+          "date": "2026-08-18",
+          "priority": "medium",
+          "sentiment_score": 58.1,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "中国巨石",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "narrative": "中国巨石作为玻纤及电子布龙头，受益于AI算力带来的电子布需求爆发，半年报业绩高增，但行业仍处产能扩张周期，需警惕供给过剩。宏观流动性混合、美债高位压制成长估值，板块中长线逻辑需等待价格与资金流验证。",
+      "series": [
+        {
+          "date": "2026-08-18",
+          "priority": "low",
+          "sentiment_score": 43.45,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "unknown"
+        },
+        {
+          "date": "2026-08-25",
+          "priority": "low",
+          "sentiment_score": 68.54,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "医疗器械",
+      "status": "stable",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "narrative": "创新驱动与出海逻辑强化，政策支持高端器械国产替代与全球化，高附加值产品出口增速领先，板块处于景气上行早期；但需消化估值不确定性与宏观流动性约束，当前更适合跟踪而非追涨。",
+      "series": [
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 56.08,
+          "fund_flow": "流入确认",
+          "policy_wind": "tailwind",
+          "prosperity": "up"
+        }
+      ]
+    },
+    {
+      "sector": "汽车整车",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "出口链景气驱动整车盈利改善，但内需疲弱与防御风格限制估值弹性。",
+      "series": [
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": "50.14",
+          "fund_flow": "流入确认",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    },
+    {
+      "sector": "建筑装饰",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "narrative": "建筑装饰是稳增长政策潜在抓手，但当前信用收缩与地产低迷压制景气；板块短期资金关注提升，需硬数据验证。",
+      "series": [
+        {
+          "date": "2026-08-21",
+          "priority": "medium",
+          "sentiment_score": 39.53,
+          "fund_flow": "分歧",
+          "policy_wind": "neutral",
+          "prosperity": "down"
+        }
+      ]
+    },
+    {
+      "sector": "C宇树",
+      "status": "stable",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "narrative": "具身智能被视为AI下一阶段落地场景，宇树作为人形机器人/四足龙头上市点燃主题，但当前仍处于叙事早期与技术验证期，产业爆发需等泛化能力突破和工业订单放量；中期估值需要盈利消化，当前更多是风险偏好高涨下的交易性溢价。",
+      "series": [
+        {
+          "date": "2026-08-21",
+          "priority": "low",
+          "sentiment_score": 50.0,
+          "fund_flow": "未知",
+          "policy_wind": "neutral",
+          "prosperity": "flat"
+        }
+      ]
+    }
+  ],
+  "stock_trends": [
+    {
+      "code": "600519",
+      "name": "贵州茅台",
+      "status": "deteriorating",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "hold",
+        "reduce"
+      ],
+      "thesis": "高端白酒龙头，估值低位但行业景气下行，等待需求企稳",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 60.47
+        },
+        {
+          "date": "2026-07-12",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 62.4
+        },
+        {
+          "date": "2026-07-13",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 62.4
+        },
+        {
+          "date": "2026-07-16",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 56.49
+        },
+        {
+          "date": "2026-07-18",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 57.01
+        },
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 57.01
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 53.2
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 50.45
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 50.15
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": "62.33"
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "reduce",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 53.73
+        }
+      ]
+    },
+    {
+      "code": "300750",
+      "name": "宁德时代",
+      "status": "stable",
+      "rating_path": [
+        "strong_buy",
+        "strong_buy",
+        "strong_buy",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "全球动力电池/储能龙头，中报净利+42%、现金流强、400亿回购注销提供下方支撑，但估值已至合理中枢、盈利增速二阶导走弱且全球流动性偏紧，中期持有等待美债回落或Q3增速企稳。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 58.1
+        },
+        {
+          "date": "2026-07-12",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 58.1
+        },
+        {
+          "date": "2026-07-13",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 58.1
+        },
+        {
+          "date": "2026-07-16",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 52.98
+        },
+        {
+          "date": "2026-07-18",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 57.46
+        },
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 57.46
+        },
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "strong_buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 83.27
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "strong_buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 83.27
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "strong_buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 75.15
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "strong_buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 80.62
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 77.82
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 81.28
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 74.03
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 52.0
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 58.07
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "53.43"
+        }
+      ]
+    },
+    {
+      "code": "601318",
+      "name": "中国平安",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy"
+      ],
+      "thesis": "综合金融龙头，寿险NBV高增驱动营运利润稳健增长，当前估值处于历史低位，高股息提供安全边际，中长期配置价值凸显。",
+      "series": [
+        {
+          "date": "2026-07-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 59.87
+        },
+        {
+          "date": "2026-07-12",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 58.45
+        },
+        {
+          "date": "2026-07-13",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 58.45
+        },
+        {
+          "date": "2026-07-16",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 61.95
+        },
+        {
+          "date": "2026-07-18",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 61.95
+        },
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 61.95
+        }
+      ]
+    },
+    {
+      "code": "600584",
+      "name": "长电科技",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI算力驱动先进封装景气向上，公司作为国内封测龙头盈利高增、产能扩张明确；但估值处于近3年约92%分位，全球流动性偏紧，中长线需等待估值消化或流动性改善。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 65.46
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 52.1
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 52.1
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 53.82
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 52.86
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": "48.92"
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 60.03
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 63.07
+        }
+      ]
+    },
+    {
+      "code": "000725",
+      "name": "京东方Ａ",
+      "status": "deteriorating",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "hold"
+      ],
+      "thesis": "全球LCD龙头，中报预增54%-69%且经营现金流强劲，AMOLED/MLED提供中期弹性；但当前估值偏高、微观结构禁新开仓，宜等待业绩兑现与右侧信号。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 65.47
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 64.37
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "77.95"
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 49.28
+        }
+      ]
+    },
+    {
+      "code": "688012",
+      "name": "中微公司",
+      "status": "deteriorating",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "hold"
+      ],
+      "thesis": "国产半导体刻蚀与薄膜设备龙头，受益AI算力扩产与国产替代中长期成长；但2026H1净利润暴增主要来自非经常性收益，核心盈利增速待验证，高估值与中期技术走弱限制上行空间。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 47.39
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 57.68
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 57.68
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 58.11
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 66.47
+        }
+      ]
+    },
+    {
+      "code": "600900",
+      "name": "长江电力",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "水电龙头资产稀缺，低利率环境下高股息配置价值凸显，发电量稳健增长，防御属性强。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.04
+        }
+      ]
+    },
+    {
+      "code": "301217",
+      "name": "铜冠铜箔",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "高频高速铜箔供不应求，AI算力驱动高端产品量价齐升，公司作为国内HVLP铜箔龙头，产能释放叠加加工费上涨，盈利进入高速增长期。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 59.58
+        }
+      ]
+    },
+    {
+      "code": "300059",
+      "name": "东方财富",
+      "status": "deteriorating",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "hold"
+      ],
+      "thesis": "互联网券商龙头，受益于市场活跃度提升与基金代销增长，盈利高增且估值偏低，但经营现金流质量弱化，需等待现金流改善或市场环境明朗。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 52.47
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 46.37
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": null
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 47.68
+        }
+      ]
+    },
+    {
+      "code": "603228",
+      "name": "景旺电子",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "AI算力与汽车电子双轮驱动，高端PCB产能扩张支撑中长期成长，短期受市场流动性冲击回调，估值回落至合理区间，等待情绪企稳后修复。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.32
+        }
+      ]
+    },
+    {
+      "code": "688256",
+      "name": "寒武纪",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "reduce",
+        "reduce",
+        "reduce",
+        "reduce",
+        "reduce",
+        "reduce"
+      ],
+      "thesis": "国产AI芯片龙头，受益AI算力国产替代，中期盈利高增；但经营现金流弱、估值仍贵，需等待盈利质量改善或估值回归，当前不具备中线安全边际。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 46.0
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 46.18
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 46.18
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 48.0
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 81.27
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 81.27
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 82.59
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 66.76
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 54.53
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": "57.19"
+        }
+      ]
+    },
+    {
+      "code": "601398",
+      "name": "工商银行",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "高股息防御+估值低位+资金流入，但景气平淡，中期需等待息差企稳或经济复苏信号。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 51.53
+        }
+      ]
+    },
+    {
+      "code": "002594",
+      "name": "比亚迪",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy"
+      ],
+      "thesis": "全球新能源汽车龙头，垂直整合与规模优势构筑强护城河，短期盈利承压但海外出口高增长与智能化升级打开第二曲线，中长期受益于电动化渗透率提升。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 54.57
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 62.71
+        }
+      ]
+    },
+    {
+      "code": "002463",
+      "name": "沪电股份",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "AI算力与高速交换机需求驱动高端PCB结构性增长，公司作为龙头持续受益，产能扩张支撑中长期成长，但短期估值偏高且市场微观结构恶化，需等待回调企稳后的布局机会。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 61.17
+        }
+      ]
+    },
+    {
+      "code": "688347",
+      "name": "华虹宏力",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "特色工艺晶圆代工龙头，受益于AI与IoT驱动需求增长，12寸产能加速爬坡，并购华力微整合后协同效应逐步释放，中长期盈利改善确定性较高。",
+      "series": [
+        {
+          "date": "2026-07-19",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 50.04
+        }
+      ]
+    },
+    {
+      "code": "300308",
+      "name": "中际旭创",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI算力驱动光模块龙头，2026H1业绩爆发、客户订单能见度延长至2027年，回购托底；但高估值、外部禁令风险与全球流动性偏紧压制中期风险，待政策明朗与现金流改善后具备中线配置价值。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 57.77
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 57.77
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 57.77
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 57.77
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.18
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.18
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.18
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.18
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 58.35
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 53.91
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 73.4
+        }
+      ]
+    },
+    {
+      "code": "601899",
+      "name": "紫金矿业",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "全球矿业龙头，金铜锂多品种量价齐升，中期分红超预期，估值合理偏低，受益于全球流动性宽松预期与国内稳增长政策，中期配置价值突出。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 64.95
+        }
+      ]
+    },
+    {
+      "code": "688008",
+      "name": "澜起科技",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "hold",
+        "hold"
+      ],
+      "thesis": "全球内存接口芯片龙头，DDR5渗透率提升与AI运力芯片（PCIe Retimer/CXL）放量驱动业绩高增长，回购与指数纳入提供支撑，中长期成长逻辑清晰，但短期受全球流动性与微观结构扰动。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 69.77
+        },
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 73.28
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 73.28
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 68.78
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 68.78
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 62.54
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 64.39
+        }
+      ]
+    },
+    {
+      "code": "600487",
+      "name": "亨通光电",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI算力/数据中心建设驱动光纤光缆量价齐升，公司2026H1盈利预告高增，但当前估值处历史极高分位且Q1经营现金流为负，中长线需等待中报及行业订单/价格验证、估值消化后再评估。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 52.19
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 60.31
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 55.83
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 55.35
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 55.23
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 48.63
+        }
+      ]
+    },
+    {
+      "code": "300502",
+      "name": "新易盛",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI算力带动高速光模块需求，1.6T放量与股权激励高目标支撑中期增长，但美国禁令、弱现金流与高PB/美债压力使估值修复受限，暂为持有观察。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 77.39
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 65.93
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.85
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.85
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.75
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 45.56
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 58.33
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "55.22"
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "50.99"
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 76.75
+        }
+      ]
+    },
+    {
+      "code": "601138",
+      "name": "工业富联",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy"
+      ],
+      "thesis": "全球AI资本开支扩张驱动AI服务器/CPO交换机高增，产品结构升级释放利润弹性，中长期成长确定性高。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 48.57
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 81.18
+        }
+      ]
+    },
+    {
+      "code": "000977",
+      "name": "浪潮信息",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "AI算力需求持续高景气驱动业绩超预期，国产算力生态布局深化，中期盈利上修周期开启，但短期估值修复后需消化获利盘，等待业绩兑现确认。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 65.81
+        }
+      ]
+    },
+    {
+      "code": "300285",
+      "name": "国瓷材料",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold"
+      ],
+      "thesis": "氧化锆龙头受益涨价周期与海外并购，中期盈利增长可期，但当前估值过高且机构资金流出，需等待业绩兑现消化估值或回调至合理区间。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 60.97
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 74.63
+        }
+      ]
+    },
+    {
+      "code": "300408",
+      "name": "三环集团",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "受益于MLCC高端化与国产替代、光通信器件需求增长及SOFC商业化加速，公司进入新一轮盈利上行周期，回购与业绩预增强化信心，中期估值修复可期。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 84.21
+        }
+      ]
+    },
+    {
+      "code": "688498",
+      "name": "源杰科技",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "AI驱动数据中心光芯片需求爆发，CW光源产品放量带动业绩高速增长，产能扩张与客户拓展提供中期成长空间。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 73.26
+        }
+      ]
+    },
+    {
+      "code": "603629",
+      "name": "利通电子",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "公司从传统消费电子精密金属结构件向AI算力租赁业务转型，2026年上半年业绩大幅预增，算力业务成为核心增长引擎；但客户集中度高、短期股价涨幅过大，需警惕回调风险。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 55.9
+        }
+      ]
+    },
+    {
+      "code": "688525",
+      "name": "佰维存储",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "AI端侧存储需求爆发+存储超级周期+晶圆级先进封测差异化优势，驱动盈利高速增长；当前估值因市场恐慌大幅回调至历史低位，回购注销彰显信心，中期配置价值突出。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 88.36
+        }
+      ]
+    },
+    {
+      "code": "002475",
+      "name": "立讯精密",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy"
+      ],
+      "thesis": "苹果AI换机周期与汽车/数据中心双轮驱动，基本面稳健增长，回购彰显信心，估值降至历史低位，中期修复空间可期。",
+      "series": [
+        {
+          "date": "2026-07-23",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.74
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 67.71
+        }
+      ]
+    },
+    {
+      "code": "603986",
+      "name": "兆易创新",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "存储芯片龙头，AI需求与国产替代驱动盈利爆发，回购注销强化信心；但高PB、非经常收益占比偏高且全球流动性偏紧，中期需业绩持续性与流动性缓和共振。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 33.43
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 33.43
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 61.02
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 64.33
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 58.51
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "60.82"
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 64.19
+        }
+      ]
+    },
+    {
+      "code": "002371",
+      "name": "北方华创",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "半导体设备龙头，受益国产替代与AI算力需求长期增长，短期受全球流动性紧缩压制估值，中长线逻辑清晰，需等待宏观或资金面拐点。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 59.63
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 59.63
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 59.1
+        }
+      ]
+    },
+    {
+      "code": "300604",
+      "name": "长川科技",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy"
+      ],
+      "thesis": "国产测试机龙头受益AI算力与存储扩产，业绩高增长确定，但全球流动性紧缩压制估值，中期需等待宏观拐点或技术面企稳。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.23
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.23
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 48.78
+        }
+      ]
+    },
+    {
+      "code": "603893",
+      "name": "瑞芯微",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy"
+      ],
+      "thesis": "AIoT SoC与端侧AI协处理器双轮驱动，业绩高增长确定性强，但外部流动性紧缩压制估值，中长线持有等待流动性拐点。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 52.03
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 52.03
+        }
+      ]
+    },
+    {
+      "code": "000938",
+      "name": "紫光股份",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "buy",
+        "buy",
+        "buy",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI算力需求驱动新华三交换机与服务器高增长，2026H1预增强劲，但经营现金流弱且估值历史极高位，中期需等待现金流改善或安全边际。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 69.35
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 69.35
+        },
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 67.52
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 56.99
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 56.99
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 56.99
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 57.14
+        }
+      ]
+    },
+    {
+      "code": "002409",
+      "name": "雅克科技",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold"
+      ],
+      "thesis": "半导体前驱体材料龙头，受益于AI算力需求与国产替代双轮驱动，中长期景气向上；但当前估值偏高叠加全球流动性紧缩压制，短期需等待估值回调或流动性拐点。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 56.14
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 56.14
+        }
+      ]
+    },
+    {
+      "code": "002428",
+      "name": "云南锗业",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold"
+      ],
+      "thesis": "磷化铟大单锁定中期增长，AI光模块与半导体国产替代驱动需求，但超高估值与宏观流动性紧缩压制，等待回调至合理区间布局。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 56.68
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 56.68
+        }
+      ]
+    },
+    {
+      "code": "688041",
+      "name": "海光信息",
+      "status": "deteriorating",
+      "rating_path": [
+        "buy",
+        "hold"
+      ],
+      "thesis": "国产算力龙头，业绩高增长确定性强，但估值昂贵且宏观流动性紧缩压制，中期需等待估值消化或流动性边际改善。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 58.28
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 56.2
+        }
+      ]
+    },
+    {
+      "code": "002353",
+      "name": "杰瑞股份",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy"
+      ],
+      "thesis": "子公司签订近百亿燃气轮机订单，切入AI算力基础设施供应链，电力板块成为第二增长曲线，叠加天然气与油服主业稳健增长，中长期业绩确定性提升。",
+      "series": [
+        {
+          "date": "2026-07-25",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 79.46
+        },
+        {
+          "date": "2026-07-26",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 79.46
+        }
+      ]
+    },
+    {
+      "code": "002156",
+      "name": "通富微电",
+      "status": "improving",
+      "rating_path": [
+        "hold",
+        "hold",
+        "strong_buy"
+      ],
+      "thesis": "AI算力需求驱动封测量价齐升，2026年业绩爆发式增长（H1预增288%-337%），预计全年净利润超35亿元，对应当前市值PE仅28倍，PEG<0.2；短期大基金减持扰动，但中期业绩兑现将驱动估值修复。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 56.16
+        },
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 50.36
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "strong_buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": "51.15"
+        }
+      ]
+    },
+    {
+      "code": "002415",
+      "name": "海康威视",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "业绩超预期增长+AI大模型落地+高分红，中长线受益于数字化转型与智能化升级，但需等待全球流动性环境改善。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 78.29
+        }
+      ]
+    },
+    {
+      "code": "000021",
+      "name": "深科技",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "存储封测+EMS双轮驱动，受益于AI算力和消费电子复苏，但高估值与全球流动性紧缩压制股价，等待估值消化或流动性拐点",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 53.18
+        }
+      ]
+    },
+    {
+      "code": "001309",
+      "name": "德明利",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "存储芯片周期上行，公司扭亏为盈，但短期股价因流动性冲击和前期涨幅过大暴跌，中长期看企业级存储放量，但需等待市场情绪企稳。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "fair",
+          "sentiment_score": 43.48
+        }
+      ]
+    },
+    {
+      "code": "002185",
+      "name": "华天科技",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "受益AI先进封装需求高景气，公司盈利大幅改善，但全球流动性紧缩压制估值，短期情绪修复后股价仍低于中期均线，需等待流动性或需求催化确认。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "fair",
+          "sentiment_score": 37.4
+        }
+      ]
+    },
+    {
+      "code": "688981",
+      "name": "中芯国际",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "中长期受益于国产替代与AI需求驱动的半导体景气周期，但短期受全球流动性紧缩和估值偏高制约，等待盈利上修或宏观拐点。",
+      "series": [
+        {
+          "date": "2026-07-27",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 53.32
+        }
+      ]
+    },
+    {
+      "code": "688825",
+      "name": "长鑫科技",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "buy",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "国产DRAM龙头，受益AI算力与存储超级周期，2026H1盈利爆发式扭亏，中长期国产替代与产能扩张逻辑未破；但静态估值极高、微观结构传导受限，需等待回调或流动性改善获得合理安全边际。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "medium",
+          "valuation": "fair",
+          "sentiment_score": 51.78
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "medium",
+          "valuation": "fair",
+          "sentiment_score": 51.78
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 51.78
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "52.06"
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "50.0"
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 53.41
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 49.43
+        }
+      ]
+    },
+    {
+      "code": "300058",
+      "name": "蓝色光标",
+      "status": "stable",
+      "rating_path": [
+        "sell"
+      ],
+      "thesis": "出海业务驱动营收持续扩张，但盈利能力极微且波动巨大，市场给予AI与全球化2.0主题溢价，估值严重透支，盈利预期修正缺失，中长期缺乏安全边际，属强预期弱现实的高风险品种。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "sell",
+          "quality": "low",
+          "valuation": "expensive",
+          "sentiment_score": "52.51"
+        }
+      ]
+    },
+    {
+      "code": "002281",
+      "name": "光迅科技",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "国产算力基建与AI光互连需求驱动，公司作为光芯片/光模块垂直整合龙头中期受益确定，但当前估值昂贵，需等待业绩消化或回调后再配置。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 56.93
+        }
+      ]
+    },
+    {
+      "code": "000988",
+      "name": "华工科技",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "AI光模块业务高速增长，公司作为国内光器件一站式龙头，受益算力需求爆发，业绩有望持续超预期，当前估值回调后具备中长期配置价值。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 60.72
+        }
+      ]
+    },
+    {
+      "code": "300394",
+      "name": "天孚通信",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "全球AI算力与CPO量产驱动高盈利和现金流，但估值历史高分位叠加美债高位与微观结构传导受扰，中期以时间换空间，跟踪而非追涨。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 57.69
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 61.09
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": "51.02"
+        }
+      ]
+    },
+    {
+      "code": "300274",
+      "name": "阳光电源",
+      "status": "stable",
+      "rating_path": [
+        "buy",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "全球光储龙头，中长期受益能源转型与AI数据中心储能，但短期盈利下修需等待中报与海外订单验证。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 70.87
+        },
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 73.26
+        },
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 64.54
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "cheap",
+          "sentiment_score": 64.25
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 55.06
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "55.7"
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": "48.17"
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 50.54
+        }
+      ]
+    },
+    {
+      "code": "688111",
+      "name": "金山办公",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "AI办公龙头，信创国产替代驱动，AI产品化有望提升长期盈利，但当前利润含一次性投资收益，需确认主营质量。",
+      "series": [
+        {
+          "date": "2026-08-05",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "fair",
+          "sentiment_score": 68.62
+        }
+      ]
+    },
+    {
+      "code": "000636",
+      "name": "风华高科",
+      "status": "stable",
+      "rating_path": [
+        "reduce"
+      ],
+      "thesis": "MLCC龙头受益于国产替代与AI算力需求，但短期盈利下修、估值过高，需等待业绩拐点验证",
+      "series": [
+        {
+          "date": "2026-08-08",
+          "rating": "reduce",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 53.51
+        }
+      ]
+    },
+    {
+      "code": "002407",
+      "name": "多氟多",
+      "status": "stable",
+      "rating_path": [
+        "hold"
+      ],
+      "thesis": "锂电池电解液龙头，受益于新能源长期景气，但六氟磷酸锂价格波动大、盈利尚未稳定恢复；短期投机资金驱动大涨，估值偏高，中长线需等待行业价格企稳与公司盈利持续改善信号。",
+      "series": [
+        {
+          "date": "2026-08-08",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": "62.04"
+        }
+      ]
+    },
+    {
+      "code": "600276",
+      "name": "恒瑞医药",
+      "status": "stable",
+      "rating_path": [
+        "buy"
+      ],
+      "thesis": "创新药龙头管线步入收获期，近期多项适应症获批及海外认证推进，盈利上修驱动数季估值提升，但短期交易拥挤需警惕回调。",
+      "series": [
+        {
+          "date": "2026-08-08",
+          "rating": "buy",
+          "quality": "high",
+          "valuation": "fair",
+          "sentiment_score": 61.91
+        }
+      ]
+    },
+    {
+      "code": "002384",
+      "name": "东山精密",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold",
+        "hold"
+      ],
+      "thesis": "AI光模块与高端PCB驱动业绩爆发，中报确认高增长，但估值仍处历史高位且面临美国光模块禁令等外部逆风，需等待订单持续验证或估值回落才具备中长期安全边际。",
+      "series": [
+        {
+          "date": "2026-08-09",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 58.69
+        },
+        {
+          "date": "2026-08-11",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 58.69
+        },
+        {
+          "date": "2026-08-14",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 61.27
+        },
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 62.83
+        },
+        {
+          "date": "2026-08-21",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 50.0
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 76.46
+        }
+      ]
+    },
+    {
+      "code": "600176",
+      "name": "中国巨石",
+      "status": "stable",
+      "rating_path": [
+        "hold",
+        "hold"
+      ],
+      "thesis": "全球玻纤/电子布龙头，2026H1量价齐升、电子布景气兑现驱动盈利高增；但当前估值处历史极高分位、现金流质量偏弱、市场微观结构偏紧，中长线需等待更优安全边际而非追高。",
+      "series": [
+        {
+          "date": "2026-08-18",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": "55.25"
+        },
+        {
+          "date": "2026-08-25",
+          "rating": "hold",
+          "quality": "high",
+          "valuation": "expensive",
+          "sentiment_score": 54.68
+        }
+      ]
+    },
+    {
+      "code": "688836",
+      "name": "C宇树",
+      "status": "stable",
+      "rating_path": [
+        "avoid"
+      ],
+      "thesis": "国内人形机器人/四足机器人龙头，具身智能赛道稀缺标的，收入高速增长且盈利扭亏，但当前估值极高、产业处早期且宏观流动性偏紧，中长期需等待商业化验证与估值消化。",
+      "series": [
+        {
+          "date": "2026-08-21",
+          "rating": "avoid",
+          "quality": "medium",
+          "valuation": "expensive",
+          "sentiment_score": 54.36
+        }
+      ]
+    }
+  ],
+  "open_questions": [
+    {
+      "text": "验证失效条件: DRAM价格连续两季跌超20%；或中美科技管制实质限制设备/材料影响扩产；或PB长期高于50倍且盈利预期未同步上调；美债10Y站稳4.8%且无国内对冲 (688825)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 美国禁令正式执行且海外收入下修；或北美云厂商大幅下调capex/1.6T订单不及预期；或连续两个季度毛利率/OCF恶化 (300502)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: Q3扣非净利润环比大幅回落或主营增速证伪；NOR Flash/MCU价格连续下探；减持未停止且资金持续流出；美债10Y突破4.8%且流动性收紧 (603986)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 美国禁令落地且订单下滑；北美云厂商Capex大幅下修或1.6T/800G订单不及预期；美债10Y站稳4.8%且微观结构持续恶化 (002384)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: OCF/净利润持续改善至0.5以上且估值消化至合理；或Q3营收/净利增速大幅放缓；或美债10Y持续上行引发杀估值 (688256)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 连续两季净利润同比降至20%以下或OCF/净利润明显恶化；或美债10Y站稳4.7%以上；或中美科技限制实质影响CPO出口 (300394)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 2026年中报净利同比低于60%或H2增速大幅回落；或北美云厂商Capex下修/运营商集采价格大跌；或美债10Y持续上行 (600487)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 美债10Y持续位于4.8%上方；或北美云厂商Capex大幅下修；或公司先进封装订单/产能利用率连续两季下滑 (600584)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 玻纤/电子布价格连续两个季度环比走弱；或AI/PCB需求证伪；或美债10Y持续上行且微观结构恶化 (600176)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: Q3营收/净利增速降至30%以下且盈利预期继续下修；或美债10Y站稳4.8%；或回购方案大幅缩水 (300750)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "验证失效条件: 连续两个季度海外储能订单低于预期；或美国FCC/贸易限制实质升级；或毛利率/净利率连续两季下滑 (300274)",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": "2026-09-08",
+      "status": "open"
+    },
+    {
+      "text": "国内稳增长政策能否有效扭转内需与信用收缩预期？",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": null,
+      "status": "open"
+    },
+    {
+      "text": "美债收益率与美元方向是否继续压制全球风险资产？",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": null,
+      "status": "open"
+    },
+    {
+      "text": "半导体等科技板块的微观结构拥挤度能否缓解？",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": null,
+      "status": "open"
+    },
+    {
+      "text": "白酒中秋旺季能否出现需求边际改善信号？",
+      "opened_on": "2026-08-25",
+      "last_confirmed": "2026-08-25",
+      "expires_on": null,
+      "status": "open"
+    }
+  ],
+  "watch_items": [
+    "8月下旬至9月初国内政策会议及稳增长信号",
+    "美债收益率与美元指数关键点位",
+    "北向资金恢复更新后的流向",
+    "半导体、元件等板块的资金流与估值消化情况",
+    "白酒批价与中秋备货数据"
+  ],
+  "narrative_log": [
+    {
+      "date": "2026-07-11",
+      "headline": "今日市场情绪中性偏暖，商业航天板块爆发成为新主线，卫星ETF单日净申购近21亿元。政策面持续利好科技自主可控，国务院印发碳达峰方案，央行维持宽松。",
+      "delta": "首日建档"
+    },
+    {
+      "date": "2026-07-12",
+      "headline": "今日市场情绪中性偏暖，政策面持续宽松，科技成长主线延续，但中东地缘冲突升级压制风险偏好。量化舆情分51.13，较前日微升。",
+      "delta": "延续：政策宽松与科技主线不变；新增：舆情分微升，北向资金数据缺失，融资余额继续收缩。"
+    },
+    {
+      "date": "2026-07-13",
+      "headline": "政策面聚焦数字中国、算力基建与碳达峰，产业面AI链景气扩散（光纤、智能体手机、商业航天），但中东地缘风险（霍尔木兹海峡关闭、美军空袭）持续压制风险偏好。资金面融资余额收缩、北向暂停，市场呈结构性行情，防御性板块（医药、白酒）与科技自主可控主线并行。",
+      "delta": "延续：震荡偏弱格局不变，科技自主可控主线强化；新增：舆情分升至54.09，中东地缘风险进一步升级，融资余额连续5日下降，北向资金暂停。"
+    },
+    {
+      "date": "2026-07-16",
+      "headline": "半年报业绩验证期，资金从主题交易转向业绩兑现，风格再平衡。锂电产业链业绩大面积预喜，景气上行逻辑获确认；脑机接口商业化加速；公募防御类产品扩容。美国CPI环比负值降低加息预期，但中东地缘风险持续。",
+      "delta": "延续：震荡偏强格局不变，科技自主可控主线延续；新增：舆情分降至51.77，主驱动更新为半年报业绩验证与政策催化共振，锂电业绩预喜，脑机接口商业化，公募防御类产品扩容。"
+    },
+    {
+      "date": "2026-07-18",
+      "headline": "本周市场大幅调整，上证指数跌3.05%，深证成指跌5.4%，北向资金暂停交易，两融余额周度下降2.75%。防御性板块（电力、银行）逆势获资金流入，科技板块普遍大跌。",
+      "delta": "转折：市场从震荡偏强转为快速下跌，指数跌破MA20；风格从主题切换为价值防御；风险从medium升至high；主驱动变为中东地缘冲突升级与流动性收缩。"
+    },
+    {
+      "date": "2026-07-19",
+      "headline": "本周A股受中东地缘冲突升级冲击，从震荡偏强快速切换至快速下跌，市场情绪转冷。宏观层面，美国CPI转负降低加息预期，但美债收益率仍高位震荡，全球流动性分化。产业层面，WAIC 2026密集发布人形机器人中试平台、具身智能实训场等，AI产业催化加速。资金面上，两融余额持续收缩，微观结构进入流动性压力状态，跌停家数偏多。策略上维持防御，关注电力、银行等高股息板块，等待地缘风险缓和与微观结构修复信号。",
+      "delta": "延续：bear阶段延续，风格与风险不变；新增：舆情分微升至54.01，电力板块逆势上涨，银行板块资金流入，AI产业催化密集但短期调整。"
+    },
+    {
+      "date": "2026-07-23",
+      "headline": "本周宏观面呈现多空交织：国内政策护盘信号密集（证监会、国新、北京国管），电网设备/新能源等景气板块获资金流入；但全球风险升温——中东地缘冲突升级（伊朗打击科威特基地、特朗普威胁军事惩罚）、美国新关税政策不确定性、以及特斯拉/谷歌财报后科技股大跌，均压制风险偏好。全球流动性 stance=mixed，美债收益率上行但人民币汇率稳定。微观结构处于liquidity_stress，基本面传导可能受扰。中期主线聚焦国内景气行业（电网、新能源、工业金属）与政策护盘持续性，同时警惕海外科技估值修正与地缘风险外溢。侧栏关注AI估值泡沫叙事升级及护盘退出假说，但尚未成为主情景。",
+      "delta": "更新：phase从bear调整为range（短暂缓和），后因流动性边际紧张重回bear；新增：电网设备/新能源景气确认，政策护盘加码。"
+    },
+    {
+      "date": "2026-07-25",
+      "headline": "全球流动性收紧（美债10Y升至4.69%）、地缘冲突升级（胡塞袭击沙特、俄乌持续）构成主要中期压力，市场情绪偏冷、微观结构承压。国内政策护盘（证监会、国新）提供短期缓冲，但外资与融资持续流出。下周重点关注长鑫科技上市、解禁高峰与霍尔木兹会议。主线以防御为主，谨慎对待成长估值修复。",
+      "delta": "相对7月23日变化：risk从medium回到high，舆情分从53.99降至51.59，地缘风险升级，半导体获资金逆势流入。"
+    },
+    {
+      "date": "2026-07-26",
+      "headline": "周度核心矛盾在于全球流动性收紧（美债收益率快速上行）压制风险偏好，市场微观结构恶化（下跌家数占比89%），尽管国内政策频出维稳（证监会座谈会、国新回购），但信心修复需要时间。半导体、银行逆势获资金流入，防御与国产替代逻辑强化。需警惕美债收益率继续上行及长鑫科技上市后的市场反应。",
+      "delta": "相对7月25日变化：舆情分51.59→53.01，但市场情绪仍偏冷；半导体资金流入延续；长鑫科技上市在即；地缘风险（伊朗-乌克兰）稍有升级。"
+    },
+    {
+      "date": "2026-07-27",
+      "headline": "本周宏观情报显示，全球流动性紧缩（美债10Y升至4.69%、20d +29bp）继续压制风险偏好，中美关税摩擦升级（新关税7月24日生效），中东地缘冲突（沙特遭无人机袭击、以色列总理访美讨论伊朗）推升避险。国内政策面偏积极（证监会维稳、两高打击内幕交易），但微观结构处于流动性压力状态，单日大涨（上证+1.15%、涨停111只）更多为短期反弹，中期仍是外生变量主导。半导体板块受长鑫上市和大单催化走强，但估值泡沫风险需警惕。",
+      "delta": "相对7月26日变化：舆情分从53.01大幅降至38.2（量化模型）；长鑫科技上市首日涨幅465%，半导体板块资金大幅流入；市场单日大涨但微观结构仍处流动性压力状态；中东地缘冲突升级（沙特遭无人机袭击、以色列总理访美）。"
+    },
+    {
+      "date": "2026-08-05",
+      "headline": "本周市场情绪中性略偏暖，量化得分51.6。央行延续宽松信号，5000亿逆回购注入流动性；产业政策密集出台，车联网、集成电路、电力规划落地刺激科技硬件板块大涨。中…",
+      "delta": "见 change_note"
+    },
+    {
+      "date": "2026-08-08",
+      "headline": "本周（8.3-8.8）市场在中美科技摩擦升级与国内政策托底拉锯下维持震荡。美国拟禁中国数据中心设备、对多晶硅加征关税等压制科技出口链，但央行5000亿逆回购、集…",
+      "delta": "见 change_note"
+    },
+    {
+      "date": "2026-08-09",
+      "headline": "本周情报显示，市场整体情绪中性偏暖，融资余额扩张，资金从防御转向科技、医药等成长板块。宏观面：7月PMI跌破荣枯线，M2增速回落，但出口景气度仍高，AI、新能源…",
+      "delta": "风格成长→偏防御/均衡（升档待周频确认）；风险 medium→high；舆情分 53.62→52.99；主驱动不变，但地缘风险升级，刚果禁矿与霍尔木兹变局添新扰动。"
+    },
+    {
+      "date": "2026-08-11",
+      "headline": "本周宏观数据显示内需疲软，7月PMI降至49.2、CPI同比仅涨0.5%，但融资余额环比回升1.6%。市场呈震荡偏强格局，防御与价值板块领涨：贵金属、银行、白酒获资金净流入，而科技板块因估值与拥挤担忧回调。全球地缘风险持续，特朗普要求伊朗赔偿加剧不确定性，避险情绪升温。微观结构方面，涨跌停家数偏多，量化拥挤信号仍存，策略层面已禁新开仓。中期主线仍为弱现实与政策预期的博弈，防御配置与避险资产占优，成长风格需待基本面催化剂确认。密切关注美国CPI、中国金融数据及地缘动态。",
+      "delta": "见 change_note"
+    },
+    {
+      "date": "2026-08-14",
+      "headline": "本周A股震荡偏弱，宏观硬数据显示制造业PMI回落至49.2、CPI降至0.5%、信贷同比走弱，经济内生动能不足；但央行表态加大逆周期调节，政策预期升温。全球流动…",
+      "delta": "延续：震荡偏防御，风格value不变；舆情分52.09→53.56；微观结构 regime 升级为 crowded_sync/mild，新开仓受限；医药/银行/电力资金净流入，科技/地产承压。"
+    },
+    {
+      "date": "2026-08-18",
+      "headline": "震荡防御延续，科技成长承压",
+      "delta": "较前一日无显著变化"
+    },
+    {
+      "date": "2026-08-19",
+      "headline": "市场延续震荡防御，等待政策信号",
+      "delta": "延续昨日格局，无新增催化"
+    },
+    {
+      "date": "2026-08-21",
+      "headline": "今日无新增宏观信号，市场延续震荡防御格局，资金面融资扩张但北向未知，板块分化延续",
+      "delta": "相对前一日无显著变化"
+    },
+    {
+      "date": "2026-08-25",
+      "headline": "本周A股延续震荡偏防御，微观结构elevated/mild，指数波动放大、个股普跌。国内信用收缩信号强化：7月PMI回落至49.2、社融增量大幅收窄、新增信贷当…",
+      "delta": "见 change_note"
+    }
+  ],
+  "executive_summary": "当前市场维持震荡偏防御（range），风格偏价值，风险水平高。今日无新增宏观催化剂，国内政策预期与外部流动性压制继续博弈，情绪面稳定，融资余额扩张但北向数据缺失。半导体、元件等科技板块产业景气向上但受流动性压制，新能源、电池等弱化，白酒、银行等防御板块相对稳定。建议降仓观望，关注政策落地、美债收益率方向及科技板块资金流变化。",
+  "data_quality": {
+    "score": 0.94,
+    "checks": {
+      "policy_news": true,
+      "global_news": true,
+      "rss_or_flash": true,
+      "margin_trend": true,
+      "northbound": true,
+      "sentiment_overview": true,
+      "economic_calendar": true,
+      "macro_hard_echo": true,
+      "tushare_macro": true,
+      "sector_money_flow": false,
+      "macro_hard": true,
+      "social_financing": true,
+      "global_liquidity": true,
+      "social_financing_fresh": true,
+      "stock_screen": true,
+      "screen_coverage": true
+    },
+    "missing": [
+      "sector_money_flow"
+    ],
+    "error_count": 9,
+    "errors_sample": [
+      "cctv_news: 抱歉，您没有接口(cctv_news)访问权限，权限的具体详情访问：https://tushare.pro/document/1?doc_id=108。",
+      "economic_calendar_primary_empty_used_alt",
+      "macro_hard_social_financing_conflict:gap=3",
+      "economic_calendar_empty_macro_hard_echo_only",
+      "板块资金(ths_industry_flow_5d)[other]: Length mismatch: Expected axis has 11 elements, new values have 8 elements",
+      "板块资金(em_rank_5d)[other]: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+      "sector_flow_5d_unavailable",
+      "sector_money_flow_all_sources_failed"
+    ],
+    "degraded": false,
+    "tushare_macro_backfill": false,
+    "tushare_perm_issue": true,
+    "research_fields": {
+      "earnings_revision": false,
+      "forecast_announce": false,
+      "dual_source_valuation": false
+    },
+    "research_score": 0.0,
+    "policy_news_source": null,
+    "social_financing_lag_months": 1,
+    "note": "数据完整度尚可；Tushare 无权限/超限：盈利修正/业绩预告/双源估值不可用（研究层降权）",
+    "llm_call_stats": {
+      "calls": 26,
+      "finish_length": 1,
+      "empty_content": 0,
+      "compact_retries": 1
+    },
+    "llm_truncation_rate": 0.038
+  },
+  "paper_stats_hint": "运行 money-more stats 查看纸面胜率"
+}

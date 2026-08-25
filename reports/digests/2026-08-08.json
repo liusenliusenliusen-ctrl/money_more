@@ -1,0 +1,537 @@
+{
+  "run_date": "2026-08-08",
+  "prompt_version": "v3-midlong-5d",
+  "market_phase": "range",
+  "market_phase_label": "震荡筑底，结构性行情",
+  "market_style": "growth",
+  "market_style_label": "偏成长（聚焦硬科技与医疗，但需精选）",
+  "risk_level": "medium",
+  "confidence": 0.6,
+  "primary_driver": "全球流动性走向（美债收益率方向）与中美科技博弈演变是未来1-2季度定价的第一因素，国内政策托底为内因支撑",
+  "sector_allocation_hint": "偏成长（科技、医疗），辅以高股息防御",
+  "invalidation": [
+    "美债10Y突破4.75%并持续上行",
+    "中美科技战全面升级至半导体关键设备或材料",
+    "国内PMI连续两月低于49且信贷需求未见恢复",
+    "霍尔木兹海峡局势急剧恶化并实际封锁"
+  ],
+  "contradictions": [
+    "经济数据走弱（PMI收缩、信贷疲弱）与政策托底预期之间的矛盾",
+    "成长股强势但缺乏盈利上调数据支撑（盈利修正数据不可得）"
+  ],
+  "headline_themes": [
+    "中美科技贸易摩擦升级（数据中心设备/光模块/多晶硅）",
+    "国内经济数据偏弱但政策持续托底（PMI收缩+央行逆回购）",
+    "地缘风险边际缓和但依旧高悬（伊朗海峡谈判、乌克兰军援）",
+    "资源供应扰动（刚果禁止铜钴出口）",
+    "市场风格试探性切换（成长反弹 vs 防御回调）"
+  ],
+  "market_narratives": [
+    "国产替代与自主可控（半导体、光模块等受益于政策扶持）",
+    "资源供给扰动（铜、钴等出口受阻或推升价格）",
+    "地缘政治尾部风险（霍尔木兹海峡通航、冲突长期化）",
+    "流动性中性环境下结构性行情（成长与防御跷跷板）"
+  ],
+  "risk_flags": [
+    "中美科技脱钩深化，关税与禁令范围扩大",
+    "中东局势存在反复可能，霍尔木兹海峡仍存不确定性",
+    "国内经济恢复动力不足，PMI连续萎缩",
+    "台风灾害对短期生产物流的冲击"
+  ],
+  "macro_events_watchlist": [
+    {
+      "event": "地缘冲突/战争风险",
+      "tag": "geopolitical_negative",
+      "count": 3,
+      "importance": "high",
+      "source": "news_sentiment"
+    },
+    {
+      "event": "回购增持/股东利好",
+      "tag": "holder_positive",
+      "count": 1,
+      "importance": "low",
+      "source": "news_sentiment"
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "半导体",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "半导体政策顺风，国产替代与AI需求驱动景气向上，资金大幅流入确认。估值合理，但全球流动性偏紧压制估值，中美科技摩擦带来风险。中长期逻辑确定性强，适合数周至季度配置，需关注美债与外部限制演变。"
+    },
+    {
+      "sector": "新能源",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "政策持续托底（碳达峰、下乡），景气上行（电车销量+23%、渗透率60%），但估值分位缺失，全球流动性混合（美债4.65%）与中美关税风险压制，资金面近期无信号。中期配置价值仍在，需等美债回落或资金回流确认，当前不宜重仓。"
+    },
+    {
+      "sector": "白酒",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "fair",
+      "worth_research": false,
+      "crowding_risk": "high",
+      "summary": "白酒需求磨底，提价信号边际改善但景气拐点未确认，估值合理，资金仍流出，维持观望。中期需等中秋旺季动销验证。"
+    },
+    {
+      "sector": "银行",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "高股息防御逻辑仍存，估值历史低位，但景气平淡且资金持续大幅流出，市场风格偏向成长，银行承压。中期需等待经济复苏或息差企稳信号，当前不宜左侧重仓配置。"
+    },
+    {
+      "sector": "化学制药",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "创新药出海数据爆发，板块景气度向上，资金面强势，短期情绪较热，但估值未知且高利率环境压制成长股。可作为中长线研究标的，但需等待估值消化或更多盈利上修信号，暂不宜追高。"
+    },
+    {
+      "sector": "医疗服务",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "unknown",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "医疗服务板块本周放量领涨，资金大幅净流入，市场情绪高涨，但缺乏基本面数据与估值锚点。中长期配置需等待盈利确认和估值回归，当前仅适合观察或轻仓试探，不宜重仓介入。"
+    },
+    {
+      "sector": "贵金属",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "全球央行购金创纪录、地缘风险频繁，黄金避险与储备需求坚挺，景气向上且资金流入确认。但短期涨幅已大、情绪过热，估值缺乏安全边际。建议纳入中期观察，等待回调或估值明朗后配置。"
+    },
+    {
+      "sector": "工业金属",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "供给紧平衡+AI算力需求，景气向上；降息预期与资金流入支撑，估值合理。内需疲软与地缘风险限制上行，中线可配。"
+    },
+    {
+      "sector": "消费电子",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "AI终端创新+旺季预期驱动资金流入，景气待验证，估值未知，可跟踪研究。"
+    },
+    {
+      "sector": "军工电子",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "国防信息化战略合作频现，资金净流入排名靠前，估值存在安全边际；地缘催化提供叙事，但景气与盈利需跟踪验证。"
+    }
+  ],
+  "data_quality_score": 1.0,
+  "degraded": false,
+  "recommendations": [
+    {
+      "code": "300750",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": 329.86,
+      "factor_total": 54.3,
+      "factor_signal": "neutral",
+      "debate_referee": "bull",
+      "sector_tag": "新能源",
+      "invalidation": "2026H2营收增速降至30%以下，或回购计划大幅缩水；美债10Y突破4.8%且趋势上行。",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "美债10Y回落至4.5%以下",
+        "宁德时代周线站稳380上方且成交量温和放大"
+      ],
+      "sector_link": {
+        "sector": "新能源",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "strong_buy",
+        "action_rationale_vs_research": "research strong_buy → watch"
+      }
+    },
+    {
+      "code": "600487",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": 50.59,
+      "factor_total": 50.7,
+      "factor_signal": "neutral",
+      "debate_referee": "draw",
+      "sector_tag": "通信",
+      "invalidation": "2026半年报净利润增速低于50%，或毛利率显著下降；美国对华科技禁令实质影响公司核心业务。",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "中报发布后净利润增速维持50%以上",
+        "股价站上60元且20日均线走平上翘"
+      ],
+      "sector_link": {
+        "sector": "通信",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "000938",
+      "action": "watch",
+      "confidence": 0.55,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 51.6,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "软件",
+      "invalidation": "美债10Y降至4.4%以下且北向连续多周净流入；公司中报超预期。",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "美债利率下行至4.4%",
+        "股价放量站上40元"
+      ],
+      "sector_link": {
+        "sector": "科技硬件",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "688008",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 48.5,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "韩国调查撤销或无实质影响；中报业绩增速再超预期，股价站稳20日均线。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "韩国调查出结果，处罚轻微或撤销",
+        "股价站上MA20并横盘整固"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "300059",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 51.1,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "券商",
+      "invalidation": "市场日均成交额连续三月低于8000亿元；若成交额回升至万亿以上且美债利率下行，可考虑buy。",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "日均成交额回升至9500亿以上",
+        "美债10Y回落至4.5%以下"
+      ],
+      "sector_link": {
+        "sector": "金融科技",
+        "sector_priority": "medium",
+        "sector_prosperity": "flat",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "600519",
+      "action": "watch",
+      "confidence": 0.55,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 53.0,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "白酒",
+      "invalidation": "中秋国庆动销数据超预期，批价持续上行，带动盈利上修；板块资金连续三周净流入。",
+      "verify_in_days": 60,
+      "verify_signals": [
+        "中秋旺季动销数据显著好转",
+        "北向资金持续买入茅台"
+      ],
+      "sector_link": {
+        "sector": "白酒",
+        "sector_priority": "low",
+        "sector_prosperity": "down",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "688825",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 50.4,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "2026中报显示Q2净利润环比大幅下滑，且无合理解释；DRAM现货价格连续两月跌幅超10%。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "中报净利润保持强劲，且经营现金流匹配",
+        "DRAM价格稳定或上行"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "300308",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 41.8,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "通信",
+      "invalidation": "美国宣布豁免或禁令影响有限，公司海外产能可规避；股价企稳回升且MA20重新向上。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "禁令辟谣或有阶段性豁免公告",
+        "股价站稳MA20且成交量萎缩不再杀跌"
+      ],
+      "sector_link": {
+        "sector": "通信",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "300502",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 43.7,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "通信",
+      "invalidation": "禁令取消或影响有限，公司公布海外产能替代方案；股价重回MA20且持续多日放量上攻。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "公司公告表明禁令影响可控或产能转移顺利",
+        "技术面出现周线级别企稳信号"
+      ],
+      "sector_link": {
+        "sector": "通信",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "002384",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 42.2,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "科技硬件",
+      "invalidation": "2026中报EPS显著高于一致预期，且前瞻PE降至40倍以下；股价放量突破均线系统。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "中报发布后盈利预测被大幅上修",
+        "机构连续买入且融资余额增加"
+      ],
+      "sector_link": {
+        "sector": "科技硬件",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "688256",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 42.3,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "2026H2现金流大幅改善，且营收继续高增长；估值回落至80倍以下。",
+      "verify_in_days": 60,
+      "verify_signals": [
+        "单季经营现金流净额转正且覆盖净利润",
+        "股价在关键支撑位出现周级别企稳"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600584",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 43.8,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "美债10Y回落至4.5%以下，且公司半年报净利润增长超100%；股价站稳MA20且量价配合。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "美债利率显著下行",
+        "公司发布正式半年报，业绩兑现"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "002156",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 45.2,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "PE回落至40倍以下，且机构转为持续买入；股价带量突破60元。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "公司季度盈利增速维持50%以上",
+        "北向资金连续多周净买入"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "300274",
+      "action": "watch",
+      "confidence": 0.6,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.6,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "新能源",
+      "invalidation": "2026Q2单季净利润正增长，且海外大单持续落地；股价站稳120元上方。",
+      "verify_in_days": 30,
+      "verify_signals": [
+        "半年报显示业绩企稳回升",
+        "美债10Y回落至4.5%以下"
+      ],
+      "sector_link": {
+        "sector": "新能源",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    }
+  ],
+  "risk_check_ok": true,
+  "validation_override_count": 8,
+  "factor_weights_adapted": {
+    "valuation": 0.25,
+    "momentum": 0.1,
+    "fund_flow": 0.1,
+    "sentiment": 0.1,
+    "quality": 0.3,
+    "narrative": 0.15
+  },
+  "sector_coverage": [],
+  "micro_regime": "normal",
+  "micro_severity": "none",
+  "synthesis_audit_brief": {
+    "agreed_buys": [
+      "300059",
+      "300750",
+      "600487"
+    ],
+    "dropped_buys": [
+      "300059"
+    ],
+    "agent_only_buys": {}
+  }
+}

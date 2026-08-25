@@ -1,0 +1,172 @@
+{
+  "run_date": "2026-07-16",
+  "prompt_version": "v3-midlong-5d",
+  "market_phase": "range",
+  "market_phase_label": "震荡偏强，风格再平衡",
+  "market_style": "theme",
+  "market_style_label": "题材驱动，兼顾防御",
+  "risk_level": "medium",
+  "confidence": 0.75,
+  "primary_driver": "半年报业绩验证与政策催化共振",
+  "sector_allocation_hint": "均衡",
+  "invalidation": [
+    "半年报业绩大面积不及预期，业绩兑现逻辑证伪",
+    "中东地缘冲突大幅升级，引发全球系统性风险",
+    "美联储意外加息或通胀反弹，紧缩预期重燃",
+    "北向资金持续大幅净流出，外资撤离"
+  ],
+  "contradictions": [
+    "科技成长主线与防御类配置需求上升并存，市场风格再平衡但方向未定",
+    "中东地缘风险持续压制风险偏好，但美国CPI降温缓和紧缩预期",
+    "融资余额收缩与北向资金净流入矛盾，内外资分歧"
+  ],
+  "headline_themes": [
+    "锂电产业链景气上行，半年报业绩大面积预喜",
+    "脑机接口商业化加速，政策与资本双重加持",
+    "公募发行结构再平衡，防御类产品扩容",
+    "中东地缘风险持续，美军对伊朗打击行动延续",
+    "科技自主可控主线延续，AI与算力政策催化"
+  ],
+  "market_narratives": [
+    "半年报业绩验证期，资金从主题交易转向业绩兑现，市场风格再平衡",
+    "科技成长主线未变，但防御类（红利、固收）配置需求上升",
+    "中东地缘风险持续压制风险偏好，但美国CPI降温缓和紧缩预期",
+    "锂电产业链景气上行获业绩确认，周期修复逻辑强化"
+  ],
+  "risk_flags": [
+    "中东地缘冲突持续，美军对伊朗打击行动可能升级",
+    "美股存储概念股大跌，可能传导至A股相关板块",
+    "日本央行加息对日本企业资本投资造成损害，可能影响全球风险偏好",
+    "极端天气（暴雨、高温）可能影响部分区域经济活动"
+  ],
+  "macro_events_watchlist": [
+    {
+      "event": "2026世界人工智能大会暨人工智能全球治理高级别会议（习近平出席）",
+      "date": "2026-07-14 起",
+      "importance": "high"
+    },
+    {
+      "event": "长鑫科技科创板新股申购",
+      "date": "2026-07-16",
+      "importance": "medium"
+    },
+    {
+      "event": "美国CPI数据发布（六年来首现环比负值）",
+      "date": "2026-07-15",
+      "importance": "high"
+    },
+    {
+      "event": "A股半年报业绩预告密集披露期",
+      "date": "2026-07-中旬",
+      "importance": "high"
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "半导体",
+      "priority": "high",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "high",
+      "summary": "半导体板块受国产替代与AI需求驱动，景气向上，政策面支持。但7月15日板块大跌5.62%，资金大幅流出，短期获利回吐压力大，情绪偏负面。估值从前期过热回归合理，长鑫申购后可能利好兑现。核心矛盾是短期调整与中长期逻辑的博弈，需等待资金面企稳信号。"
+    },
+    {
+      "sector": "新能源",
+      "priority": "high",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "新能源板块政策面持续利好（碳达峰方案、地方规划），基本面景气度向上（重卡销量高增、锂电业绩预喜），估值处于低位。量化舆情中性偏正面，资金面出现ETF连续加仓信号，前期资金流出已消化。当前是左侧布局窗口，主要矛盾是短期资金面不确定性与长期政策景气支撑的博弈，但资金面已出现改善迹象。"
+    },
+    {
+      "sector": "白酒",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "白酒板块今日大涨5.13%，资金净流入24.75亿，五粮液百亿分红催化情绪，但基本面仍处下行周期，需求疲弱、政策压制宴席场景，估值修复逻辑待验证。短期情绪修复，中期需等待中秋旺季动销信号。建议关注但不宜追高。"
+    },
+    {
+      "sector": "银行",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "银行板块今日上涨1.47%，资金净流入51.23亿，近20日涨幅0.77%，中期趋势企稳。政策面中性偏暖，估值低位，高股息提供防御价值。但景气度平淡（息差承压、不良处置规模大），缺乏强催化剂。主要矛盾是防御属性与资金流入改善的博弈，短期资金面好转，但中期仍需观察经济复苏和息差变化。"
+    }
+  ],
+  "data_quality_score": 1.0,
+  "degraded": false,
+  "recommendations": [
+    {
+      "code": "600519",
+      "action": "hold",
+      "confidence": 0.6,
+      "position_pct": 19.2,
+      "target_price": 2352.0,
+      "stop_loss": 1428.0,
+      "factor_total": 59.8,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "白酒",
+      "invalidation": "中秋国庆旺季动销数据大幅低于预期；茅台酒批价持续大幅下跌；出现重大品牌负面事件",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    },
+    {
+      "code": "300750",
+      "action": "watch",
+      "confidence": 0.55,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": 346.0,
+      "factor_total": 51.9,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "新能源",
+      "invalidation": "锂矿复产导致毛利率大幅下滑；储能或海外业务增长不及预期；股价跌破前低346元",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    },
+    {
+      "code": "601318",
+      "action": "buy",
+      "confidence": 0.62,
+      "position_pct": 13.1,
+      "target_price": 60.0,
+      "stop_loss": 46.0,
+      "factor_total": 65.9,
+      "factor_signal": "constructive",
+      "debate_referee": "bull",
+      "sector_tag": "银行",
+      "invalidation": "NBV增速连续两个季度放缓至个位数；权益市场持续大跌导致投资端大幅亏损；股价跌破46.9元",
+      "verify_in_days": null,
+      "verify_signals": [],
+      "sector_link": null
+    }
+  ],
+  "risk_check_ok": true,
+  "validation_override_count": 4,
+  "factor_weights_adapted": {
+    "valuation": 0.25,
+    "momentum": 0.1,
+    "fund_flow": 0.1,
+    "sentiment": 0.1,
+    "quality": 0.3,
+    "narrative": 0.15
+  },
+  "sector_coverage": [],
+  "micro_regime": null,
+  "micro_severity": null,
+  "synthesis_audit_brief": null
+}

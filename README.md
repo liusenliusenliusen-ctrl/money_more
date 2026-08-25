@@ -72,7 +72,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `SMTP_USER` / `SMTP_PASSWORD` | 邮箱账号 + **授权码**（不是登录密码） |
 | `EMAIL_FROM` / `EMAIL_TO` | 发件人 / 收件人；`EMAIL_TO` 可多个（逗号或分号分隔） |
 
-`config.yaml`、`.env`、本地 `data/` / `reports/` / `logs/` **不会**进 Git。
+`config.yaml`、`.env`、本地 `data/` / `logs/` **不会**进 Git。`reports/` 为历史研报/复盘/模拟账本，纳入版本库。
 
 ## 配置要点（`config.yaml`）
 

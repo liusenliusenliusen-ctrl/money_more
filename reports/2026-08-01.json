@@ -1,0 +1,23 @@
+{
+  "run_date": "2026-08-01",
+  "error": "deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error.",
+  "recommendations": [],
+  "portfolio_summary": "运行失败: deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error.",
+  "market": {},
+  "sectors": [],
+  "stocks": [],
+  "reviews": [],
+  "trend": {},
+  "data_quality": {
+    "degraded": true,
+    "llm_degraded": true,
+    "note": "运行异常中断，仍尝试发邮件通知。错误: deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error."
+  },
+  "multi_agent": {
+    "enabled": false,
+    "meta": "hard_fail",
+    "errors": [
+      "deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error."
+    ]
+  }
+}

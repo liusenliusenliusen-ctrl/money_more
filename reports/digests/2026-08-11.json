@@ -1,0 +1,583 @@
+{
+  "run_date": "2026-08-11",
+  "prompt_version": "v3-midlong-5d",
+  "market_phase": "range",
+  "market_phase_label": "震荡偏防御",
+  "market_style": "value",
+  "market_style_label": "偏价值",
+  "risk_level": "high",
+  "confidence": 0.51,
+  "primary_driver": "全球流动性收紧预期（美债高位）与国内经济内生复苏疲软共同主导定价",
+  "sector_allocation_hint": "偏防御（高股息、贵金属、必需消费），降低成长仓",
+  "invalidation": [
+    "若中央出台大规模财政刺激或PMI重回50以上，可逐步回归均衡配置",
+    "若美债收益率跌破4.3%且北向回流明显，全球流动性压制解除，可提高风险偏好",
+    "若PMI继续下行至48以下且社融再度收缩，则中期可能转入熊市，需进一步防御"
+  ],
+  "contradictions": [
+    "融资余额扩张（风险偏好升）与防御板块分流（避险）并存，显示市场无一致方向，仅为结构性腾挪",
+    "政策密集但PMI收缩，融资修复未有效传导至企业盈利预期"
+  ],
+  "headline_themes": [
+    "内需复苏乏力：PMI收缩与低通胀",
+    "地缘政治风险升温：美伊博弈与能源供应",
+    "AI科技股估值调整与拥挤",
+    "防御性板块轮动：贵金属、银行、白酒获资金青睐",
+    "微观结构偏紧：量化拥挤信号未解除"
+  ],
+  "market_narratives": [
+    "弱现实与政策预期博弈：经济数据疲弱压制上行空间，但资金面保持稳定",
+    "地缘避险与贵金属走强：特朗普要求伊朗赔偿、霍尔木兹海峡风险推升避险需求",
+    "AI投资热降温：英伟达股价回调，科技拥挤度引发获利了结"
+  ],
+  "risk_flags": [
+    "美债10年期收益率维持4.65%高位，中美利差对人民币资产形成压力",
+    "地缘冲突升级可能扰乱霍尔木兹海峡能源运输，引发通胀预期",
+    "国内经济复苏动能减弱，PMI与CPI走低，企业盈利预期可能下修",
+    "量化拥挤与微观结构偏紧，微小冲击可能放大波动"
+  ],
+  "macro_events_watchlist": [
+    {
+      "event": "美国7月CPI数据待公布",
+      "date": "2026-08-12",
+      "importance": "high"
+    },
+    {
+      "event": "中国7月金融数据（社融、信贷）待公布",
+      "date": "2026-08-10~15",
+      "importance": "high"
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "半导体",
+      "priority": "low",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "半导体中长期国产替代与AI需求逻辑未破，政策支撑明确；但短期全球流动性偏紧、微观结构禁止新开仓，叠加资金大幅流出与指数20日跌16%，风险收益比恶化。建议维持研究，等待美债利率回落、资金回流或估值进一步压缩后分批布局。"
+    },
+    {
+      "sector": "新能源",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "政策与景气双轮驱动，估值历史低位，但全球流动性偏紧（美债4.65%）与市场微观结构恶化压制估值修复，中期配置价值需等待宏观或微观拐点。"
+    },
+    {
+      "sector": "白酒",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "fair",
+      "worth_research": true,
+      "crowding_risk": "high",
+      "summary": "白酒景气仍下行，但批价企稳、龙头提价等边际改善信号出现；估值合理，资金单日大幅流入但周度趋势未确认；微观结构偏紧，全球流动性压制；需等待中秋旺季动销验证，中长线观察，暂不建议配置。"
+    },
+    {
+      "sector": "银行",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "medium",
+      "summary": "银行高股息防御逻辑延续，估值极低提供安全边际，但景气平淡（净息差承压），资金面分歧（今日流入但上周连续流出）。在全球流动性收紧及内需疲弱背景下，板块相对抗跌，但缺乏向上弹性，中期需等待经济复苏或息差企稳信号，可小仓位配置。市场微观结构偏紧，基本面传导可能受扰，建议控制仓位。"
+    },
+    {
+      "sector": "贵金属",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "全球央行购金与地缘风险支撑金价，景气向上，资金大幅流入，中期配置价值仍在；但短期涨幅已高、估值未知，微观结构偏紧干扰传导，建议等待回调或数据明朗后分批介入。"
+    },
+    {
+      "sector": "养殖业",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "养殖业板块受防御资金及AI合作叙事推动大涨，但生猪养殖中期业绩承压，猪周期拐点未确认，估值不明，舆情过热。中长线配置时机未到，可跟踪猪价及去产能信号。"
+    },
+    {
+      "sector": "医疗服务",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "unknown",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "近期领涨全市场，资金持续流入，情绪积极，但行业景气度与估值缺乏数据验证，存在回调风险，可作为中长线研究标的，需等待基本面信号。"
+    },
+    {
+      "sector": "化学制品",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "化工供需改善，政策反内卷，利润高增，库存出清补库启动。估值待验，适合中期跟踪配置。"
+    },
+    {
+      "sector": "军工装备",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "军工装备受益商业航天与央企重组催化，资金阶段流入，但宏观流动性偏紧且估值未知，待市场企稳后分批关注。"
+    },
+    {
+      "sector": "环境治理",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "环保板块近期资金流入改善，景气局部回暖但估值未知，中期关注智慧运维与绿色订单落地机会。"
+    },
+    {
+      "sector": "长鑫科技",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "unknown",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "low",
+      "summary": "长鑫科技为个股，非标准行业板块，无法进行板块景气与估值分析。近期纳入MSCI、苹果测试芯片等消息带来关注，但市场处于防御风格，科技板块承压，微观结构偏紧限制传导，中期配置需谨慎。"
+    },
+    {
+      "sector": "通信",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "通信板块中期受益于AI算力与光通信需求，景气向上，但面临美国禁令和全球流动性收紧压制。当前板块资金净流出，微观结构偏紧，估值不明，建议待禁令明朗或回调后估值合理再行配置。"
+    },
+    {
+      "sector": "东山精密",
+      "priority": "low",
+      "policy_wind": "headwind",
+      "prosperity": "unknown",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "medium",
+      "summary": "东山精密受光模块传闻驱动短期爆量炒作，政策面面临美国潜在禁令逆风，无基本面与景气数据支撑，估值不明。市场风格转向防御，科技板块资金持续流出，中期配置价值低，需等待订单落地或监管明朗。"
+    },
+    {
+      "sector": "先进封装",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "先进封装受益于AI算力与存储升级，政策支持，景气向上，但短期股价急涨后估值待消化，中长期值得跟踪，可等待回调或业绩验证。"
+    },
+    {
+      "sector": "软件开发",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "AI应用与政策驱动中期逻辑，但资金短期流出、美债高压制估值，等待回调企稳或景气信号明确。"
+    },
+    {
+      "sector": "澜起科技",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "景气与政策积极，CXL 3.2试产及指数纳入提供催化，但宏观流动性偏紧，估值未明，微观结构略紧且禁新开仓，需谨慎评估入场时机。"
+    },
+    {
+      "sector": "亨通光电 (光纤光缆)",
+      "priority": "low",
+      "policy_wind": "unknown",
+      "prosperity": "unknown",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "low",
+      "summary": "板块景气、政策、估值数据缺失，仅有个股龙虎榜资金分歧信号，不具备中长线板块配置条件。"
+    }
+  ],
+  "data_quality_score": 1.0,
+  "degraded": false,
+  "recommendations": [
+    {
+      "code": "600519",
+      "action": "watch",
+      "confidence": 0.53,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 74.0,
+      "factor_signal": "bullish",
+      "debate_referee": null,
+      "sector_tag": "白酒",
+      "invalidation": "中秋动销同比降幅超 10% 或飞天批价连续两周跌破 2500 元",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "茅台批价及中秋备货数据",
+        "北向资金是否回流白酒",
+        "白酒板块资金能否连续两周净流入"
+      ],
+      "sector_link": {
+        "sector": "白酒",
+        "sector_priority": "low",
+        "sector_prosperity": "down",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "688825",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 50.6,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "DRAM 现货价格连续两季跌超 20% 且盈利重回亏损",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "DRAM 现货价格走势",
+        "中报正式披露及全年指引",
+        "美债收益率是否回落至 4.4% 以下"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "low",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "300308",
+      "action": "watch",
+      "confidence": 0.42,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.1,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "通信",
+      "invalidation": "禁令正式生效且公司无法规避",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "FCC 禁令草案进展",
+        "公司海外产能布局公告",
+        "北向/主力资金回流"
+      ],
+      "sector_link": {
+        "sector": "通信",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "603986",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 48.5,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "存储芯片价格趋势性下行，季度净利润环比持续下滑",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "存储芯片现货/合约价格",
+        "公司回购实施公告",
+        "大股东后续减持动态"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "low",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "300502",
+      "action": "watch",
+      "confidence": 0.48,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 54.8,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "通信",
+      "invalidation": "禁令正式生效且海外业务重创",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "FCC 禁令进展",
+        "公司 1.6T 量产交付公告",
+        "海外营收占比变化"
+      ],
+      "sector_link": {
+        "sector": "通信",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "002384",
+      "action": "watch",
+      "confidence": 0.43,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 42.6,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "精密钣金件和",
+      "invalidation": "美债 10Y 突破 5% 或禁令正式落地",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "估值是否回归合理分位",
+        "光模块订单持续性",
+        "美国政策动向"
+      ],
+      "sector_link": {
+        "sector": "东山精密",
+        "sector_priority": "low",
+        "sector_prosperity": "unknown",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "688256",
+      "action": "watch",
+      "confidence": 0.38,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 45.1,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "下半年营收增速降至 50% 以下或经营现金流无改善",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "中报现金流数据",
+        "存货及应收周转天数",
+        "机构持仓变化"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "low",
+        "sector_prosperity": "up",
+        "from_research_rating": "reduce",
+        "action_rationale_vs_research": "research reduce → watch"
+      }
+    },
+    {
+      "code": "600584",
+      "action": "watch",
+      "confidence": 0.38,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 42.9,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "美债 10Y 持续高于 4.7% 且 H2 订单低于预期",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "半年报业绩是否超预告上限",
+        "美债利率走势",
+        "先进封装设备搬入进展"
+      ],
+      "sector_link": {
+        "sector": "先进封装",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "000938",
+      "action": "watch",
+      "confidence": 0.33,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 32.1,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "软件",
+      "invalidation": "经营现金流连续两季未改善",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "中报经营活动现金流",
+        "新华三订单及回款情况",
+        "资产负债率变化"
+      ],
+      "sector_link": {
+        "sector": "软件开发",
+        "sector_priority": "medium",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "688008",
+      "action": "watch",
+      "confidence": 0.5,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 51.0,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "韩国调查导致重大罚款，或 DDR5 连续两季低于预期",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "公司回购实施进展",
+        "CXL 3.2 产品试产消息",
+        "美债收益率变化与科技板块资金流向"
+      ],
+      "sector_link": {
+        "sector": "澜起科技",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "buy",
+        "action_rationale_vs_research": "research buy → watch"
+      }
+    },
+    {
+      "code": "300750",
+      "action": "watch",
+      "confidence": 0.48,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 54.7,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "新能源",
+      "invalidation": "下半年营收/净利增速降至 30% 以下，或美债 10Y 持续高于 4.8%",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "电池级碳酸锂价格与装机量",
+        "回购注销实际进展",
+        "美债利率走势"
+      ],
+      "sector_link": {
+        "sector": "新能源",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600487",
+      "action": "watch",
+      "confidence": 0.43,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 42.1,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "通信",
+      "invalidation": "2026 年中报净利润同比增长低于 50%",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "中报正式数据",
+        "光纤光缆招标价格",
+        "北美云厂商资本开支指引"
+      ],
+      "sector_link": {
+        "sector": "亨通光电",
+        "sector_priority": "low",
+        "sector_prosperity": "unknown",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "300274",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 53.6,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "新能源",
+      "invalidation": "连续两季储能订单低于预期，或半年报继续大幅下滑",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "半年报业绩预告或正式报告",
+        "储能海外订单公告",
+        "逆变器出货量数据"
+      ],
+      "sector_link": {
+        "sector": "新能源",
+        "sector_priority": "medium",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    }
+  ],
+  "risk_check_ok": true,
+  "validation_override_count": 5,
+  "factor_weights_adapted": {
+    "valuation": 0.25,
+    "momentum": 0.1,
+    "fund_flow": 0.1,
+    "sentiment": 0.1,
+    "quality": 0.3,
+    "narrative": 0.15
+  },
+  "sector_coverage": [],
+  "micro_regime": "elevated",
+  "micro_severity": "mild",
+  "synthesis_audit_brief": {
+    "agreed_buys": [],
+    "dropped_buys": [],
+    "agent_only_buys": {}
+  }
+}
