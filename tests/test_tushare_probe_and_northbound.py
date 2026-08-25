@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from money_more.data.intelligence import IntelligenceFetcher
-from money_more.data.tushare_source import TushareSource
+from money_more.data.tushare_source import TushareSource, is_tushare_news_optional_error
 
 
 def test_tushare_probe_uses_stock_basic_not_trade_cal() -> None:
@@ -71,3 +71,12 @@ def test_northbound_hold_wrong_market_documented_in_helper() -> None:
     assert "北向持股" not in {m for m, _ in calls}
     assert intel._northbound_hold_error
     assert "null_result" in intel._northbound_hold_error or "NoneType" in intel._northbound_hold_error
+
+
+def test_tushare_news_optional_error_helper() -> None:
+    assert is_tushare_news_optional_error("cctv_news: 抱歉，您没有接口(cctv_news)访问权限")
+    assert is_tushare_news_optional_error("抱歉，您没有接口(news)访问权限")
+    assert is_tushare_news_optional_error("news: 抱歉，您没有接口(news)访问权限")
+    assert not is_tushare_news_optional_error("major_news: 抱歉，您没有接口(major_news)访问权限")
+    assert not is_tushare_news_optional_error("fina_indicator: 抱歉，您没有接口(fina_indicator)访问权限")
+    assert not is_tushare_news_optional_error("Tushare 没有接口权限")

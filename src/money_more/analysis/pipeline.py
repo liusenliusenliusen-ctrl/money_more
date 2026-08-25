@@ -37,6 +37,7 @@ from money_more.analysis.weight_adapt import weights_from_ic
 from money_more.config import AppConfig, FrameworkGateConfig
 from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code, sector_money_flow_present
 from money_more.data.intelligence import IntelligenceFetcher
+from money_more.data.tushare_source import is_tushare_news_optional_error
 from money_more.llm.client import (
     ADVICE_SYSTEM,
     INTELLIGENCE_DIGEST_SYSTEM,
@@ -1844,7 +1845,9 @@ class DecisionPipeline:
     @staticmethod
     def _assess_data_quality(macro_intel: dict[str, Any]) -> dict[str, Any]:
         errors = list(macro_intel.get("errors") or [])
-        err_text = " ".join(errors).lower()
+        news_optional_errs = [e for e in errors if is_tushare_news_optional_error(str(e))]
+        core_errs = [e for e in errors if not is_tushare_news_optional_error(str(e))]
+        err_text = " ".join(str(e) for e in core_errs).lower()
         tushare_bad = any(
             x in err_text
             for x in (
@@ -1911,6 +1914,8 @@ class DecisionPipeline:
             # 连接层分数不打穿（新闻还能用备源），但研究层显式降权并禁止满分
             score = min(score, 0.85)
             notes.append("Tushare 无权限/超限：盈利修正/业绩预告/双源估值不可用（研究层降权）")
+        elif news_optional_errs:
+            notes.append("Tushare 联播/个股新闻未开通（已跳过）；财务/估值/重大新闻仍可用")
         # 降级 ≠ 首选：研究层近乎 0 时，连接分不得装成「齐备」
         if research_score < 0.4:
             if score > 0.55:
@@ -1941,6 +1946,7 @@ class DecisionPipeline:
             "degraded": degraded or score < 0.6,
             "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
             "tushare_perm_issue": bool(tushare_bad),
+            "tushare_news_optional": bool(news_optional_errs),
             "research_fields": research_fields,
             "research_score": research_score,
             "policy_news_source": policy_src or None,

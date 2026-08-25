@@ -811,6 +811,8 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         a0_bits.append(flash_chain_tip())
     if dq.get("policy_news_source") == "rss_global_extract":
         a0_bits.append("政策源=快讯抽取（≠正式联播）")
+    if dq.get("tushare_news_optional") and not dq.get("tushare_perm_issue"):
+        a0_bits.append("Tushare 联播/个股新闻未开通（已跳过；财务/估值仍可用）")
     missing = list(dq.get("missing") or [])
     if missing:
         a0_bits.append("缺失: " + "、".join(f"`{k}`" for k in missing[:12]))

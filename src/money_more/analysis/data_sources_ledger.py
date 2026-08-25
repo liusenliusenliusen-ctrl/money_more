@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from money_more.data.fetcher import sector_money_flow_present
+from money_more.data.tushare_source import is_tushare_news_optional_error
 
 
 def _err_has(errors: list[Any], *needles: str) -> bool:
@@ -479,15 +480,20 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
     # —— Tushare ——
     ts_news = bool(macro.get("tushare_macro_news"))
     ts_backfill = bool(macro.get("tushare_macro_backfill") or dq.get("tushare_macro_backfill"))
-    ts_perm = _err_has(errors, "没有接口", "权限", "Tushare 未配置", "tushare_unavailable")
-    ts_rate = _err_has(errors, "频率超限")
+    core_errors = [e for e in errors if not is_tushare_news_optional_error(str(e))]
+    news_optional = any(is_tushare_news_optional_error(str(e)) for e in errors) or bool(
+        dq.get("tushare_news_optional")
+    )
+    ts_perm = _err_has(core_errors, "没有接口", "权限", "Tushare 未配置", "tushare_unavailable")
+    ts_rate = _err_has(core_errors, "频率超限")
+    news_note = "；联播/个股新闻未开通（已跳过，不影响财务估值）" if news_optional else ""
     if ts_news and not ts_backfill and not ts_perm:
         add(
             name="Tushare 宏观/公司增强",
             provider="Tushare Pro",
-            fetches="重大新闻、联播、财务指标、业绩预告、估值、解禁等",
+            fetches="重大新闻、财务指标、业绩预告、估值、解禁等",
             status="ok",
-            detail=f"宏观新闻约 {len(macro.get('tushare_macro_news') or [])} 条",
+            detail=f"宏观新闻约 {len(macro.get('tushare_macro_news') or [])} 条{news_note}",
             used_in="双源交叉、盈利修正、公告/解禁风险；补强 A1/B2",
         )
     elif ts_news and ts_backfill:
@@ -496,7 +502,8 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="Tushare Pro（宏观新闻由东财/新浪回填）",
             fetches="重大新闻、财务、预告、估值等",
             status="fallback",
-            detail="Tushare 新闻接口不可用或未授权，已用替代源回填宏观新闻池",
+            detail="Tushare 新闻接口不可用或未授权，已用替代源回填宏观新闻池"
+            + news_note,
             used_in="新闻可用；fina/forecast 等仍可能缺，影响盈利修正强度",
         )
     elif ts_perm or ts_rate:
@@ -519,7 +526,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="Tushare Pro",
             fetches="重大新闻、财务指标、业绩预告、估值、解禁等",
             status="empty",
-            detail="本轮无 Tushare 宏观新闻产出",
+            detail="本轮无 Tushare 宏观新闻产出" + news_note,
             used_in="增强层缺失不影响 AkShare 主链路",
         )
 

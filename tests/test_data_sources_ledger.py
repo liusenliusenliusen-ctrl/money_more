@@ -87,6 +87,61 @@ def test_ledger_marks_sina_spot_fallback():
     assert "**总评**" not in md
 
 
+def test_ledger_cctv_news_perm_does_not_fail_tushare_row():
+    """联播未开通但 major_news 有数据时，Tushare 行仍为 ok。"""
+    result = {
+        "data_quality": {
+            "score": 0.92,
+            "degraded": False,
+            "note": "数据完整度尚可；Tushare 联播/个股新闻未开通（已跳过）；财务/估值/重大新闻仍可用",
+            "missing": [],
+            "tushare_news_optional": True,
+            "tushare_perm_issue": False,
+            "checks": {"stock_screen": True, "screen_coverage": True},
+        },
+        "screen": {
+            "enabled": True,
+            "ok": True,
+            "degraded": False,
+            "spot_source": "em",
+            "universe_size_raw": 5527,
+            "universe_size": 400,
+            "quant_size": 50,
+            "deep_size": 15,
+        },
+        "intelligence": {
+            "macro_raw": {
+                "policy_news": [{"title": "x"}],
+                "global_news": [{"title": "y"}],
+                "rss_telegraph": [{"title": "z"}],
+                "margin_trend": [{"v": 1}],
+                "northbound_summary": {"net": 1},
+                "northbound_freshness": {"stale": False, "latest_date": "2026-07-17", "staleness_days": 2},
+                "sector_money_flow": {
+                    "top_gainers": [{"name": "银行"}],
+                    "top_inflow": [{"name": "银行"}],
+                },
+                "sector_money_flow_source": "ths_summary",
+                "sentiment_overview": {"aggregate": {"score_100": 54, "label": "neutral"}},
+                "economic_calendar": [{"e": 1}],
+                "macro_hard": {"pmi": 50},
+                "global_liquidity": {"stance": "neutral", "source": ["bond_zh_us_rate"]},
+                "tushare_macro_news": [{"title": "重大新闻"}],
+                "errors": [
+                    "cctv_news: 抱歉，您没有接口(cctv_news)访问权限",
+                    "news: 抱歉，您没有接口(news)访问权限",
+                ],
+            }
+        },
+        "stocks": [{"code": "600519", "analysis": {"code": "600519"}}],
+    }
+    ledger = build_data_sources_ledger(result)
+    by_name = {r["name"]: r for r in ledger["rows"]}
+    row = by_name["Tushare 宏观/公司增强"]
+    assert row["status"] == "ok"
+    assert "联播" in row["detail"]
+
+
 def test_pipeline_error_not_in_datasources_but_in_main_run_status():
     assert is_pipeline_status_note(
         "运行异常中断，仍尝试发邮件通知。错误: deepseek 分析失败（已重试 2 次，timeout=300s）: Connection error."

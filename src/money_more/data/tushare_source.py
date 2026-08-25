@@ -7,9 +7,23 @@ from typing import Any
 
 import pandas as pd
 
+import re
+
 from money_more.analysis.valuation import build_valuation_percentiles
 from money_more.data.as_of import parse_as_of, recent_weekdays, ymd, ymd_hms
 from money_more.data.fetcher import _df_row_to_dict, _safe_float, normalize_code
+
+
+def is_tushare_news_optional_error(msg: str | None) -> bool:
+    """联播/个股 news 未开通 ≠ 财务估值整包不可用。勿把 major_news 算进可选新闻。"""
+    text = str(msg or "")
+    if "cctv_news" in text:
+        return True
+    if re.search(r"接口\(news\)", text):
+        return True
+    if re.match(r"(?is)^news\s*:", text.strip()):
+        return True
+    return False
 
 
 def to_ts_code(code: str) -> str:

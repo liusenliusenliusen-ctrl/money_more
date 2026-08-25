@@ -111,7 +111,7 @@ def test_dq_split_research_fields_on_tushare_fail() -> None:
     from money_more.analysis.pipeline import DecisionPipeline
 
     macro = {
-        "errors": ["Tushare 重大新闻: 没有接口权限"],
+        "errors": ["fina_indicator: 抱歉，您没有接口(fina_indicator)访问权限"],
         "policy_news": ["x"],
         "global_news": ["x"],
         "rss_telegraph": ["x"],
@@ -132,3 +132,34 @@ def test_dq_split_research_fields_on_tushare_fail() -> None:
     assert dq["score"] <= 0.55
     assert dq["degraded"] is True
     assert "连接分封顶" in str(dq.get("note") or "") or "研究层降权" in str(dq.get("note") or "")
+
+
+def test_dq_news_optional_perm_does_not_zero_research() -> None:
+    """cctv_news / news 未开通不得把财务估值研究层打成 0。"""
+    from money_more.analysis.pipeline import DecisionPipeline
+
+    macro = {
+        "errors": [
+            "cctv_news: 抱歉，您没有接口(cctv_news)访问权限",
+            "news: 抱歉，您没有接口(news)访问权限",
+        ],
+        "policy_news": ["x"],
+        "global_news": ["x"],
+        "rss_telegraph": ["x"],
+        "margin_trend": ["x"],
+        "northbound_summary": {"x": 1},
+        "northbound_freshness": {"stale": False},
+        "sentiment_overview": {"aggregate": {"score_100": 50}},
+        "economic_calendar": ["x"],
+        "macro_hard_echo": ["x"],
+        "tushare_macro_news": [{"title": "重大新闻"}],
+        "sector_money_flow": {"top_inflow": [{"板块": "白酒", "净流入": 1}]},
+        "macro_hard": {"pmi": [{"x": 1}], "social_financing": [{"月份": "202606"}]},
+        "global_liquidity": {"stance": "neutral"},
+    }
+    dq = DecisionPipeline._assess_data_quality(macro)
+    assert dq["tushare_perm_issue"] is False
+    assert dq["tushare_news_optional"] is True
+    assert dq["research_score"] == 1.0
+    assert dq["score"] > 0.55
+    assert "联播" in str(dq.get("note") or "")
