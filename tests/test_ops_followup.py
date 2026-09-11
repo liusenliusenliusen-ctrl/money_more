@@ -26,7 +26,7 @@ def _constraints() -> dict[str, float]:
     }
 
 
-def test_w1_paper_holdings_get_hold_not_watch() -> None:
+def test_w1_paper_holdings_stay_out_of_advice() -> None:
     recs, overs = validate_recommendations(
         [{"code": "000725", "action": "watch", "confidence": 0.5, "position_pct": 0}],
         holdings=[],
@@ -39,10 +39,9 @@ def test_w1_paper_holdings_get_hold_not_watch() -> None:
         ],
     )
     by_code = {r["code"]: r for r in recs}
-    assert by_code["000725"]["action"] == "hold"
-    assert "300059" in by_code  # 补全缺失纸面仓
-    assert by_code["300059"]["action"] == "hold"
-    assert any("纸面" in o for o in overs)
+    assert by_code["000725"]["action"] == "watch"
+    assert "300059" not in by_code
+    assert not any("纸面持仓" in o for o in overs)
 
 
 def test_w1_empty_real_book_still_blocks_random_hold() -> None:
@@ -56,10 +55,10 @@ def test_w1_empty_real_book_still_blocks_random_hold() -> None:
     )
     by_code = {r["code"]: r for r in recs}
     assert by_code["600519"]["action"] == "watch"
-    assert by_code["000725"]["action"] == "hold"
+    assert "000725" not in by_code
 
 
-def test_w1_a3_copy_mentions_paper_when_real_empty() -> None:
+def test_w1_a3_copy_empty_book_not_paper_hold() -> None:
     lines = render_conclusion_card(
         {
             "run_date": "2026-08-25",
@@ -72,14 +71,14 @@ def test_w1_a3_copy_mentions_paper_when_real_empty() -> None:
                 }
             },
             "recommendations": [
-                {"code": "000725", "action": "hold", "confidence": 0.4, "rationale": "纸面持仓"},
+                {"code": "600519", "action": "watch", "confidence": 0.4, "rationale": "深度池观察"},
             ],
         }
     )
     text = "\n".join(lines)
-    assert "纸面" in text
-    assert "000725" in text
-    assert "无持仓调仓建议" not in text
+    assert "无持仓调仓建议" in text
+    assert "须 hold/add/sell" not in text
+    assert "000725" not in text
 
 
 def test_w2_elevated_forbids_new_buys() -> None:

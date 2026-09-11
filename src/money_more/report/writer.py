@@ -696,21 +696,10 @@ def render_action_index_section(result: dict[str, Any]) -> list[str]:
     )
     lines.append("")
     basis = summary.get("holdings_basis") or {}
-    if basis.get("paper_codes"):
-        paper = "、".join(str(c) for c in (basis.get("paper_codes") or [])[:8])
-        if basis.get("is_empty"):
-            lines.append(
-                f"> **持仓基准**：声明真实空仓；纸面仓 {paper} 须 hold/add/sell（≠真实账户）。"
-            )
-        else:
-            codes = "、".join(str(c) for c in (basis.get("codes") or []))
-            lines.append(
-                f"> **持仓基准**：声明真实持仓 {codes}；纸面仓 {paper}（与真实账户分开）。"
-            )
-        lines.append("")
-    elif basis.get("is_empty"):
+    if basis.get("is_empty"):
         lines.append(
             "> **持仓基准**：声明空仓 → 建议段无调仓指令，仅研究向 buy/watch。"
+            "模拟账本见同日 `*-sim.md`，不进入建议段。"
         )
         lines.append("")
     elif basis.get("codes"):
@@ -897,26 +886,10 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     if err_sample:
         lines.append("> ⚠️ **数据错误抽样**: " + "；".join(str(e)[:80] for e in err_sample))
         lines.append("")
-    if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("paper_codes"):
-        paper = (result.get("decision_summary") or {}).get("holdings_basis", {}).get("paper_codes") or []
-        paper_s = "、".join(str(c) for c in paper[:8])
-        if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
-            lines.append(
-                f"> **模块说明**: 本轮**研究**照常；**建议段**声明真实空仓，"
-                f"但对纸面仓（`{paper_s}`）给出 hold/add/sell。纸面≠真实账户。"
-            )
-        else:
-            codes = (result.get("decision_summary") or {}).get("holdings_basis", {}).get("codes") or []
-            code_s = "、".join(str(c) for c in codes[:8])
-            lines.append(
-                f"> **模块说明**: **研究**含声明持仓（`{code_s}`）与纸面仓（`{paper_s}`）；"
-                "**建议段**分别给出可执行动作。纸面≠真实账户。"
-            )
-        lines.append("")
-    elif (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
+    if (result.get("decision_summary") or {}).get("holdings_basis", {}).get("is_empty"):
         lines.append(
             "> **模块说明**: 本轮**研究**照常（筛股+深度池）；**建议段**按空仓"
-            "（`holdings` 未声明）→ 仅研究向 buy/watch，无持仓调仓指令。模拟盘≠真实账户。"
+            "（`holdings` 未声明）→ 仅研究向 buy/watch，无持仓调仓指令。模拟盘≠真实账户，不进入建议段。"
         )
         lines.append("")
     elif (result.get("decision_summary") or {}).get("holdings_basis", {}).get("codes"):
@@ -1162,20 +1135,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
         lines.append("")
     basis = (result.get("decision_summary") or {}).get("holdings_basis") or {}
-    if basis.get("paper_codes"):
-        paper = "、".join(str(c) for c in (basis.get("paper_codes") or [])[:8])
-        if basis.get("is_empty"):
-            lines.append(
-                f"_本轮声明**真实空仓**；下列含纸面仓（{paper}）的 hold/add/sell + 研究向 buy/watch。"
-                "纸面≠真实账户；以④终局为准。_"
-            )
-        else:
-            codes = "、".join(str(c) for c in (basis.get("codes") or [])[:8])
-            lines.append(
-                f"_以下为针对声明持仓（{codes}）与纸面仓（{paper}）的可执行建议 + 深度池新开/观察；"
-                "纸面≠真实账户；以④终局为准。_"
-            )
-    elif basis.get("is_empty"):
+    if basis.get("is_empty"):
         lines.append(
             "_本轮**无持仓调仓建议**（声明空仓）；下列为研究向 **buy/watch**，"
             "与模拟盘无关；以④终局为准。_"

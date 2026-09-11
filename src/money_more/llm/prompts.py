@@ -240,8 +240,7 @@ ADVICE_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」经理（PM�
 - 输入分两块：`research_book`（只读研究结论）与 `holdings` / `holdings_basis`（唯一真实持仓）。
 - **禁止**根据研究评级或 `force_codes`（持仓强制进池标记）编造「你已持有」；`force_codes` 只表示该票进了深度研究池。
 - **真实持仓措辞只认 `holdings`**：空仓则不得写「账户已持有」；有仓则对持仓代码必须 sell/hold/add，对未持有深度池标的用 buy/watch。
-- **`paper_holdings` 是模拟账本（纸面），不是真实持仓**，禁止写成账户已持有。但对其中代码必须给出 hold/add/sell（纸面调仓），不得一律 watch 把纸面仓晾着；失效则 sell。
-- **禁止**编造真实持仓；**禁止**把历史报告、模拟盘、纸面账户当成真实持仓。
+- **禁止**编造真实持仓；**禁止**把历史报告、模拟盘、纸面账户当成真实持仓。模拟仓只在独立 `*-sim.md`，建议段不要给模拟仓写 hold/add/sell。
 - 本段**不要重做**个股基本面长文；消费 `research_book.stocks[]` 已给字段即可：
   `research_rating` / `investment_thesis` / `summary` / quality·valuation·technical /
   catalysts·downside_risks·invalidation / sentiment 摘要 / 因子与门禁。
@@ -314,7 +313,7 @@ ADVICE_SECONDARY_SYSTEM = f"""你是 A 股 **中长线** 组合「建议段」�
 ## 模块边界（必须遵守）
 - 研究只读：消费 `research_book.stocks[]` 的 thesis/评级/催化/风险/估值质量等压缩字段，勿重写长文。
 - 持仓只认 `holdings` / `holdings_basis`；勿把 `force_codes` 当已持仓。
-- 空仓：仅 buy/watch（但对 `paper_holdings` 必须 hold/add/sell，且不得写成真实持仓）。
+- 空仓：仅 buy/watch。不要给模拟仓写 hold/add/sell。
 - 有仓：持仓必须 sell/hold/add，非持仓用 buy/watch。
 - 只对深度池给动作；勿把模拟盘写成真实账户。
 

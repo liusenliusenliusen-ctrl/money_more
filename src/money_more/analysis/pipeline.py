@@ -353,15 +353,12 @@ class DecisionPipeline:
             )
             result["sectors"] = list(sector_analyses)
 
-        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（声明持仓 + 纸面仓强制进池，不占 max_deep）
+        # 遴选漏斗：板块/全市场 → 量化 → 深度名单（仅声明持仓强制进池，不占 max_deep）
         from money_more.analysis.screen import run_stock_screen
 
         paper_holdings_raw = self._load_paper_holdings()
         force_codes = list(
-            dict.fromkeys(
-                [normalize_code(h.code) for h in self.config.holdings if h.code]
-                + [normalize_code(str(h.get("code") or "")) for h in paper_holdings_raw]
-            )
+            dict.fromkeys(normalize_code(h.code) for h in self.config.holdings if h.code)
         )
         screen_cfg = getattr(self.config, "screen", None)
         if screen_cfg is None:
@@ -678,16 +675,20 @@ class DecisionPipeline:
             "paper_source": "sim_positions" if paper_codes else None,
             "note": (
                 (
-                    "用户声明真实持仓为空：不得写「账户已持有」。"
+                    "用户声明真实持仓为空：建议段仅 buy/watch，禁止写「当前持有」。"
                     + (
-                        f" 纸面仓 {','.join(str(c) for c in paper_codes)} 须 hold/add/sell（非真实账户）。"
+                        f" 模拟仓 {','.join(str(c) for c in paper_codes)} 只在 *-sim.md，不进建议段。"
                         if paper_codes
-                        else " 建议段仅 buy/watch。"
+                        else ""
                     )
                 )
                 if not holdings_enriched
-                else "以下为用户声明的真实持仓；hold/add/sell 针对这些代码"
-                + (f"；纸面仓 {','.join(str(c) for c in paper_codes)} 同样须给调仓。" if paper_codes else "。")
+                else "以下为用户声明的真实持仓；hold/add/sell 针对这些代码。"
+                + (
+                    f" 模拟仓 {','.join(str(c) for c in paper_codes)} 只在 *-sim.md，不进建议段。"
+                    if paper_codes
+                    else ""
+                )
             ),
         }
         trading_constraints = {
@@ -735,7 +736,6 @@ class DecisionPipeline:
             or {},
             "holdings": holdings_enriched,
             "holdings_basis": holdings_basis,
-            "paper_holdings": paper_enriched,
             "screen_summary": {
                 "note": screen_result.get("note"),
                 "deep_codes": stock_codes,
@@ -779,7 +779,7 @@ class DecisionPipeline:
         except Exception as exc:
             log.error("advice LLM/agent failed after retries: %s", exc)
             decision = self._degraded_decision(
-                list(holdings_enriched) + list(paper_enriched), str(exc)
+                list(holdings_enriched), str(exc)
             )
             self._note_llm_degraded(result, f"建议段降级: {exc}")
 
@@ -788,7 +788,7 @@ class DecisionPipeline:
             decision.get("recommendations") or []
         ):
             decision = self._degraded_decision(
-                list(holdings_enriched) + list(paper_enriched),
+                list(holdings_enriched),
                 "; ".join(decision.get("_multi_agent_errors") or [])
                 or str(decision.get("portfolio_summary") or "all_failed"),
                 base=decision,
@@ -889,7 +889,7 @@ class DecisionPipeline:
             if inv.get("invalidated") and str(rec.get("action", "")).lower() in ("buy", "add", "hold"):
                 held = code in {
                     normalize_code(str(h.get("code") or ""))
-                    for h in list(holdings_enriched) + list(paper_enriched)
+                    for h in holdings_enriched
                 }
                 rec["action"] = "sell" if held else "watch"
                 rec["position_pct"] = 0
@@ -937,7 +937,6 @@ class DecisionPipeline:
             verify_ledger=result.get("verify_ledger") or {},
             macro_hard_meta=(macro_intel or {}).get("macro_hard_meta") or {},
             margin_trend=(macro_intel or {}).get("margin_trend") or {},
-            paper_holdings=paper_enriched,
         )
         result["sector_coverage"] = build_sector_coverage(
             sector_analyses,
