@@ -674,21 +674,9 @@ class DecisionPipeline:
             "paper_codes": paper_codes,
             "paper_source": "sim_positions" if paper_codes else None,
             "note": (
-                (
-                    "用户声明真实持仓为空：建议段仅 buy/watch，禁止写「当前持有」。"
-                    + (
-                        f" 模拟仓 {','.join(str(c) for c in paper_codes)} 只在 *-sim.md，不进建议段。"
-                        if paper_codes
-                        else ""
-                    )
-                )
+                "用户声明真实持仓为空：建议段仅 buy/watch，禁止写「当前持有」。"
                 if not holdings_enriched
                 else "以下为用户声明的真实持仓；hold/add/sell 针对这些代码。"
-                + (
-                    f" 模拟仓 {','.join(str(c) for c in paper_codes)} 只在 *-sim.md，不进建议段。"
-                    if paper_codes
-                    else ""
-                )
             ),
         }
         trading_constraints = {
@@ -735,7 +723,11 @@ class DecisionPipeline:
             or (macro_intel or {}).get("equity_bond")
             or {},
             "holdings": holdings_enriched,
-            "holdings_basis": holdings_basis,
+            "holdings_basis": {
+                k: v
+                for k, v in holdings_basis.items()
+                if k not in ("paper_codes", "paper_source")
+            },
             "screen_summary": {
                 "note": screen_result.get("note"),
                 "deep_codes": stock_codes,

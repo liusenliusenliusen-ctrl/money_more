@@ -184,6 +184,7 @@ def test_final_summary_after_risk_not_draft_prose():
     assert "liquidity_stress" in summary
     assert "分批建仓" not in summary
     assert "空仓" in summary
+    assert "模拟盘" not in summary
 
 
 def test_final_summary_with_deployable_buys():

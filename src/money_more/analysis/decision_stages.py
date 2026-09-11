@@ -451,7 +451,7 @@ def build_final_portfolio_summary(
             parts.append("主因：组合草案经辩论/风控后未保留可开仓动作。")
         parts.append(
             f"计数：观察 {watch_n} · 持有 {hold_n} · 卖出 {sell_n}。"
-            "模拟盘因此保持空仓或仅按既有模拟持仓调仓；研究层 buy 评级不构成开仓指令。"
+            "研究层 buy 评级不构成开仓指令。"
         )
 
     # 关键覆写摘录
