@@ -210,3 +210,101 @@ def test_w5_monthly_pmi_not_refired_same_print() -> None:
         b for b in fw["contradiction_branches"] if b.get("branch_id") == "pmi_contraction"
     )
     assert pmi_branch.get("same_period") is True or pmi_branch.get("reactivated") is False
+
+
+def test_review_failure_does_not_mark_llm_degraded() -> None:
+    result: dict = {"data_quality": {}}
+    DecisionPipeline._note_review_failed(result, "复盘失败(主结论已保留): cannot access local variable 'dedupe_pending_by_code'")
+    dq = result["data_quality"]
+    assert dq["review_failed"] is True
+    assert "dedupe_pending_by_code" in str(dq.get("review_note") or "")
+    assert dq.get("llm_degraded") is not True
+    assert not (result.get("llm_stage_errors") or [])
+    from money_more.report.writer import render_conclusion_card, render_run_status_section
+
+    card = "\n".join(render_conclusion_card({"data_quality": dq, "run_date": "2026-09-11"}))
+    assert "分析降级" not in card
+    assert "复盘未完成" in card
+    status = "\n".join(render_run_status_section({"data_quality": dq, "run_date": "2026-09-11"}))
+    assert "部分 LLM 阶段已降级" not in status
+    assert "复盘失败" in status
+
+
+def test_sanitize_drops_company_names_and_fills_from_code() -> None:
+    from money_more.analysis.sector_map import sanitize_sector_label
+    from money_more.analysis.wave2_enrich import enrich_sector_link, build_sector_coverage
+
+    assert sanitize_sector_label("东山精密") is None
+    assert sanitize_sector_label("长鑫科技") is None
+    assert sanitize_sector_label("药明康德") is None
+    assert sanitize_sector_label("东山精密", code="600519") == "白酒"
+    link, _ = enrich_sector_link({"code": "002384", "sector_tag": "东山精密", "action": "watch"})
+    assert not is_known_sector_label(str(link.get("sector") or "东山精密")) or link.get("sector") != "东山精密"
+    assert link.get("sector") != "东山精密"
+    cov = build_sector_coverage([], [], deep_codes=["600519", "600036", "600276"])
+    names = {c["sector"] for c in cov}
+    assert "白酒" in names
+    assert "银行" in names
+    assert "医药" in names
+
+
+def test_macro_news_noise_filter() -> None:
+    from money_more.data.tushare_source import filter_macro_news_noise, is_macro_news_noise
+
+    assert is_macro_news_noise({"title": "洗衣机/笔记本什么值得买"}) is True
+    assert is_macro_news_noise({"title": "华发股份接待日暨投资者关系活动"}) is True
+    assert is_macro_news_noise({"title": "央行宣布降准 0.5 个百分点"}) is False
+    kept, dropped = filter_macro_news_noise(
+        [
+            {"title": "笔记本值得买清单"},
+            {"title": "政治局会议定调"},
+            {"title": "某公司投资者关系活动记录表"},
+        ]
+    )
+    assert dropped == 2
+    assert len(kept) == 1
+
+
+def test_verify_ledger_watch_reading_is_discipline() -> None:
+    from money_more.analysis.verify_tracker import build_verify_priors, evaluate_verify_window
+    from datetime import date
+
+    row = evaluate_verify_window(
+        {"run_date": "2026-07-01", "code": "300750", "action": "watch", "verify_in_days": 14},
+        [100.0, 101.0, 99.0],
+        date(2026, 8, 1),
+    )
+    assert row["verdict"] == "avoid_failed"
+    # priors 只看 buy-like，watch 的 avoid_failed 不得变成禁开仓
+    from money_more.analysis.verify_tracker import build_verify_priors
+
+    priors = build_verify_priors(
+        [{**row, "sector": "东山精密", "action": "watch", "verdict": "avoid_failed"}]
+    )
+    assert priors["forbid_sectors"] == []
+    assert priors["confidence_mult"] == 1.0
+
+
+def test_compact_stock_llm_payload_trims_history_series() -> None:
+    from money_more.analysis.context_builder import compact_stock_llm_payload
+
+    out = compact_stock_llm_payload(
+        {
+            "intelligence_digest": {
+                "executive_summary": "x" * 20,
+                "unused_blob": "y" * 5000,
+                "headline_themes": list("abcdefghi"),
+            },
+            "market_context": {"phase": "range", "summary": "s" * 800, "long_table": [1] * 99},
+            "prior_stock_series": [
+                {"run_date": "2026-08-01", "analysis": {"research_rating": "hold", "summary": "z" * 400, "raw": "n" * 999}}
+            ]
+            * 8,
+            "past_lessons": list(range(20)),
+        }
+    )
+    assert "unused_blob" not in (out.get("intelligence_digest") or {})
+    assert len(out["market_context"]["summary"]) < 800
+    assert len(out["prior_stock_series"]) <= 3
+    assert "raw" not in out["prior_stock_series"][0]
+    assert len(out["past_lessons"]) <= 4

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from money_more.analysis.sector_map import infer_sector, is_known_sector_label, theme_bucket
+from money_more.analysis.sector_map import (
+    infer_sector,
+    is_known_sector_label,
+    sanitize_sector_label,
+    theme_bucket,
+)
 from money_more.data.fetcher import normalize_code
 
 
@@ -20,15 +25,20 @@ def enrich_sector_link(
     link = dict(existing or {})
     note: str | None = None
 
-    sector = str(link.get("sector") or rec.get("sector_tag") or rec.get("sector") or "").strip()
+    raw_sector = str(link.get("sector") or rec.get("sector_tag") or rec.get("sector") or "").strip()
+    sector = sanitize_sector_label(raw_sector, code=code) or ""
+    if raw_sector and raw_sector != sector:
+        note = f"{code}: sector_link.sector {raw_sector}→{sector or '清空（非行业名）'}"
     if not sector:
-        sector = infer_sector(code) or ""
+        sector = sanitize_sector_label(infer_sector(code), code=code) or ""
         if sector:
             note = f"{code}: sector_link.sector 由系统补全={sector}"
 
     meta = _sector_meta(sector, sector_analyses)
-    if not link.get("sector") and sector:
+    if sector:
         link["sector"] = sector
+    elif "sector" in link:
+        link.pop("sector", None)
     link.setdefault("sector_priority", meta.get("priority") or "unknown")
     link.setdefault("sector_prosperity", meta.get("prosperity") or "unknown")
 
@@ -137,14 +147,17 @@ def build_sector_coverage(
         if not code:
             continue
         sl = r.get("sector_link") if isinstance(r.get("sector_link"), dict) else {}
-        tag = str(sl.get("sector") or r.get("sector_tag") or r.get("sector") or infer_sector(code) or "")
+        tag = sanitize_sector_label(
+            sl.get("sector") or r.get("sector_tag") or r.get("sector"),
+            code=code,
+        ) or ""
         if tag:
             rec_by_sector.setdefault(tag, []).append(code)
 
     out: list[dict[str, Any]] = []
     for sec in sector_analyses or []:
         a = sec.get("analysis") or {}
-        name = str(a.get("sector") or sec.get("sector") or "").strip()
+        name = sanitize_sector_label(a.get("sector") or sec.get("sector")) or ""
         if not name:
             continue
         pri = str(a.get("priority") or "").lower()
@@ -180,6 +193,28 @@ def build_sector_coverage(
                 ),
             }
         )
+    # 无板块 LLM / 全是低优先级时，仍用深度池代码回填覆盖表，避免每轮空表
+    covered = {str(row.get("sector") or "") for row in out}
+    for c in deep:
+        name = sanitize_sector_label(infer_sector(c), code=c) or ""
+        if not name or name in covered:
+            continue
+        mapped_recs = list(rec_by_sector.get(name) or [])
+        deep_hit = [x for x in (mapped_recs or [c]) if x in deep]
+        if c not in deep_hit:
+            deep_hit.insert(0, c)
+        out.append(
+            {
+                "sector": name,
+                "priority": "from_deep",
+                "prosperity": None,
+                "deep_codes": deep_hit[:8],
+                "rec_codes": mapped_recs[:8],
+                "missing_target": False,
+                "note": f"{name} 由深度池代码回填（本轮无高优先级板块分析）",
+            }
+        )
+        covered.add(name)
     return out
 
 

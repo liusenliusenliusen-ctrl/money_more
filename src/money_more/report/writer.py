@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from money_more.analysis.sector_map import infer_sector
+from money_more.analysis.sector_map import sanitize_sector_label
 from money_more.utils.json_util import dumps_json
 
 _ACTION_LABEL = {
@@ -49,7 +49,10 @@ def _recs_by_sector(result: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     by_sec: dict[str, list[dict[str, Any]]] = {}
     for rec in result.get("recommendations") or []:
         code = str(rec.get("code") or "")
-        tag = str(rec.get("sector_tag") or "") or (infer_sector(code) or "")
+        tag = sanitize_sector_label(
+            rec.get("sector_tag") or (rec.get("sector_link") or {}).get("sector"),
+            code=code,
+        ) or ""
         if not tag:
             continue
         by_sec.setdefault(tag, []).append(rec)
@@ -667,7 +670,10 @@ def render_stock_decision_chains(result: dict[str, Any]) -> list[str]:
             lines.append(
                 f"- **失效价带**: {final.get('stop_loss') if final.get('stop_loss') is not None else rec.get('stop_loss')}"
             )
-        sector = str(final.get("sector_tag") or rec.get("sector_tag") or infer_sector(code) or "")
+        sector = sanitize_sector_label(
+            final.get("sector_tag") or rec.get("sector_tag") or (rec.get("sector_link") or {}).get("sector"),
+            code=code,
+        ) or ""
         if sector:
             lines.append(f"- **板块**: {sector}")
         if final.get("key_risk") or rec.get("key_risk"):
@@ -777,6 +783,12 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             )
         lines.append(f"> ⚠️ **分析降级**: {note}。动作与评级需人工复核。")
         lines.append("")
+    if dq.get("review_failed"):
+        rnote = str(dq.get("review_note") or "复盘模块失败")
+        lines.append(
+            f"> ℹ️ **复盘未完成**: {rnote}。主结论与建议已保留；个股复盘见同日 `*-review.md`（可能为空）。"
+        )
+        lines.append("")
     if dq.get("degraded") or dq.get("screen_degraded") or screen.get("degraded"):
         warn = dq.get("screen_note") or screen.get("plain_note") or dq.get("note") or "数据/遴选降级"
         if not is_pipeline_status_note(warn):
@@ -837,6 +849,12 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             f"LLM 调用 {lcs.get('calls')} 次·截断 {lcs.get('finish_length', 0)}"
             f"·空返回 {lcs.get('empty_content', 0)}·压缩重试 {lcs.get('compact_retries', 0)}"
         )
+    compacted_codes = list(dq.get("llm_compacted_codes") or [])
+    if compacted_codes:
+        a0_bits.append(
+            "个股分析曾因截断压缩: " + "、".join(f"`{c}`" for c in compacted_codes[:8])
+            + ("…" if len(compacted_codes) > 8 else "")
+        )
     # B1：验证窗口命中率（到期必评）
     vl = result.get("verify_ledger") or {}
     if vl.get("total_due"):
@@ -846,9 +864,14 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         if bl.get("count"):
             bits.append(f"buy/hold 命中率 {bl.get('hit_rate_pct')}%（{bl.get('hit')}/{bl.get('count')}）")
         if wl.get("count"):
-            bits.append(f"watch 规避率 {wl.get('avoid_rate_pct')}%（{wl.get('avoided')}/{wl.get('count')}）")
+            bits.append(
+                f"watch 规避率 {wl.get('avoid_rate_pct')}%（{wl.get('avoided')}/{wl.get('count')}；"
+                "avoid_failed=空仓纪律轨迹，≠漏买）"
+            )
         if bits:
             a0_bits.append("验证窗口 " + "；".join(bits))
+        if vl.get("reading_note") and not bl.get("count") and wl.get("avoid_failed"):
+            a0_bits.append(str(vl["reading_note"]))
     # A0-5：社融期次落后告警（机读滞后期，勿称「最新社融」）
     dq_sf = result.get("data_quality") or {}
     sf_lag = dq_sf.get("social_financing_lag_months")
@@ -1163,7 +1186,10 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             # 理由全文，不截断（仅压空白）
             why = " ".join(str(rec.get("rationale") or "").split())
             sl = rec.get("sector_link") if isinstance(rec.get("sector_link"), dict) else {}
-            sector = sl.get("sector") or rec.get("sector_tag") or infer_sector(code) or ""
+            sector = sanitize_sector_label(
+                sl.get("sector") or rec.get("sector_tag"),
+                code=code,
+            ) or ""
             pri = sl.get("sector_priority")
             link_s = f" · ←{sector}" + (f"·{pri}" if pri and pri != "unknown" else "") if sector else ""
             sec_s = f" · 板块:{sector}" if sector and not link_s else ""
@@ -1216,13 +1242,21 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append(f"1. {head} → 配置倾向「{alloc}」")
     lines.append("")
     if not sectors:
-        lines.append("- （无板块筛选）")
+        cov = [g for g in (result.get("sector_coverage") or []) if g.get("sector")]
+        if cov:
+            lines.append("**深度池映射赛道（本轮无高优先级板块分析）**")
+            lines.append("")
+            for g in cov[:8]:
+                codes = "、".join(str(c) for c in (g.get("deep_codes") or [])[:6])
+                lines.append(f"- **{g.get('sector')}** {g.get('note') or ''}" + (f" → {codes}" if codes else ""))
+        else:
+            lines.append("- （无板块筛选）")
     else:
         lines.append("**赛道态度**")
         lines.append("")
         for sec in sectors:
             a = sec.get("analysis") or {}
-            name = str(a.get("sector") or sec.get("sector") or "")
+            name = sanitize_sector_label(a.get("sector") or sec.get("sector")) or ""
             if not name:
                 continue
             related = by_sec.get(name) or []
@@ -1309,6 +1343,8 @@ def render_run_status_section(result: dict[str, Any], *, run_date: str | None = 
         pipeline_bits.append(note)
     if dq.get("llm_degraded") and llm_note:
         pipeline_bits.append(llm_note)
+    if dq.get("review_failed") and dq.get("review_note"):
+        pipeline_bits.append(str(dq.get("review_note")))
     for e in stage_errors + ma_errors:
         if e not in pipeline_bits:
             pipeline_bits.append(e)

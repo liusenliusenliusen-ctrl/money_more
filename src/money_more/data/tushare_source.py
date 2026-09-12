@@ -48,6 +48,58 @@ def _records(df: pd.DataFrame | None, limit: int = 10) -> list[dict[str, Any]]:
     return rows
 
 
+_MACRO_NEWS_NOISE = (
+    "值得买",
+    "什么值得买",
+    "导购",
+    "优惠券",
+    "促销价",
+    "京东自营",
+    "天猫超市",
+    "接待日",
+    "投资者关系活动",
+    "投资者关系记录",
+    "调研纪要",
+    "互动易",
+    "业绩说明会预约",
+)
+
+
+def news_item_text(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return str(item or "")
+    parts = [
+        item.get("title"),
+        item.get("标题"),
+        item.get("新闻标题"),
+        item.get("content"),
+        item.get("内容"),
+        item.get("summary"),
+        item.get("digest"),
+    ]
+    return " ".join(str(x) for x in parts if x)
+
+
+def is_macro_news_noise(item: dict[str, Any] | str | None) -> bool:
+    """电商导购 / 个股 IR 接待，不算宏观新闻覆盖。"""
+    text = news_item_text(item) if isinstance(item, dict) else str(item or "")
+    return any(k in text for k in _MACRO_NEWS_NOISE)
+
+
+def filter_macro_news_noise(
+    items: list[Any] | None,
+) -> tuple[list[Any], int]:
+    """返回 (保留列表, 滤掉条数)。"""
+    kept: list[Any] = []
+    dropped = 0
+    for item in items or []:
+        if is_macro_news_noise(item):
+            dropped += 1
+            continue
+        kept.append(item)
+    return kept, dropped
+
+
 class TushareSource:
     """Tushare Pro 封装：公告、财务、估值、新闻。"""
 
@@ -130,10 +182,12 @@ class TushareSource:
         ]:
             try:
                 df = self._safe_call(method, **kwargs)
-                result["items"].extend(_records(df, limit))
+                result["items"].extend(_records(df, limit * 2))
             except Exception as exc:
                 result["errors"].append(f"{method}: {exc}")
-        result["items"] = result["items"][:limit]
+        kept, dropped = filter_macro_news_noise(result["items"])
+        result["items"] = kept[:limit]
+        result["noise_dropped"] = dropped
         return result
 
     def fetch_forecast(self, code: str) -> dict[str, Any]:

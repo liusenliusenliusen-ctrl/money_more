@@ -58,6 +58,45 @@ class AnalystAgent:
         return data
 
 
+def _compact_synthesis_facts(user_payload: dict[str, Any]) -> dict[str, Any]:
+    """综合器不要把整份 research_book 再塞一遍，避免 finish=length 后压到 1.4 万字。"""
+    payload = user_payload if isinstance(user_payload, dict) else {}
+    book = payload.get("research_book") or {}
+    stocks = []
+    for row in (book.get("stocks") or [])[:16]:
+        if not isinstance(row, dict):
+            continue
+        a = row.get("analysis") if isinstance(row.get("analysis"), dict) else row
+        stocks.append(
+            {
+                "code": row.get("code") or a.get("code"),
+                "research_rating": a.get("research_rating") or a.get("rating"),
+                "confidence": a.get("confidence"),
+                "summary": str(a.get("summary") or "")[:180],
+            }
+        )
+    return {
+        "date": payload.get("date"),
+        "holdings_basis": payload.get("holdings_basis"),
+        "holdings": payload.get("holdings"),
+        "screen_summary": payload.get("screen_summary"),
+        "data_quality": payload.get("data_quality"),
+        "market_microstructure": payload.get("market_microstructure"),
+        "research_book": {
+            "market": book.get("market"),
+            "stocks": stocks,
+        },
+        "intelligence_digest": (
+            {
+                k: (payload.get("intelligence_digest") or {}).get(k)
+                for k in ("executive_summary", "sentiment_temperature", "headline_themes", "risk_flags")
+            }
+            if isinstance(payload.get("intelligence_digest"), dict)
+            else payload.get("intelligence_digest")
+        ),
+    }
+
+
 class SynthesisAgent:
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
@@ -75,20 +114,30 @@ class SynthesisAgent:
         analyst_b: dict[str, Any],
         required_keys: list[str] | None = None,
     ) -> dict[str, Any]:
+        synth_keys = [k for k in (required_keys or []) if k != "portfolio_summary"] or None
         payload = {
             "system_task": task_system_prompt[:4000],
-            "shared_facts": user_payload,
+            "shared_facts": _compact_synthesis_facts(user_payload)
+            if isinstance(user_payload, dict)
+            else user_payload,
             "analyst_a": {k: v for k, v in analyst_a.items() if not str(k).startswith("_")},
             "analyst_b": {k: v for k, v in analyst_b.items() if not str(k).startswith("_")},
             "analyst_a_name": analyst_a.get("_agent"),
             "analyst_b_name": analyst_b.get("_agent"),
         }
-        return self.provider.complete_json(
+        data = self.provider.complete_json(
             SYNTHESIS_SYSTEM,
             payload,
             temperature=0.2,
-            required_keys=required_keys,
+            required_keys=synth_keys,
         )
+        if not str(data.get("portfolio_summary") or "").strip():
+            data["portfolio_summary"] = (
+                analyst_a.get("portfolio_summary")
+                or analyst_b.get("portfolio_summary")
+                or "综合完成；终局摘要由风控后重写"
+            )
+        return data
 
 
 class MultiAgentOrchestrator:

@@ -66,6 +66,7 @@ def test_fetch_spot_falls_back_to_sina(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _em_fail)
     monkeypatch.setattr("money_more.data.fetcher._fetch_em_split_spot", _split_empty)
     monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot", _sina_ok)
+    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
 
     df, source, warnings = fetch_spot_with_fallback(cache_key="spot:test", cache=cache)
     assert source == "sina"
@@ -89,6 +90,7 @@ def test_fetch_spot_uses_stale_cache_when_live_fails(monkeypatch: pytest.MonkeyP
         "money_more.data.fetcher.ak.stock_zh_a_spot",
         lambda: (_ for _ in ()).throw(RuntimeError("sina down")),
     )
+    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
 
     df, source, warnings = fetch_spot_with_fallback(cache_key="spot:test", cache=cache)
     assert source == "stale_cache"
@@ -111,3 +113,16 @@ def test_market_fetcher_get_spot_records_source(monkeypatch: pytest.MonkeyPatch)
     assert not spot.empty
     assert fetcher.spot_source == "sina"
     assert spot.iloc[0]["代码"] == "600519"
+
+
+def test_overlay_em_valuation_keeps_sina_price() -> None:
+    from money_more.data.fetcher import _overlay_em_valuation
+
+    live = _em_like([{"代码": "600519", "名称": "贵州茅台", "最新价": 1401, "涨跌幅": 0.2}])
+    em_rows = [
+        {"代码": "600519", "名称": "贵州茅台", "最新价": 1390, "市盈率-动态": 22.5, "市净率": 8.1}
+    ]
+    out = _overlay_em_valuation(live, em_rows)
+    assert float(out.iloc[0]["最新价"]) == 1401
+    assert float(out.iloc[0]["市盈率-动态"]) == 22.5
+    assert float(out.iloc[0]["市净率"]) == 8.1

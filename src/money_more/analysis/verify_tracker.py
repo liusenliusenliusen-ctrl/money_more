@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from money_more.analysis.sector_map import sanitize_sector_label
 from money_more.data.fetcher import normalize_code
 
 
@@ -55,8 +56,10 @@ def _iter_verify_candidates(digests: list[dict[str, Any]]) -> list[dict[str, Any
                     "verify_in_days": days_i,
                     "verify_signals": list(r.get("verify_signals") or [])[:3],
                     "confidence": r.get("confidence"),
-                    "sector": (r.get("sector_link") or {}).get("sector")
-                    or r.get("sector_tag"),
+                    "sector": sanitize_sector_label(
+                        (r.get("sector_link") or {}).get("sector") or r.get("sector_tag"),
+                        code=normalize_code(str(r.get("code") or "")),
+                    ),
                 }
             )
     return rows
@@ -158,6 +161,13 @@ def build_verify_ledger(
     def _rate(n: int, d: int) -> float | None:
         return round(n / d * 100, 1) if d else None
 
+    reading_note = (
+        "watch 的 avoid_failed 只表示观察期内价格未大跌，是空仓/不买纪律的轨迹，"
+        "不能用来反推本该开仓。"
+        if watch_like
+        else None
+    )
+
     return {
         "as_of": as_of.isoformat(),
         "total_due": len(done),
@@ -174,7 +184,9 @@ def build_verify_ledger(
             "avoided": avoided,
             "avoid_failed": avoid_failed,
             "avoid_rate_pct": _rate(avoided, avoided + avoid_failed),
+            "reading": "empty_book_discipline",
         },
+        "reading_note": reading_note,
         "rows": evaluated[-60:],
         "priors": build_verify_priors(evaluated),
     }
@@ -198,7 +210,9 @@ def build_verify_priors(
             continue
         if r.get("verdict") not in ("hit", "miss", "flat"):
             continue
-        sec = str(r.get("sector") or "").strip() or "unknown"
+        sec = sanitize_sector_label(r.get("sector"), code=r.get("code")) or ""
+        if not sec:
+            continue
         by_sector.setdefault(sec, []).append(r)
 
     for sec, items in by_sector.items():

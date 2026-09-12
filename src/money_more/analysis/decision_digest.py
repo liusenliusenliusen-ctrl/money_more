@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from money_more.analysis.sector_map import is_known_sector_label
+from money_more.analysis.sector_map import is_known_sector_label, sanitize_sector_label
 
 
 def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
@@ -26,12 +26,15 @@ def build_decision_digest(result: dict[str, Any]) -> dict[str, Any]:
                 "factor_total": sc.get("total_score"),
                 "factor_signal": sc.get("signal"),
                 "debate_referee": (r.get("debate") or {}).get("referee"),
-                "sector_tag": r.get("sector_tag") or sl.get("sector"),
+                "sector_tag": sanitize_sector_label(
+                    r.get("sector_tag") or sl.get("sector"),
+                    code=r.get("code"),
+                ),
                 "invalidation": r.get("invalidation"),
                 "verify_in_days": r.get("verify_in_days"),
                 "verify_signals": list(r.get("verify_signals") or [])[:4],
                 "sector_link": {
-                    "sector": sl.get("sector"),
+                    "sector": sanitize_sector_label(sl.get("sector"), code=r.get("code")),
                     "sector_priority": sl.get("sector_priority"),
                     "sector_prosperity": sl.get("sector_prosperity"),
                     "from_research_rating": sl.get("from_research_rating"),

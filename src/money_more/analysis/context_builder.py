@@ -179,6 +179,88 @@ def compact_stock_snap(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compact_stock_llm_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """个股 LLM 入参：先削一刀，避免 50 万字 payload 等到 finish=length 再压到 1.4 万。"""
+    out = dict(payload or {})
+    digest = out.get("intelligence_digest")
+    if isinstance(digest, dict):
+        out["intelligence_digest"] = {
+            k: digest.get(k)
+            for k in (
+                "executive_summary",
+                "summary",
+                "sentiment_temperature",
+                "headline_themes",
+                "policy_signals",
+                "risk_flags",
+                "macro_events_watchlist",
+            )
+            if digest.get(k) is not None
+        }
+        themes = out["intelligence_digest"].get("headline_themes")
+        if isinstance(themes, list):
+            out["intelligence_digest"]["headline_themes"] = themes[:6]
+        flags = out["intelligence_digest"].get("risk_flags")
+        if isinstance(flags, list):
+            out["intelligence_digest"]["risk_flags"] = flags[:6]
+    market = out.get("market_context")
+    if isinstance(market, dict):
+        out["market_context"] = {
+            k: market.get(k)
+            for k in (
+                "phase",
+                "phase_label",
+                "style",
+                "style_label",
+                "risk_level",
+                "primary_driver",
+                "sector_allocation_hint",
+                "summary",
+                "confidence",
+            )
+            if market.get(k) is not None
+        }
+        summary = str(out["market_context"].get("summary") or "")
+        if len(summary) > 400:
+            out["market_context"]["summary"] = summary[:400] + "…"
+    sectors = out.get("sector_context")
+    if isinstance(sectors, list):
+        compact_secs = []
+        for row in sectors[:8]:
+            if not isinstance(row, dict):
+                continue
+            a = row.get("analysis") if isinstance(row.get("analysis"), dict) else row
+            compact_secs.append(
+                {
+                    "sector": row.get("sector") or a.get("sector"),
+                    "priority": a.get("priority"),
+                    "prosperity": a.get("prosperity"),
+                    "summary": str(a.get("summary") or "")[:160],
+                }
+            )
+        out["sector_context"] = compact_secs
+    lessons = out.get("past_lessons")
+    if isinstance(lessons, list):
+        out["past_lessons"] = lessons[:4]
+    series = out.get("prior_stock_series")
+    if isinstance(series, list):
+        compact_series = []
+        for item in series[:3]:
+            if not isinstance(item, dict):
+                continue
+            a = item.get("analysis") if isinstance(item.get("analysis"), dict) else {}
+            compact_series.append(
+                {
+                    "run_date": item.get("run_date"),
+                    "research_rating": a.get("research_rating") or a.get("rating"),
+                    "confidence": a.get("confidence"),
+                    "summary": str(a.get("summary") or "")[:180],
+                }
+            )
+        out["prior_stock_series"] = compact_series
+    return out
+
+
 def _compact_sector_flow(flow: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(flow, dict):
         return {}

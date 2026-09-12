@@ -108,13 +108,20 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
     flow = macro.get("sector_money_flow")
     flow_src = str(macro.get("sector_money_flow_source") or "")
     if sector_money_flow_present(flow):
+        stale_flow = "stale" in flow_src
+        ten_d = "_10d" in flow_src
         add(
             name="行业/板块资金流",
             provider=flow_src or "同花顺 / 东财（多源回退）",
             fetches="行业涨跌幅、主力净流入排名",
-            status="ok" if flow_src in ("", "ths_summary", "ths_flow") else "fallback",
-            detail=f"来源标记 `{flow_src or 'unknown'}`，已写入板块资金摘要",
-            used_in="B1 板块优先级 / 结论卡板块态度 / 叙事与风格判断",
+            status="degraded" if stale_flow else ("fallback" if ten_d or flow_src not in ("", "ths_summary", "ths_flow", "ths_industry_flow_5d", "em_rank_5d") else "ok"),
+            detail=(
+                f"来源标记 `{flow_src or 'unknown'}`"
+                + ("，缓存/过期 5 日表，B1 不作硬排序" if stale_flow else "")
+                + ("，10 日回退（仍非当日热度）" if ten_d else "")
+                + "，已写入板块资金摘要"
+            ),
+            used_in="B1 板块优先级 / 结论卡板块态度 / 叙事与风格判断；无 5 日表时不扩池",
         )
     else:
         add(
@@ -122,7 +129,7 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="同花顺摘要 → 同花顺资金流 → 东财板块资金流",
             fetches="行业涨跌幅、主力净流入排名",
             status="fail",
-            detail="三源均未形成有效资金流表",
+            detail="5 日/10 日均未形成有效资金流表，已空扩池（不用 1 日热度假装有板块排序）",
             used_in="板块排序缺少硬资金确认，更多依赖舆情与指数结构",
         )
 
@@ -493,7 +500,13 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
             provider="Tushare Pro",
             fetches="重大新闻、财务指标、业绩预告、估值、解禁等",
             status="ok",
-            detail=f"宏观新闻约 {len(macro.get('tushare_macro_news') or [])} 条{news_note}",
+            detail=f"宏观新闻约 {len(macro.get('tushare_macro_news') or [])} 条"
+            + (
+                f"（已滤导购/IR {macro.get('tushare_macro_news_dropped')} 条）"
+                if macro.get("tushare_macro_news_dropped")
+                else ""
+            )
+            + news_note,
             used_in="双源交叉、盈利修正、公告/解禁风险；补强 A1/B2",
         )
     elif ts_news and ts_backfill:

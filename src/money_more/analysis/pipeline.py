@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from typing import Any
 
 from money_more.analysis.cashflow_quality import assess_ocf_quality
-from money_more.analysis.context_builder import compact_macro_intel, compact_stock_snap
+from money_more.analysis.context_builder import compact_macro_intel, compact_stock_llm_payload, compact_stock_snap
 from money_more.analysis.cross_check import apply_hard_gates, cross_check_stock
 from money_more.analysis.debate import apply_debate_to_recommendations, run_buy_add_debates
 from money_more.analysis.decision_validator import enrich_holdings, validate_recommendations
@@ -31,7 +31,8 @@ from money_more.analysis.sector_backfill import (
     infer_deep_pool_sectors,
     sectors_needing_backfill,
 )
-from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector
+from money_more.analysis.review_history import dedupe_pending_by_code
+from money_more.analysis.sector_map import industry_hint_from_sources, infer_sector, sanitize_sector_label
 from money_more.analysis.trend import TrendReportBuilder
 from money_more.analysis.weight_adapt import weights_from_ic
 from money_more.config import AppConfig, FrameworkGateConfig
@@ -468,7 +469,7 @@ class DecisionPipeline:
 
         # 单票情报源偶发无超时挂死；必须 per-future 超时 + shutdown(wait=False)，
         # 否则 with ThreadPoolExecutor 退出时会一直等挂死线程。超时后再单独重试 1 次。
-        prefetch_timeout_s = 120.0
+        prefetch_timeout_s = 180.0
         if stock_codes:
             pool = ThreadPoolExecutor(max_workers=min(4, max(1, len(stock_codes))))
             future_map = {pool.submit(_fetch_one, c): c for c in stock_codes}
@@ -597,8 +598,8 @@ class DecisionPipeline:
             }
 
             try:
-                analysis = self.llm.analyze_json(
-                    STOCK_SYSTEM,
+                stats_before = self.llm.llm_call_stats() if hasattr(self.llm, "llm_call_stats") else {}
+                stock_payload = compact_stock_llm_payload(
                     {
                         "date": run_date.isoformat(),
                         "stock_data": compact_stock_snap(snap),
@@ -612,13 +613,27 @@ class DecisionPipeline:
                         "market_context": market_analysis,
                         "market_microstructure": market_micro,
                         "sector_context": [
-                            {"sector": s.get("sector"), "analysis": s.get("analysis")} for s in sector_analyses
+                            {"sector": s.get("sector"), "analysis": s.get("analysis")}
+                            for s in sector_analyses
                         ],
                         "past_lessons": result["lessons_used"],
                         "prior_stock_series": self.db.get_stock_analysis_series(code, limit=5),
-                    },
+                    }
+                )
+                analysis = self.llm.analyze_json(
+                    STOCK_SYSTEM,
+                    stock_payload,
                     required_keys=["code", "research_rating", "summary", "confidence"],
                 )
+                stats_after = self.llm.llm_call_stats() if hasattr(self.llm, "llm_call_stats") else {}
+                if int(stats_after.get("compact_retries") or 0) > int(
+                    stats_before.get("compact_retries") or 0
+                ):
+                    compacted = result.setdefault("data_quality", {}).setdefault(
+                        "llm_compacted_codes", []
+                    )
+                    if code not in compacted:
+                        compacted.append(code)
             except Exception as exc:
                 log.error("stock LLM failed code=%s, degrading: %s", code, exc)
                 analysis = self._degraded_stock_analysis(code, str(exc))
@@ -855,16 +870,21 @@ class DecisionPipeline:
                             analysis=s.get("analysis") or {},
                         )
                         break
-                rec["sector_tag"] = infer_sector(code, self.config.watch_sectors, hint)
+                rec["sector_tag"] = sanitize_sector_label(
+                    infer_sector(code, self.config.watch_sectors, hint),
+                    code=code,
+                )
                 if not rec.get("sector_tag"):
                     for s in stock_analyses:
                         if s.get("code") == code:
                             summary = str((s.get("analysis") or {}).get("summary") or "")
                             for sec in self.config.watch_sectors:
-                                if sec and sec in summary:
-                                    rec["sector_tag"] = sec
+                                if sec and sec in summary and sanitize_sector_label(sec):
+                                    rec["sector_tag"] = sanitize_sector_label(sec)
                                     break
                             break
+            else:
+                rec["sector_tag"] = sanitize_sector_label(rec.get("sector_tag"), code=code)
             g = gate_map.get(code) or {}
             if g.get("force_watch") or g.get("block_buy"):
                 if str(rec.get("action", "")).lower() in ("buy", "add"):
@@ -1081,7 +1101,7 @@ class DecisionPipeline:
                 "dimension_reviews": [],
                 "error": str(exc),
             }
-            self._note_llm_degraded(result, f"复盘失败(主结论已保留): {exc}")
+            self._note_review_failed(result, f"复盘失败(主结论已保留): {exc}")
         result["reviews"] = review_result.get("reviews", [])
         result["dimension_reviews"] = review_result.get("dimension_reviews", [])
         result["history_patterns"] = review_result.get("history_patterns", [])
@@ -1147,7 +1167,6 @@ class DecisionPipeline:
             build_action_lifecycles,
             build_prior_dimension_forecasts,
             compact_current_view,
-            dedupe_pending_by_code,
             load_db_market_history,
             load_historical_reports_corpus,
         )
@@ -1596,7 +1615,7 @@ class DecisionPipeline:
         flow = macro_intel.get("sector_money_flow") or {}
         window = str(macro_intel.get("sector_money_flow_window") or "").strip()
         source = str(macro_intel.get("sector_money_flow_source") or "").strip()
-        is_5d = window == "5d" or "_5d" in source
+        is_5d = window in ("5d", "10d") or any(tag in source for tag in ("_5d", "_10d"))
         if (window or source) and not is_5d:
             return empty
         if not (flow.get("top_inflow") or flow.get("top_gainers")):
@@ -1612,6 +1631,7 @@ class DecisionPipeline:
                 name = str(
                     row.get("板块") or row.get("行业") or row.get("名称") or row.get("name") or ""
                 ).strip()
+                name = sanitize_sector_label(name) or ""
                 if not name or name in seen:
                     continue
                 if any(k in name for k in skip_keys):
@@ -1958,6 +1978,18 @@ class DecisionPipeline:
             "recent_narrative": (trend.get("narrative_log") or [])[-5:],
             "open_questions": (trend.get("open_questions") or [])[:5],
         }
+
+    @staticmethod
+    def _note_review_failed(result: dict[str, Any], message: str) -> None:
+        """复盘失败不影响主结论，也不把整轮标成分析降级。"""
+        dq = result.setdefault("data_quality", {})
+        dq["review_failed"] = True
+        msg = str(message or "").strip()
+        if not msg:
+            return
+        prev = str(dq.get("review_note") or "").strip()
+        dq["review_note"] = f"{prev}; {msg}".strip("; ") if prev and msg not in prev else (prev or msg)
+        result["review_error"] = dq["review_note"]
 
     @staticmethod
     def _note_llm_degraded(result: dict[str, Any], message: str) -> None:

@@ -35,6 +35,7 @@ from money_more.data.fetcher import (
     fetch_sector_board_summary,
     normalize_code,
 )
+from money_more.analysis.sector_map import sanitize_sector_label
 from money_more.data.rss_feeds import RssFeedFetcher
 from money_more.data.source_fuse import (
     fuse_macro_series,
@@ -43,7 +44,7 @@ from money_more.data.source_fuse import (
     fuse_pledge,
     fuse_share_reduce,
 )
-from money_more.data.tushare_source import TushareSource
+from money_more.data.tushare_source import TushareSource, filter_macro_news_noise
 
 
 def _records(df: pd.DataFrame | None, limit: int = 10) -> list[dict[str, Any]]:
@@ -348,9 +349,12 @@ class IntelligenceFetcher:
         if not result["policy_news"]:
             result["errors"].append("policy_news_stale_or_empty")
         result["errors"].extend(tushare_macro.get("errors") or [])
-        result["tushare_macro_news"] = tushare_items[: self.max_items] if tushare_items else (
+        raw_ts_news = tushare_items[: self.max_items] if tushare_items else (
             tushare_macro.get("items") or []
         )[: self.max_items]
+        kept_news, dropped_news = filter_macro_news_noise(raw_ts_news)
+        result["tushare_macro_news"] = kept_news[: self.max_items]
+        result["tushare_macro_news_dropped"] = int(tushare_macro.get("noise_dropped") or 0) + dropped_news
         try:
             global_em = ak.stock_info_global_em()
             result["global_news"] = filter_records_by_date(
@@ -567,9 +571,14 @@ class IntelligenceFetcher:
             result["sector_money_flow"] = build_sector_money_flow(summary_df, limit=10)
             result["sector_money_flow_source"] = flow_source
             result["sector_money_flow_window"] = (
-                "5d" if "_5d" in str(flow_source) else ("1d" if flow_source else "")
+                "5d" if "_5d" in str(flow_source)
+                else ("10d" if "_10d" in str(flow_source) else ("1d" if flow_source else ""))
             )
-            if flow_source and "_5d" not in str(flow_source):
+            if "_10d" in str(flow_source):
+                result["errors"].append(f"sector_money_flow_10d_fallback:{flow_source}")
+            elif "stale" in str(flow_source):
+                result["errors"].append(f"sector_money_flow_stale:{flow_source}")
+            elif flow_source and "_5d" not in str(flow_source):
                 result["errors"].append(f"sector_money_flow_non_5d:{flow_source}")
         elif flow_errors:
             result["errors"].append("sector_money_flow_all_sources_failed")
@@ -607,7 +616,9 @@ class IntelligenceFetcher:
         if not result["tushare_macro_news"]:
             fallback = _merge_macro_news_fallback(result, self.max_items)
             if fallback:
+                fallback, fb_drop = filter_macro_news_noise(fallback)
                 result["tushare_macro_news"] = fallback
+                result["tushare_macro_news_dropped"] = int(result.get("tushare_macro_news_dropped") or 0) + fb_drop
                 result["tushare_macro_backfill"] = True
                 result["errors"].append("tushare_macro_backfill_from_alt_sources")
 
@@ -1148,7 +1159,9 @@ def _sector_names_from_money_flow(flow: dict[str, Any], limit: int = 6) -> list[
         for row in flow.get(key) or []:
             if not isinstance(row, dict):
                 continue
-            board = str(row.get("板块") or row.get("名称") or row.get("board") or "").strip()
+            board = sanitize_sector_label(
+                row.get("板块") or row.get("名称") or row.get("board")
+            ) or ""
             if board and board not in names:
                 names.append(board)
             if len(names) >= limit:

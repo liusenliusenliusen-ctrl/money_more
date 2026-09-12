@@ -629,6 +629,40 @@ def test_multi_agent_orchestrator_fallback():
     assert out2["_multi_agent_fallback"] == "primary_only"
 
 
+def test_synthesizer_fills_missing_portfolio_summary():
+    from money_more.agents.orchestrator import AnalystAgent, MultiAgentOrchestrator, SynthesisAgent
+    from money_more.llm.providers.base import LLMProvider
+
+    class FakeProvider(LLMProvider):
+        def __init__(self, name: str, payload: dict):
+            self.name = name
+            self.payload = payload
+            self.last_payload = None
+
+        def complete_json(self, system_prompt, user_payload, **kwargs):
+            self.last_payload = user_payload
+            return dict(self.payload)
+
+    synth_p = FakeProvider("synth", {"recommendations": [{"code": "600519", "action": "watch"}]})
+    orch = MultiAgentOrchestrator(
+        AnalystAgent(
+            FakeProvider("a", {"recommendations": [], "portfolio_summary": "主分析师草案"}),
+            role="primary",
+        ),
+        AnalystAgent(
+            FakeProvider("b", {"recommendations": [], "portfolio_summary": "副分析师草案"}),
+            role="secondary",
+        ),
+        SynthesisAgent(synth_p),
+        parallel=False,
+    )
+    fat_book = {"research_book": {"stocks": [{"code": "600519", "analysis": {"summary": "x" * 5000}}] * 30}}
+    out = orch.analyze_json("sys", fat_book, required_keys=["recommendations", "portfolio_summary"])
+    assert out["portfolio_summary"] == "主分析师草案"
+    facts = (synth_p.last_payload or {}).get("shared_facts") or {}
+    assert len((facts.get("research_book") or {}).get("stocks") or []) <= 16
+
+
 def test_multi_agent_secondary_uses_different_system_prompt():
     from money_more.agents.orchestrator import AnalystAgent, MultiAgentOrchestrator, SynthesisAgent
     from money_more.llm.prompts import ADVICE_SECONDARY_SYSTEM, ADVICE_SYSTEM

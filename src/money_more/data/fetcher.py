@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+import time
 
 import akshare as ak
 import pandas as pd
@@ -92,6 +93,8 @@ def fetch_sector_board_summary(
     中长线默认 prefer_window=\"5d\"：主用近 5 日；失败时**不**静默回落到「今日」
     （返回空表 + sector_flow_5d_unavailable），避免一日热度驱动扩池。
     """
+    from money_more.data.cache import DiskTTLCache
+
     errors: list[str] = []
     attempts_5d: list[tuple[str, Any, dict[str, str]]] = [
         (
@@ -129,6 +132,27 @@ def fetch_sector_board_summary(
         ),
     ]
     attempts = attempts_5d if prefer_window == "5d" else attempts_1d
+    if prefer_window == "5d":
+        attempts = attempts_5d + [
+            (
+                "ths_industry_flow_10d",
+                lambda: ak.stock_fund_flow_industry(symbol="10日"),
+                {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+            ),
+            (
+                "em_rank_10d",
+                lambda: ak.stock_sector_fund_flow_rank(indicator="10日", sector_type="行业资金流"),
+                {
+                    "名称": "板块",
+                    "10日涨跌幅": "涨跌幅",
+                    "5日涨跌幅": "涨跌幅",
+                    "今日涨跌幅": "涨跌幅",
+                    "10日主力净流入-净额": "净流入",
+                    "5日主力净流入-净额": "净流入",
+                    "今日主力净流入-净额": "净流入",
+                },
+            ),
+        ]
     for source, caller, column_map in attempts:
         try:
             if "em_rank" in source:
@@ -143,11 +167,36 @@ def fetch_sector_board_summary(
             if normalized.empty:
                 errors.append(f"sector_flow_{source}_normalize_empty")
                 continue
+            try:
+                disk = DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
+                disk.set(
+                    "sector_flow:last_ok",
+                    {
+                        "source": source,
+                        "records": normalized.to_dict(orient="records"),
+                    },
+                    ttl_sec=7 * 24 * 3600,
+                )
+            except Exception:
+                pass
             return normalized, source, errors
         except Exception as exc:
             errors.append(annotate_em_error(f"板块资金({source})", exc))
     if prefer_window == "5d":
         errors.append("sector_flow_5d_unavailable")
+        try:
+            from money_more.data.cache import DiskTTLCache
+
+            disk = DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
+            stale = disk.get_stale("sector_flow:last_ok") or disk.get("sector_flow:last_ok")
+            if isinstance(stale, dict) and stale.get("records"):
+                df = pd.DataFrame(stale["records"])
+                if not df.empty and "板块" in df.columns:
+                    src = str(stale.get("source") or "cached") + "_stale"
+                    errors.append(f"sector_flow_stale_cache:{src}")
+                    return df, src, errors
+        except Exception:
+            pass
     return pd.DataFrame(), "", errors
 
 
@@ -222,16 +271,46 @@ def _fetch_em_split_spot() -> pd.DataFrame:
     return _canonicalize_spot_df(merged)
 
 
+def _overlay_em_valuation(live: pd.DataFrame, em_rows: list[dict[str, Any]] | None) -> pd.DataFrame:
+    """新浪现货通常无 PE/PB；用最近一次东财快照补估值列，不覆盖最新价。"""
+    if live is None or live.empty or not em_rows:
+        return live
+    em = _canonicalize_spot_df(pd.DataFrame(em_rows))
+    if em.empty or "代码" not in em.columns or "代码" not in live.columns:
+        return live
+    val_cols = [
+        c
+        for c in em.columns
+        if c != "代码" and any(k in str(c) for k in ("市盈", "市净", "市销", "市值", "PE", "PB"))
+    ]
+    if not val_cols:
+        return live
+    keep = ["代码"] + val_cols
+    overlay = em[keep].drop_duplicates(subset=["代码"], keep="first")
+    out = live.copy()
+    out = out.merge(overlay, on="代码", how="left", suffixes=("", "_em"))
+    for col in val_cols:
+        em_col = f"{col}_em"
+        if em_col in out.columns:
+            if col not in live.columns:
+                out[col] = out[em_col]
+            else:
+                out[col] = out[col].where(out[col].notna(), out[em_col])
+            out = out.drop(columns=[em_col])
+    return out
+
+
 def fetch_spot_with_fallback(
     *,
     cache_key: str,
     cache: Any | None = None,
 ) -> tuple[pd.DataFrame, str, list[str]]:
-    """全 A 现货：东财 → 东财分市场 → 新浪 → 过期磁盘缓存。"""
+    """全 A 现货：东财（可重试）→ 东财分市场 → 新浪（可叠东财估值）→ 过期磁盘缓存。"""
     from money_more.data.cache import DiskTTLCache
 
     errors: list[str] = []
     disk = cache if cache is not None else DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
+    em_val_key = "spot:em_valuation"
 
     cached = disk.get(cache_key)
     if isinstance(cached, list) and cached:
@@ -241,11 +320,17 @@ def fetch_spot_with_fallback(
 
     attempts: list[tuple[str, Any]] = [
         ("em_all", ak.stock_zh_a_spot_em),
+        ("em_all", ak.stock_zh_a_spot_em),  # 瞬时超时再试一次
         ("em_split", _fetch_em_split_spot),
         ("sina", ak.stock_zh_a_spot),
     ]
+    em_tried = 0
     for source, caller in attempts:
         try:
+            if source == "em_all":
+                em_tried += 1
+                if em_tried > 1:
+                    time.sleep(1.0)
             if source.startswith("em"):
                 with eastmoney_direct_session():
                     raw = caller()
@@ -255,6 +340,20 @@ def fetch_spot_with_fallback(
             if df.empty:
                 errors.append(annotate_em_error(f"spot_{source}_empty", "empty"))
                 continue
+            if source in ("em_all", "em_split"):
+                try:
+                    disk.set(em_val_key, df.to_dict(orient="records"), ttl_sec=7 * 24 * 3600)
+                except Exception:
+                    pass
+            if source == "sina":
+                em_rows = None
+                try:
+                    em_rows = disk.get_stale(em_val_key) or disk.get(em_val_key)
+                except Exception:
+                    em_rows = None
+                if isinstance(em_rows, list) and em_rows:
+                    df = _overlay_em_valuation(df, em_rows)
+                    errors.append("spot_sina_em_valuation_overlay")
             try:
                 disk.set(cache_key, df.to_dict(orient="records"), ttl_sec=3600)
             except Exception:

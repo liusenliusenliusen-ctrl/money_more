@@ -222,8 +222,10 @@ def validate_recommendations(
             research_by_code=research_by_code,
         )
         rec["sector_link"] = link
-        if link.get("sector") and not rec.get("sector_tag"):
+        if link.get("sector"):
             rec["sector_tag"] = link["sector"]
+        elif rec.get("sector_tag"):
+            rec["sector_tag"] = None
         if link_note:
             overrides.append(link_note)
         verify_fields, verify_note = enrich_verify_window(rec)

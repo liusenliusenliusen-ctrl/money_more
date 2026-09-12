@@ -83,7 +83,7 @@ _INDUSTRY_ALIASES = (
 
 
 def normalize_industry(hint: str | None) -> str | None:
-    """把行业/概念长名压成短标签。"""
+    """把行业/概念长名压成短标签。未命中别名时返回 None，避免把公司名截成「板块」。"""
     if not hint:
         return None
     text = str(hint).strip()
@@ -92,8 +92,7 @@ def normalize_industry(hint: str | None) -> str | None:
     for keys, label in _INDUSTRY_ALIASES:
         if any(k in text for k in keys):
             return label
-    # 取前 4 字作粗标签，避免完全 unknown
-    return text[:6]
+    return None
 
 
 def is_known_sector_label(name: str | None) -> bool:
@@ -105,12 +104,25 @@ def is_known_sector_label(name: str | None) -> bool:
     known = _KNOWN_SECTOR_LABELS
     if text in known or stripped in known:
         return True
-    if any(tok in text for tok in ("股份", "集团", "控股", "有限", "精密")):
+    if any(tok in text for tok in ("股份", "集团", "控股", "有限", "精密", "康德")):
+        return False
+    if text.endswith(("科技", "生物", "电子")) and text not in known:
         return False
     for keys, label in _INDUSTRY_ALIASES:
         if any(k in text for k in keys):
             return label in known
     return False
+
+
+def sanitize_sector_label(name: str | None, *, code: str | None = None) -> str | None:
+    """只保留已知行业短名；公司名丢弃。可按代码回填硬编码映射。"""
+    if is_known_sector_label(name):
+        return normalize_industry(name) or str(name or "").replace("板块", "").replace("行业", "").strip()
+    if code:
+        mapped = infer_sector(code)
+        if mapped and is_known_sector_label(mapped):
+            return mapped
+    return None
 
 
 def infer_sector(

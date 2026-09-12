@@ -146,6 +146,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 tag = "中断通知（含已采集数据）"
             elif dq.get("llm_degraded"):
                 tag = "降级分析报告"
+            elif dq.get("review_failed"):
+                tag = "分析报告（复盘未完成）"
             msg = f"{tag}已发邮件 → {mail.get('to')}"
             if mail.get("guide_sent_to"):
                 msg += f"\n首次附带解读文档 → {mail.get('guide_sent_to')}"

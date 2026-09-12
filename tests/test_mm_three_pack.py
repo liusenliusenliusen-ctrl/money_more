@@ -84,6 +84,29 @@ def test_w1_auto_sector_accepts_5d() -> None:
     assert "半导体" in meta["all"]
 
 
+def test_w1_auto_sector_accepts_10d() -> None:
+    macro = {
+        "sector_money_flow": {
+            "top_inflow": [{"板块": "银行", "净流入": 1e9}],
+            "top_gainers": [{"板块": "银行"}],
+        },
+        "sector_money_flow_window": "10d",
+        "sector_money_flow_source": "em_rank_10d",
+    }
+    meta = DecisionPipeline._auto_sectors_from_flow(macro, [], limit=3)
+    assert "银行" in meta["all"]
+    # 公司名不得进自动扩
+    dirty = {
+        "sector_money_flow": {
+            "top_inflow": [{"板块": "东山精密", "净流入": 1e9}],
+            "top_gainers": [{"板块": "东山精密"}],
+        },
+        "sector_money_flow_window": "5d",
+        "sector_money_flow_source": "em_rank_5d",
+    }
+    assert DecisionPipeline._auto_sectors_from_flow(dirty, [], limit=3)["all"] == []
+
+
 def test_w1_validator_defaults_15_40() -> None:
     recs, overrides = validate_recommendations(
         [
