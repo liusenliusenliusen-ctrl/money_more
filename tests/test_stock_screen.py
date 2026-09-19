@@ -274,5 +274,8 @@ def test_defensive_floor_without_watch_sectors() -> None:
 def test_theme_bucket_groups_optical_with_tech() -> None:
     assert theme_bucket("通信") == "科技硬件"
     assert theme_bucket("半导体") == "科技硬件"
+    assert theme_bucket("电子") == "科技硬件"
     assert theme_bucket("银行") == "金融"
     assert theme_bucket("白酒") == "消费"
+    assert theme_bucket("化工") == "周期"
+    assert theme_bucket("交通运输") == "周期"
