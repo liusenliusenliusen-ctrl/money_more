@@ -15,10 +15,20 @@ _SPOT_HINTS = {
 }
 
 
-def spot_source_plain(source: str | None) -> str:
+def spot_source_plain(source: str | None, valuation: dict[str, Any] | None = None) -> str:
     src = str(source or "").strip()
     if not src:
         return "现货源未知"
+    val = valuation or {}
+    n = int(val.get("n") or 0)
+    pe_ok = int(val.get("pe_ok") or 0)
+    pb_ok = int(val.get("pb_ok") or 0)
+    if src == "sina":
+        if val.get("overlay") and pe_ok > 0:
+            return f"新浪现货备源（东财估值 overlay：PE {pe_ok}/{n}、PB {pb_ok}/{n}）"
+        if val.get("overlay"):
+            return "新浪现货备源（尝试东财估值 overlay 但 PE/PB 未补上，估值分已降权）"
+        return "新浪现货备源（无 PE/PB overlay，估值分已降权，非中性=齐备）"
     return _SPOT_HINTS.get(src, f"现货源=`{src}`")
 
 
@@ -55,7 +65,7 @@ def build_screen_degrade_note(screen: dict[str, Any]) -> str:
     bits: list[str] = []
     src = screen.get("spot_source")
     if src and str(src) not in ("em_all",):
-        bits.append(spot_source_plain(str(src)))
+        bits.append(spot_source_plain(str(src), screen.get("spot_valuation")))
     err_cls = first_err_class_from_messages(list(screen.get("errors") or []))
     if err_cls:
         bits.append(f"错误类={err_cls}")

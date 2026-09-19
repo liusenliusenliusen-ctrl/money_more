@@ -23,6 +23,19 @@ from money_more.analysis.sector_map import sanitize_sector_label
 from money_more.data.fetcher import normalize_code
 
 
+def is_declared_buy_like(row: dict[str, Any]) -> bool:
+    """声明持仓的 buy/add/hold 才进命中率；仓位=0 的纸面 hold 不算。"""
+    action = str(row.get("action") or "")
+    if action in ("buy", "add"):
+        return True
+    if action != "hold":
+        return False
+    try:
+        return float(row.get("position_pct") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _load_digests(digests_dir: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for p in sorted(digests_dir.glob("????-??-??.json")):
@@ -48,11 +61,16 @@ def _iter_verify_candidates(digests: list[dict[str, Any]]) -> list[dict[str, Any
                 days_i = int(days)
             except (TypeError, ValueError):
                 continue
+            try:
+                pos = float(r.get("position_pct")) if r.get("position_pct") is not None else 0.0
+            except (TypeError, ValueError):
+                pos = 0.0
             rows.append(
                 {
                     "run_date": run_date,
                     "code": normalize_code(str(r.get("code") or "")),
                     "action": str(r.get("action") or "watch"),
+                    "position_pct": pos,
                     "verify_in_days": days_i,
                     "verify_signals": list(r.get("verify_signals") or [])[:3],
                     "confidence": r.get("confidence"),
@@ -151,7 +169,12 @@ def build_verify_ledger(
         evaluated.append(evaluate_verify_window(row, prices, as_of))
 
     done = [r for r in evaluated if r.get("verdict") in ("hit", "miss", "avoided", "avoid_failed", "flat")]
-    buy_like = [r for r in done if str(r.get("action")) in ("buy", "add", "hold")]
+    buy_like = [r for r in done if is_declared_buy_like(r)]
+    paper_hold = [
+        r
+        for r in done
+        if str(r.get("action")) == "hold" and not is_declared_buy_like(r)
+    ]
     watch_like = [r for r in done if str(r.get("action")) == "watch"]
     hit = sum(1 for r in buy_like if r.get("verdict") == "hit")
     miss = sum(1 for r in buy_like if r.get("verdict") == "miss")
@@ -161,12 +184,14 @@ def build_verify_ledger(
     def _rate(n: int, d: int) -> float | None:
         return round(n / d * 100, 1) if d else None
 
-    reading_note = (
-        "watch 的 avoid_failed 只表示观察期内价格未大跌，是空仓/不买纪律的轨迹，"
-        "不能用来反推本该开仓。"
-        if watch_like
-        else None
-    )
+    notes: list[str] = []
+    if watch_like:
+        notes.append(
+            "watch 的 avoid_failed 只表示观察期内价格未大跌，是空仓/不买纪律的轨迹，"
+            "不能用来反推本该开仓。"
+        )
+    if paper_hold:
+        notes.append("纸面/空仓 hold（仓位=0）不计入 buy/hold 命中率。")
 
     return {
         "as_of": as_of.isoformat(),
@@ -179,6 +204,10 @@ def build_verify_ledger(
             "flat": len(buy_like) - hit - miss,
             "hit_rate_pct": _rate(hit, hit + miss),
         },
+        "paper_hold": {
+            "count": len(paper_hold),
+            "reading": "sim_or_empty_hold",
+        },
         "watch_like": {
             "count": len(watch_like),
             "avoided": avoided,
@@ -186,7 +215,7 @@ def build_verify_ledger(
             "avoid_rate_pct": _rate(avoided, avoided + avoid_failed),
             "reading": "empty_book_discipline",
         },
-        "reading_note": reading_note,
+        "reading_note": " ".join(notes) or None,
         "rows": evaluated[-60:],
         "priors": build_verify_priors(evaluated),
     }
@@ -206,7 +235,7 @@ def build_verify_priors(
 
     by_sector: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
-        if str(r.get("action") or "") not in ("buy", "add", "hold"):
+        if not is_declared_buy_like(r):
             continue
         if r.get("verdict") not in ("hit", "miss", "flat"):
             continue
@@ -229,7 +258,7 @@ def build_verify_priors(
 
     # 按 run_date 排序看连续 miss（全市场）
     timed = sorted(
-        [r for r in rows if r.get("verdict") == "miss" and str(r.get("action")) in ("buy", "add", "hold")],
+        [r for r in rows if r.get("verdict") == "miss" and is_declared_buy_like(r)],
         key=lambda x: str(x.get("run_date") or ""),
     )
     streak = 0
@@ -242,7 +271,7 @@ def build_verify_priors(
         recent = [
             r
             for r in sorted(rows, key=lambda x: str(x.get("run_date") or ""))
-            if r.get("verdict") in ("hit", "miss") and str(r.get("action")) in ("buy", "add", "hold")
+            if r.get("verdict") in ("hit", "miss") and is_declared_buy_like(r)
         ][-consecutive_miss_limit:]
         if recent and all(r.get("verdict") == "miss" for r in recent):
             haircut_sectors["*"] = 0.75

@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from money_more.data.intelligence import IntelligenceFetcher
-from money_more.data.tushare_source import TushareSource, is_tushare_news_optional_error
+from money_more.data.tushare_source import (
+    TushareSource,
+    is_tushare_news_optional_error,
+    public_errors_sample,
+)
 
 
 def test_tushare_probe_uses_stock_basic_not_trade_cal() -> None:
@@ -80,3 +84,16 @@ def test_tushare_news_optional_error_helper() -> None:
     assert not is_tushare_news_optional_error("major_news: 抱歉，您没有接口(major_news)访问权限")
     assert not is_tushare_news_optional_error("fina_indicator: 抱歉，您没有接口(fina_indicator)访问权限")
     assert not is_tushare_news_optional_error("Tushare 没有接口权限")
+
+
+def test_public_errors_sample_drops_optional_news() -> None:
+    sample = public_errors_sample(
+        [
+            "cctv_news: 抱歉，您没有接口(cctv_news)访问权限",
+            "news: 抱歉，您没有接口(news)访问权限",
+            "economic_calendar_primary_empty_used_alt",
+            "macro_hard_social_financing_conflict:gap=4",
+        ]
+    )
+    assert sample[0] == "economic_calendar_primary_empty_used_alt"
+    assert all("cctv_news" not in e and not e.startswith("news:") for e in sample)

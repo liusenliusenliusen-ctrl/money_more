@@ -84,6 +84,44 @@ def _normalize_sector_summary(df: pd.DataFrame, column_map: dict[str, str]) -> p
     return out.dropna(subset=["板块"]).reset_index(drop=True)
 
 
+_THS_INDUSTRY_SYMBOL = {
+    "即时": "即时",
+    "1d": "即时",
+    "3日": "3日排行",
+    "3日排行": "3日排行",
+    "5日": "5日排行",
+    "5日排行": "5日排行",
+    "5d": "5日排行",
+    "10日": "10日排行",
+    "10日排行": "10日排行",
+    "10d": "10日排行",
+    "20日": "20日排行",
+    "20日排行": "20日排行",
+}
+
+# 同花顺 5 日/10 日表常见列（阶段涨跌幅 ≠ 即时表的「行业-涨跌幅」）
+_THS_INDUSTRY_COLMAP = {
+    "行业": "板块",
+    "行业-涨跌幅": "涨跌幅",
+    "阶段涨跌幅": "涨跌幅",
+    "净额": "净流入",
+}
+
+
+def ths_industry_flow_symbol(symbol: str) -> str:
+    """短名「5日」必须映射成 akshare 的「5日排行」。
+
+    传「5日」会落入 akshare 的 else 分支：拉即时 11 列表，再按 8 列赋名，
+    触发 Length mismatch: Expected axis has 11 elements, new values have 8。
+    """
+    key = str(symbol or "").strip()
+    return _THS_INDUSTRY_SYMBOL.get(key, key or "即时")
+
+
+def _ths_fund_flow_industry(symbol: str) -> pd.DataFrame:
+    return ak.stock_fund_flow_industry(symbol=ths_industry_flow_symbol(symbol))
+
+
 def fetch_sector_board_summary(
     *,
     prefer_window: str = "5d",
@@ -99,8 +137,8 @@ def fetch_sector_board_summary(
     attempts_5d: list[tuple[str, Any, dict[str, str]]] = [
         (
             "ths_industry_flow_5d",
-            lambda: ak.stock_fund_flow_industry(symbol="5日"),
-            {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+            lambda: _ths_fund_flow_industry("5日"),
+            dict(_THS_INDUSTRY_COLMAP),
         ),
         (
             "em_rank_5d",
@@ -122,8 +160,8 @@ def fetch_sector_board_summary(
         ),
         (
             "ths_industry_flow_1d",
-            lambda: ak.stock_fund_flow_industry(symbol="即时"),
-            {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+            lambda: _ths_fund_flow_industry("即时"),
+            dict(_THS_INDUSTRY_COLMAP),
         ),
         (
             "em_rank_1d",
@@ -136,8 +174,8 @@ def fetch_sector_board_summary(
         attempts = attempts_5d + [
             (
                 "ths_industry_flow_10d",
-                lambda: ak.stock_fund_flow_industry(symbol="10日"),
-                {"行业": "板块", "行业-涨跌幅": "涨跌幅", "净额": "净流入"},
+                lambda: _ths_fund_flow_industry("10日"),
+                dict(_THS_INDUSTRY_COLMAP),
             ),
             (
                 "em_rank_10d",
@@ -271,6 +309,25 @@ def _fetch_em_split_spot() -> pd.DataFrame:
     return _canonicalize_spot_df(merged)
 
 
+def spot_valuation_coverage(df: pd.DataFrame | None) -> dict[str, Any]:
+    """现货里非空 PE/PB 覆盖（overlay 前后都可调）。"""
+    if df is None or df.empty:
+        return {"n": 0, "pe_ok": 0, "pb_ok": 0}
+
+    def _count(needles: tuple[str, ...]) -> int:
+        for col in df.columns:
+            name = str(col)
+            if any(k in name for k in needles):
+                return int(pd.to_numeric(df[col], errors="coerce").notna().sum())
+        return 0
+
+    return {
+        "n": int(len(df)),
+        "pe_ok": _count(("市盈", "PE", "pe")),
+        "pb_ok": _count(("市净", "PB", "pb")),
+    }
+
+
 def _overlay_em_valuation(live: pd.DataFrame, em_rows: list[dict[str, Any]] | None) -> pd.DataFrame:
     """新浪现货通常无 PE/PB；用最近一次东财快照补估值列，不覆盖最新价。"""
     if live is None or live.empty or not em_rows:
@@ -353,7 +410,11 @@ def fetch_spot_with_fallback(
                     em_rows = None
                 if isinstance(em_rows, list) and em_rows:
                     df = _overlay_em_valuation(df, em_rows)
-                    errors.append("spot_sina_em_valuation_overlay")
+                    cov = spot_valuation_coverage(df)
+                    errors.append(
+                        f"spot_sina_em_valuation_overlay:pe={cov['pe_ok']}/{cov['n']}"
+                        f",pb={cov['pb_ok']}/{cov['n']}"
+                    )
             try:
                 disk.set(cache_key, df.to_dict(orient="records"), ttl_sec=3600)
             except Exception:
@@ -456,11 +517,16 @@ class MarketDataFetcher:
         self._spot_error: str | None = None
         self._spot_source: str | None = None
         self._spot_warnings: list[str] = []
+        self._spot_valuation: dict[str, Any] = {}
         self._hs300_hist: pd.DataFrame | None = None
 
     @property
     def spot_source(self) -> str | None:
         return self._spot_source
+
+    @property
+    def spot_valuation(self) -> dict[str, Any]:
+        return dict(self._spot_valuation)
 
     def set_as_of(self, as_of: date | str | None) -> None:
         self.as_of = parse_as_of(as_of)
@@ -468,6 +534,7 @@ class MarketDataFetcher:
         self._spot_error = None
         self._spot_source = None
         self._spot_warnings = []
+        self._spot_valuation = {}
         self._hs300_hist = None
 
     def reset_run_cache(self) -> None:
@@ -475,6 +542,7 @@ class MarketDataFetcher:
         self._spot_error = None
         self._spot_source = None
         self._spot_warnings = []
+        self._spot_valuation = {}
         self._hs300_hist = None
 
     def _get_hs300_hist(self) -> pd.DataFrame:
@@ -499,6 +567,9 @@ class MarketDataFetcher:
         df, source, warnings = fetch_spot_with_fallback(cache_key=key, cache=cache)
         self._spot_source = source or None
         self._spot_warnings = warnings
+        cov = spot_valuation_coverage(df)
+        cov["overlay"] = any("em_valuation_overlay" in str(w) for w in warnings)
+        self._spot_valuation = cov
         if df is not None and not df.empty:
             self._spot_df = df
             return self._spot_df

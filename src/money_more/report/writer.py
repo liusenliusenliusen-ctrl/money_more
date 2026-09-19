@@ -804,7 +804,7 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     a0_bits: list[str] = []
     spot_src = str(screen.get("spot_source") or "").lower()
     if spot_src in ("sina", "cache", "spot", "stale_cache", "em_split"):
-        a0_bits.append(spot_source_plain(str(screen.get("spot_source"))))
+        a0_bits.append(spot_source_plain(str(screen.get("spot_source")), screen.get("spot_valuation")))
     deg_note = build_screen_degrade_note(screen)
     if deg_note and "错误类=" in deg_note:
         a0_bits.append(deg_note)
@@ -863,6 +863,9 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         bits: list[str] = []
         if bl.get("count"):
             bits.append(f"buy/hold 命中率 {bl.get('hit_rate_pct')}%（{bl.get('hit')}/{bl.get('count')}）")
+        paper = vl.get("paper_hold") or {}
+        if paper.get("count"):
+            bits.append(f"纸面 hold {paper.get('count')} 条未计入 buy_like")
         if wl.get("count"):
             bits.append(
                 f"watch 规避率 {wl.get('avoid_rate_pct')}%（{wl.get('avoided')}/{wl.get('count')}；"

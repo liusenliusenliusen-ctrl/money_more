@@ -38,7 +38,7 @@ from money_more.analysis.weight_adapt import weights_from_ic
 from money_more.config import AppConfig, FrameworkGateConfig
 from money_more.data.fetcher import MarketDataFetcher, _safe_float, normalize_code, sector_money_flow_present
 from money_more.data.intelligence import IntelligenceFetcher
-from money_more.data.tushare_source import is_tushare_news_optional_error
+from money_more.data.tushare_source import is_tushare_news_optional_error, public_errors_sample
 from money_more.llm.client import (
     ADVICE_SYSTEM,
     INTELLIGENCE_DIGEST_SYSTEM,
@@ -1797,11 +1797,11 @@ class DecisionPipeline:
             out["note"] = note
         else:
             out["note"] = out.get("note") or "数据完整度尚可"
-        errs = list(out.get("errors_sample") or [])
+        merged = list(out.get("errors_sample") or [])
         for e in screen.get("errors") or []:
-            if e not in errs:
-                errs.append(str(e))
-        out["errors_sample"] = errs[:10]
+            if e not in merged:
+                merged.append(str(e))
+        out["errors_sample"] = public_errors_sample(merged, limit=10)
         out["error_count"] = int(out.get("error_count") or 0) + len(screen.get("errors") or [])
         return out
 
@@ -1953,7 +1953,7 @@ class DecisionPipeline:
             "checks": checks,
             "missing": missing,
             "error_count": len(errors),
-            "errors_sample": errors[:8],
+            "errors_sample": public_errors_sample(errors, limit=8),
             "degraded": degraded or score < 0.6,
             "tushare_macro_backfill": bool(macro_intel.get("tushare_macro_backfill")),
             "tushare_perm_issue": bool(tushare_bad),

@@ -72,13 +72,28 @@ def build_data_sources_ledger(result: dict[str, Any]) -> dict[str, Any]:
         )
     elif screen.get("ok") and raw_n > 0:
         if spot_src and spot_src not in ("em_all", "cache", ""):
+            val = screen.get("spot_valuation") or {}
+            n = int(val.get("n") or raw_n or 0)
+            pe_ok = int(val.get("pe_ok") or 0)
+            pb_ok = int(val.get("pb_ok") or 0)
+            if val.get("overlay") and pe_ok > 0:
+                fetches = (
+                    f"全市场价格、涨跌幅、成交额；东财缓存补估值 PE {pe_ok}/{n}、PB {pb_ok}/{n}"
+                )
+                used = "筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3；估值过滤按 overlay 后的 PE/PB"
+            elif val.get("overlay"):
+                fetches = "全市场价格、涨跌幅、成交额（尝试东财估值 overlay，PE/PB 仍空）"
+                used = "筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3；估值因子中性处理"
+            else:
+                fetches = "全市场价格、涨跌幅、成交额（新浪备源无 PE/PB overlay）"
+                used = "筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3；备源时估值因子中性处理"
             add(
                 name="全 A 现货快照",
                 provider=f"主源东财 push2 → 备源（本轮={spot_src}）",
-                fetches="全市场价格、涨跌幅、成交额（新浪备源通常无 PE/PB）",
+                fetches=fetches,
                 status="fallback",
                 detail=f"已获取约 {raw_n} 只；过滤后 {uni_n} → 量化 {quant_n} → 深度 {deep_n}",
-                used_in="筛股漏斗 → 深度池 → B2 决策链 / 结论卡 A3；备源时估值因子中性处理",
+                used_in=used,
             )
         else:
             add(

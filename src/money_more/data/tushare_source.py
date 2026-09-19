@@ -26,6 +26,20 @@ def is_tushare_news_optional_error(msg: str | None) -> bool:
     return False
 
 
+def public_errors_sample(errors: list[Any] | None, *, limit: int = 8) -> list[str]:
+    """报告「数据错误抽样」只放会影响研究/连接判断的条目；可选新闻权限失败另见台账。"""
+    out: list[str] = []
+    for raw in errors or []:
+        text = str(raw)
+        if is_tushare_news_optional_error(text):
+            continue
+        if text not in out:
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def to_ts_code(code: str) -> str:
     c = normalize_code(code)
     if c.startswith(("5", "6", "9")):

@@ -238,6 +238,10 @@ def test_sanitize_drops_company_names_and_fills_from_code() -> None:
     assert sanitize_sector_label("长鑫科技") is None
     assert sanitize_sector_label("药明康德") is None
     assert sanitize_sector_label("东山精密", code="600519") == "白酒"
+    assert sanitize_sector_label("建材") == "建材"
+    assert sanitize_sector_label("玻纤") == "建材"
+    assert sanitize_sector_label("玻璃纤维") == "建材"
+    assert sanitize_sector_label(None, code="600176") == "建材"
     link, _ = enrich_sector_link({"code": "002384", "sector_tag": "东山精密", "action": "watch"})
     assert not is_known_sector_label(str(link.get("sector") or "东山精密")) or link.get("sector") != "东山精密"
     assert link.get("sector") != "东山精密"
@@ -281,6 +285,30 @@ def test_verify_ledger_watch_reading_is_discipline() -> None:
     priors = build_verify_priors(
         [{**row, "sector": "东山精密", "action": "watch", "verdict": "avoid_failed"}]
     )
+    assert priors["forbid_sectors"] == []
+    assert priors["confidence_mult"] == 1.0
+
+
+def test_spot_source_plain_reports_overlay() -> None:
+    from money_more.analysis.degrade_messages import spot_source_plain
+
+    assert "overlay：PE 10/20" in spot_source_plain(
+        "sina", {"overlay": True, "pe_ok": 10, "pb_ok": 9, "n": 20}
+    )
+    assert "PE/PB 未补上" in spot_source_plain("sina", {"overlay": True, "pe_ok": 0, "n": 20})
+    assert "无 PE/PB overlay" in spot_source_plain("sina", {"overlay": False, "n": 20})
+
+
+def test_paper_hold_excluded_from_buy_like() -> None:
+    from money_more.analysis.verify_tracker import is_declared_buy_like, build_verify_priors
+
+    paper = {"action": "hold", "position_pct": 0, "verdict": "miss", "sector": "元件", "run_date": "2026-09-11"}
+    declared = {"action": "hold", "position_pct": 8.0, "verdict": "hit", "sector": "银行", "run_date": "2026-09-11"}
+    buy = {"action": "buy", "position_pct": 0, "verdict": "miss", "sector": "通信", "run_date": "2026-09-11"}
+    assert is_declared_buy_like(paper) is False
+    assert is_declared_buy_like(declared) is True
+    assert is_declared_buy_like(buy) is True
+    priors = build_verify_priors([paper, paper, paper])
     assert priors["forbid_sectors"] == []
     assert priors["confidence_mult"] == 1.0
 

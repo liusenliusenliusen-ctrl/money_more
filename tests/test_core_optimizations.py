@@ -788,6 +788,42 @@ def test_normalize_sector_summary_em_columns():
     assert sector_money_flow_present({"top_inflow": []}) is False
 
 
+def test_ths_industry_flow_symbol_maps_short_names():
+    from money_more.data.fetcher import ths_industry_flow_symbol
+
+    assert ths_industry_flow_symbol("5日") == "5日排行"
+    assert ths_industry_flow_symbol("10日") == "10日排行"
+    assert ths_industry_flow_symbol("即时") == "即时"
+    assert ths_industry_flow_symbol("5日排行") == "5日排行"
+
+
+def test_fetch_sector_board_summary_uses_ths_rank_symbol(monkeypatch):
+    import pandas as pd
+
+    from money_more.data.fetcher import fetch_sector_board_summary
+
+    seen: list[str] = []
+
+    def capture_ths(symbol: str = "即时"):
+        seen.append(symbol)
+        return pd.DataFrame(
+            [
+                {
+                    "行业": "通信",
+                    "阶段涨跌幅": "2.1",
+                    "净额": 1.2e9,
+                }
+            ]
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_fund_flow_industry", capture_ths)
+    df, source, _errors = fetch_sector_board_summary()
+    assert seen[0] == "5日排行"
+    assert source == "ths_industry_flow_5d"
+    assert df.iloc[0]["板块"] == "通信"
+    assert float(df.iloc[0]["涨跌幅"]) == 2.1
+
+
 def test_fetch_sector_board_summary_fallback(monkeypatch):
     import pandas as pd
 

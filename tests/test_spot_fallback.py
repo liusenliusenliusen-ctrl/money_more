@@ -116,7 +116,7 @@ def test_market_fetcher_get_spot_records_source(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_overlay_em_valuation_keeps_sina_price() -> None:
-    from money_more.data.fetcher import _overlay_em_valuation
+    from money_more.data.fetcher import _overlay_em_valuation, spot_valuation_coverage
 
     live = _em_like([{"代码": "600519", "名称": "贵州茅台", "最新价": 1401, "涨跌幅": 0.2}])
     em_rows = [
@@ -126,3 +126,34 @@ def test_overlay_em_valuation_keeps_sina_price() -> None:
     assert float(out.iloc[0]["最新价"]) == 1401
     assert float(out.iloc[0]["市盈率-动态"]) == 22.5
     assert float(out.iloc[0]["市净率"]) == 8.1
+    cov = spot_valuation_coverage(out)
+    assert cov["pe_ok"] == 1
+    assert cov["pb_ok"] == 1
+    assert cov["n"] == 1
+
+
+def test_fetch_spot_overlay_records_pe_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = _MemCache()
+    cache._stale["spot:em_valuation"] = [
+        {"代码": "601398", "名称": "工商银行", "最新价": 4.8, "市盈率-动态": 6.2, "市净率": 0.6}
+    ]
+
+    def _em_fail() -> pd.DataFrame:
+        raise ConnectionError("push2 proxy")
+
+    def _sina_ok() -> pd.DataFrame:
+        return _em_like(
+            [{"代码": "sh601398", "名称": "工商银行", "最新价": 5.0, "涨跌幅": 0.5, "成交额": 2e9}]
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _em_fail)
+    monkeypatch.setattr("money_more.data.fetcher._fetch_em_split_spot", lambda: pd.DataFrame())
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot", _sina_ok)
+    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
+
+    df, source, warnings = fetch_spot_with_fallback(cache_key="spot:test", cache=cache)
+    assert source == "sina"
+    assert float(df.iloc[0]["市盈率-动态"]) == 6.2
+    overlay = [w for w in warnings if "em_valuation_overlay" in w]
+    assert overlay
+    assert "pe=1/1" in overlay[0]

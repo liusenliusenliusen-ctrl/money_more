@@ -87,6 +87,28 @@ def test_ledger_marks_sina_spot_fallback():
     assert "**总评**" not in md
 
 
+def test_ledger_sina_overlay_states_pe_coverage():
+    result = {
+        "data_quality": {"score": 0.9, "degraded": False, "note": "ok", "missing": [], "checks": {}},
+        "screen": {
+            "enabled": True,
+            "ok": True,
+            "spot_source": "sina",
+            "universe_size_raw": 5560,
+            "universe_size": 400,
+            "quant_size": 50,
+            "deep_size": 15,
+            "spot_valuation": {"n": 5560, "pe_ok": 4100, "pb_ok": 4000, "overlay": True},
+        },
+        "intelligence": {"macro_raw": {"errors": []}},
+        "stocks": [],
+    }
+    ledger = build_data_sources_ledger(result)
+    spot = next(r for r in ledger["rows"] if r["name"] == "全 A 现货快照")
+    assert "PE 4100/5560" in spot["fetches"]
+    assert "overlay" in spot["used_in"] or "PE/PB" in spot["used_in"]
+
+
 def test_ledger_cctv_news_perm_does_not_fail_tushare_row():
     """联播未开通但 major_news 有数据时，Tushare 行仍为 ok。"""
     result = {

@@ -287,13 +287,28 @@ def run_stock_screen(
         out["errors"] = ["coverage_collapsed"]
         out["plain_note"] += " 警告：深度池几乎未从量化漏斗扩出，覆盖偏窄。"
     spot_source = getattr(fetcher, "spot_source", None)
+    val = dict(getattr(fetcher, "spot_valuation", None) or {})
+    if val:
+        out["spot_valuation"] = val
     if spot_source:
         out["spot_source"] = spot_source
         if spot_source not in ("em_all", "cache"):
             out["fallback_source"] = True
-            out["plain_note"] += (
-                f" 行情备源={spot_source}（PE/PB 常缺失，估值分已降权，非中性=齐备）。"
-            )
+            pe_ok = int(val.get("pe_ok") or 0)
+            n = int(val.get("n") or 0)
+            pb_ok = int(val.get("pb_ok") or 0)
+            if val.get("overlay") and pe_ok > 0:
+                out["plain_note"] += (
+                    f" 行情备源={spot_source}（东财估值 overlay 补到 PE {pe_ok}/{n}、PB {pb_ok}/{n}）。"
+                )
+            elif val.get("overlay"):
+                out["plain_note"] += (
+                    f" 行情备源={spot_source}（尝试 overlay 但 PE/PB 未补上，估值分已降权）。"
+                )
+            else:
+                out["plain_note"] += (
+                    f" 行情备源={spot_source}（PE/PB 未补上，估值分已降权，非中性=齐备）。"
+                )
     log.info("screen %s", out["note"])
     return out
 

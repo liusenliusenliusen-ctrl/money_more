@@ -163,3 +163,4 @@ def test_dq_news_optional_perm_does_not_zero_research() -> None:
     assert dq["research_score"] == 1.0
     assert dq["score"] > 0.55
     assert "联播" in str(dq.get("note") or "")
+    assert all("cctv_news" not in str(e) for e in (dq.get("errors_sample") or []))
