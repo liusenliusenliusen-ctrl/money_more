@@ -281,6 +281,11 @@ def run_stock_screen(
         fb = int(amount_avg_meta.get("fallback") or 0)
         ok_n = int(amount_avg_meta.get("ok") or 0)
         out["plain_note"] += f" 成交额用近{avg_days}日均（成功{ok_n}/回退当日{fb}）。"
+    if filter_stats.get("pe_filter_inactive"):
+        out["plain_note"] += (
+            f" PE 硬过滤未生效（现货估值覆盖率 {filter_stats.get('pe_coverage_pct', 0)}%），"
+            "估值仅软降权、不作硬门槛。"
+        )
     if not coverage_ok and len(deep) <= max(len(force), 1):
         out["degraded"] = True
         out["ok"] = False
@@ -662,6 +667,12 @@ def _apply_hard_filters(df: pd.DataFrame, config: ScreenConfig) -> tuple[pd.Data
         out = out[mask]
     if "pe" in out.columns:
         pe = out["pe"]
+        pe_cov = float(pe.notna().mean()) if len(out) else 0.0
+        stats["pe_coverage_pct"] = round(100.0 * pe_cov, 1)
+        if pe_cov < 0.5:
+            # 覆盖不足时 neg_pe/high_pe 过滤形同虚设（isna 恒保留），必须显性标注，
+            # 否则 filter_stats 里 neg_pe=0/high_pe=0 会被误读成「没有不合格票」。
+            stats["pe_filter_inactive"] = True
         if config.exclude_negative_pe:
             mask = pe.isna() | (pe > 0)
             stats["neg_pe"] = int((~mask).sum())

@@ -768,23 +768,57 @@ class Database:
                 (dumps_json(payload), now, run_date),
             )
 
+    @staticmethod
+    def _normalize_lesson_text(text: str) -> str:
+        """经验文本归一化：去空白/标点、小写，用于判重（LLM 每轮换措辞也能对上）。"""
+        import re
+
+        return re.sub(
+            r"[\s，。；：、,.;:!！?？（）()【】\[\]\"'“”‘’]+", "", str(text or "")
+        ).lower()
+
     def insert_lesson_if_new(
         self, category: str, content: str, lookback_days: int = 7, source_review_id: int | None = None
     ) -> bool:
-        """近 N 天内相同内容不重复写入。"""
+        """近 N 天内相同/高度相似内容不重复写入。
+
+        判重（归一化相等或 difflib 相似度≥0.75）时不插新行，改为给老经验
+        weight +0.5（封顶 3.0）并刷新 created_at——重复出现的经验反而该更靠前。
+        """
+        import difflib
+
         now = datetime.now().isoformat(timespec="seconds")
+        norm = self._normalize_lesson_text(content)
+        if not norm:
+            return False
         with self.session() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 """
-                SELECT id FROM lessons
-                WHERE category = ? AND content = ?
-                  AND created_at >= datetime('now', ?)
-                LIMIT 1
+                SELECT id, content, weight FROM lessons
+                WHERE category = ? AND created_at >= datetime('now', ?)
                 """,
-                (category, content, f"-{int(lookback_days)} days"),
-            ).fetchone()
-            if row:
-                return False
+                (category, f"-{int(lookback_days)} days"),
+            ).fetchall()
+            for row in rows:
+                old_norm = self._normalize_lesson_text(row["content"])
+                if not old_norm:
+                    continue
+                same = old_norm == norm
+                similar = (
+                    not same
+                    and len(norm) >= 8
+                    and difflib.SequenceMatcher(None, norm, old_norm).ratio() >= 0.75
+                )
+                if same or similar:
+                    conn.execute(
+                        """
+                        UPDATE lessons
+                        SET weight = MIN(COALESCE(weight, 1.0) + 0.5, 3.0), created_at = ?
+                        WHERE id = ?
+                        """,
+                        (now, row["id"]),
+                    )
+                    return False
             conn.execute(
                 """
                 INSERT INTO lessons (category, content, source_review_id, created_at)

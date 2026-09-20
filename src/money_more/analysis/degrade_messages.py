@@ -9,7 +9,7 @@ from money_more.data.ak_direct import classify_em_error
 _SPOT_HINTS = {
     "em_all": "东财全量现货",
     "em_split": "东财分市场现货（全量失败后的次选）",
-    "sina": "新浪现货备源（通常无 PE/PB，估值分已降权，非中性=齐备）",
+    "sina": "新浪现货备源（通常无 PE/PB，估值分已降权，PE 硬过滤未生效，非中性=齐备）",
     "cache": "进程内/当日缓存现货",
     "stale_cache": "过期磁盘缓存现货（可信度低，建议修通路后重跑）",
 }
@@ -25,10 +25,12 @@ def spot_source_plain(source: str | None, valuation: dict[str, Any] | None = Non
     pb_ok = int(val.get("pb_ok") or 0)
     if src == "sina":
         if val.get("overlay") and pe_ok > 0:
-            return f"新浪现货备源（东财估值 overlay：PE {pe_ok}/{n}、PB {pb_ok}/{n}）"
+            cov = (pe_ok / n) if n else 0.0
+            tail = "；PE 覆盖<50%，硬过滤仍未生效" if cov < 0.5 else ""
+            return f"新浪现货备源（东财估值 overlay：PE {pe_ok}/{n}、PB {pb_ok}/{n}{tail}）"
         if val.get("overlay"):
-            return "新浪现货备源（尝试东财估值 overlay 但 PE/PB 未补上，估值分已降权）"
-        return "新浪现货备源（无 PE/PB overlay，估值分已降权，非中性=齐备）"
+            return "新浪现货备源（尝试东财估值 overlay 但 PE/PB 未补上，估值分已降权，PE 硬过滤未生效）"
+        return "新浪现货备源（无 PE/PB overlay，估值分已降权，PE 硬过滤未生效，非中性=齐备）"
     return _SPOT_HINTS.get(src, f"现货源=`{src}`")
 
 

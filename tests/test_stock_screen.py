@@ -120,6 +120,23 @@ def test_filters_exclude_st_and_illiquid() -> None:
     assert stats["st"] >= 1
 
 
+def test_pe_filter_inactive_flag_when_coverage_low() -> None:
+    """现货备源无 PE 时硬过滤静默失效，必须显性标注（否则 neg_pe=0 被误读成「没有不合格票」）。"""
+    cfg = ScreenConfig(min_amount=1e6, exclude_negative_pe=True, pe_max=90)
+    df = _normalize_spot(_sample_spot())
+    df["pe"] = float("nan")  # 模拟新浪备源：PE 列全空
+    _out, stats = _apply_hard_filters(df, cfg)
+    assert stats.get("pe_filter_inactive") is True
+    assert float(stats.get("pe_coverage_pct") or 0) == 0.0
+    # 覆盖不足时过滤形同虚设：行数不因 PE 减少
+    assert stats["neg_pe"] == 0 and stats["high_pe"] == 0
+
+    df2 = _normalize_spot(_sample_spot())
+    _out2, stats2 = _apply_hard_filters(df2, cfg)
+    assert "pe_filter_inactive" not in stats2
+    assert float(stats2.get("pe_coverage_pct") or 0) > 50.0
+
+
 def test_run_screen_expands_beyond_force_holdings() -> None:
     cfg = ScreenConfig(
         enabled=True,

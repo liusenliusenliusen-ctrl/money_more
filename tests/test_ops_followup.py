@@ -310,6 +310,21 @@ def test_spot_source_plain_reports_overlay() -> None:
     assert "无 PE/PB overlay" in spot_source_plain("sina", {"overlay": False, "n": 20})
 
 
+def test_spot_source_plain_marks_pe_filter_inactive() -> None:
+    from money_more.analysis.degrade_messages import spot_source_plain
+
+    # overlay 覆盖 <50%：明示硬过滤仍未生效
+    assert "硬过滤仍未生效" in spot_source_plain(
+        "sina", {"overlay": True, "pe_ok": 10, "pb_ok": 10, "n": 100}
+    )
+    # 覆盖 ≥50%：不追加
+    assert "硬过滤" not in spot_source_plain(
+        "sina", {"overlay": True, "pe_ok": 80, "pb_ok": 70, "n": 100}
+    )
+    assert "PE 硬过滤未生效" in spot_source_plain("sina", {"overlay": True, "pe_ok": 0, "n": 20})
+    assert "PE 硬过滤未生效" in spot_source_plain("sina", {"overlay": False, "n": 20})
+
+
 def test_paper_hold_excluded_from_buy_like() -> None:
     from money_more.analysis.verify_tracker import is_declared_buy_like, build_verify_priors
 

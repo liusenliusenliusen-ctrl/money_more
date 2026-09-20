@@ -151,6 +151,18 @@ def fetch_sector_board_summary(
                 "今日主力净流入-净额": "净流入",
             },
         ),
+        (
+            # RemoteDisconnected 多为瞬时断连：退避后原地重试一次，再考虑 10 日回退
+            "em_rank_5d",
+            lambda: ak.stock_sector_fund_flow_rank(indicator="5日", sector_type="行业资金流"),
+            {
+                "名称": "板块",
+                "5日涨跌幅": "涨跌幅",
+                "今日涨跌幅": "涨跌幅",
+                "5日主力净流入-净额": "净流入",
+                "今日主力净流入-净额": "净流入",
+            },
+        ),
     ]
     attempts_1d: list[tuple[str, Any, dict[str, str]]] = [
         (
@@ -191,8 +203,12 @@ def fetch_sector_board_summary(
                 },
             ),
         ]
+    tried: dict[str, int] = {}
     for source, caller, column_map in attempts:
         try:
+            tried[source] = tried.get(source, 0) + 1
+            if tried[source] > 1:
+                time.sleep(1.5)
             if "em_rank" in source:
                 with eastmoney_direct_session():
                     raw = caller()
@@ -378,6 +394,7 @@ def fetch_spot_with_fallback(
     attempts: list[tuple[str, Any]] = [
         ("em_all", ak.stock_zh_a_spot_em),
         ("em_all", ak.stock_zh_a_spot_em),  # 瞬时超时再试一次
+        ("em_all", ak.stock_zh_a_spot_em),  # 第三次：更长退避后再试
         ("em_split", _fetch_em_split_spot),
         ("sina", ak.stock_zh_a_spot),
     ]
@@ -386,8 +403,10 @@ def fetch_spot_with_fallback(
         try:
             if source == "em_all":
                 em_tried += 1
-                if em_tried > 1:
+                if em_tried == 2:
                     time.sleep(1.0)
+                elif em_tried > 2:
+                    time.sleep(3.0)
             if source.startswith("em"):
                 with eastmoney_direct_session():
                     raw = caller()
@@ -421,6 +440,7 @@ def fetch_spot_with_fallback(
                 pass
             if source != "em_all":
                 errors.append(f"spot_fallback:{source}")
+                errors.append(f"spot_em_attempts:{em_tried}")
             return df, source, errors
         except Exception as exc:
             errors.append(annotate_em_error(f"spot({source})", exc))

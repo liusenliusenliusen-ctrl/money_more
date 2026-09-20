@@ -73,6 +73,30 @@ def test_fetch_spot_falls_back_to_sina(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(df) == 2
     assert set(df["代码"]) == {"601398", "000001"}
     assert any("spot_fallback:sina" in w for w in warnings)
+    assert "spot_em_attempts:3" in warnings
+
+
+def test_fetch_spot_em_third_attempt_recovers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """em_all 前两次瞬时失败，第三次退避后成功：不回落备源。"""
+    cache = _MemCache()
+    calls = {"n": 0}
+
+    def _flaky_em() -> pd.DataFrame:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("push2 timeout")
+        return _em_like(
+            [{"代码": "sh600519", "名称": "贵州茅台", "最新价": 1400, "涨跌幅": 1.0, "成交额": 1e9}]
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _flaky_em)
+    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
+
+    df, source, warnings = fetch_spot_with_fallback(cache_key="spot:test3", cache=cache)
+    assert source == "em_all"
+    assert calls["n"] == 3
+    assert len(df) == 1
+    assert not any("spot_fallback" in w for w in warnings)
 
 
 def test_fetch_spot_uses_stale_cache_when_live_fails(monkeypatch: pytest.MonkeyPatch) -> None:

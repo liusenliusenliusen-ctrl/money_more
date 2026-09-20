@@ -347,6 +347,48 @@ def test_lesson_dedup(tmp_path: Path):
     assert db.insert_lesson_if_new("meta", "same lesson") is False
 
 
+def test_lesson_fuzzy_dedup_bumps_weight(tmp_path: Path):
+    """LLM 换措辞的同类经验不再重复入库；判重时老经验 weight +0.5 并刷新时间。"""
+    db = Database(tmp_path / "t_lesson_fuzzy.db")
+    assert db.insert_lesson_if_new("review", "外部流动性高压时，买入必须绑定美债10Y或资金流硬信号") is True
+    # 换措辞：语序略改、加语气词，相似度≥0.75 → 判重不插新行
+    assert db.insert_lesson_if_new("review", "外部流动性高压时，任何买入都必须绑定美债10Y或资金流硬信号。") is False
+    rows = [r for r in db.get_active_lessons(limit=10) if "美债" in r["content"]]
+    assert len(rows) == 1
+    assert abs(float(rows[0]["weight"]) - 1.5) < 1e-6
+    # 完全不同的经验照常插入
+    assert db.insert_lesson_if_new("review", "利润与经营现金流严重背离时只能watch") is True
+
+
+def test_fetch_sector_board_summary_retries_em_rank_once(monkeypatch):
+    """em_rank_5d 首次 RemoteDisconnected，退避重试后成功，不再落 10 日回退。"""
+    import pandas as pd
+
+    from money_more.data.fetcher import fetch_sector_board_summary
+
+    monkeypatch.setattr(
+        "money_more.data.fetcher.ak.stock_fund_flow_industry",
+        lambda symbol="即时": (_ for _ in ()).throw(RuntimeError("ths down")),
+    )
+    calls = {"n": 0}
+
+    def flaky_em_rank(indicator: str = "今日", sector_type: str = "行业资金流"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ConnectionError("Remote end closed connection without response")
+        return pd.DataFrame(
+            [{"名称": "通信", "5日涨跌幅": 2.1, "5日主力净流入-净额": 880000000}]
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_sector_fund_flow_rank", flaky_em_rank)
+    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
+
+    df, source, _errors = fetch_sector_board_summary()
+    assert source == "em_rank_5d"
+    assert calls["n"] == 2
+    assert df.iloc[0]["板块"] == "通信"
+
+
 def test_cross_check_mismatch():
     from money_more.analysis.cross_check import apply_hard_gates, cross_check_stock
 
