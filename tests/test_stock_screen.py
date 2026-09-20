@@ -137,6 +137,66 @@ def test_pe_filter_inactive_flag_when_coverage_low() -> None:
     assert float(stats2.get("pe_coverage_pct") or 0) > 50.0
 
 
+def test_deep_stale_rounds_streaks() -> None:
+    from money_more.analysis.screen import deep_stale_rounds
+
+    rows = [
+        # 最新一轮
+        {"run_date": "2026-09-18", "stock_code": "600519", "action": "watch"},
+        {"run_date": "2026-09-18", "stock_code": "300308", "action": "watch"},
+        {"run_date": "2026-09-18", "stock_code": "600036", "action": "buy"},
+        # 上一轮
+        {"run_date": "2026-09-15", "stock_code": "600519", "action": "watch"},
+        {"run_date": "2026-09-15", "stock_code": "300308", "action": "buy"},
+        # 更老
+        {"run_date": "2026-09-11", "stock_code": "600519", "action": "watch"},
+        {"run_date": "2026-09-11", "stock_code": "300308", "action": "watch"},
+    ]
+    out = deep_stale_rounds(rows)
+    assert out["600519"] == 3  # 三轮连续 watch
+    assert out["300308"] == 1  # 9/18 watch，但 9/15 是 buy → 连击只有最新一轮
+    assert "600036" not in out  # 最新动作 buy
+
+
+def test_run_screen_rotates_stale_watch_codes() -> None:
+    """连续 N 轮 watch 的老面孔降权：新候选进深度池，老面孔出池并记账。"""
+    cfg = ScreenConfig(
+        enabled=True,
+        universe_mode="spot_all",
+        max_universe=100,
+        max_quant=10,
+        max_deep=3,
+        min_amount=1e7,
+        pe_max=0,
+        deep_diversify=False,
+        deep_rotate_after=2,
+    )
+    fetcher = _FakeFetcher(_sample_spot())
+    base = run_stock_screen(fetcher, config=cfg, watch_sectors=[], force_codes=[])
+    top_code = base["deep_codes"][0]
+    rotated = run_stock_screen(
+        fetcher,
+        config=cfg,
+        watch_sectors=[],
+        force_codes=[],
+        stale_rounds={top_code: 2},
+    )
+    assert top_code not in rotated["deep_codes"]
+    assert rotated["rotated_out"] == [top_code]
+    assert rotated["stale_rounds"].get(top_code) == 2
+    # top_candidates 仍按量化分排序，如实呈现（不受轮换影响）
+    assert top_code in [r["code"] for r in rotated["top_candidates"]]
+    # 声明持仓强制进池不受轮换影响
+    forced = run_stock_screen(
+        fetcher,
+        config=cfg,
+        watch_sectors=[],
+        force_codes=[top_code],
+        stale_rounds={top_code: 5},
+    )
+    assert top_code in forced["deep_codes"]
+
+
 def test_run_screen_expands_beyond_force_holdings() -> None:
     cfg = ScreenConfig(
         enabled=True,

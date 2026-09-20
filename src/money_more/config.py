@@ -196,6 +196,9 @@ class ScreenConfig:
     # 深度池定稿后：池内有票但本轮无 B1 的细板块，补跑同规格板块分析
     deep_sector_backfill: bool = True
     max_deep_sector_backfill: int = 8
+    # 深度池轮换：连续 N 轮在池且终局均为 watch 的票降权到新候选之后（0=关闭）；
+    # 不硬踢、不动主题上限，声明持仓强制进池不受影响
+    deep_rotate_after: int = 3
 
 
 @dataclass

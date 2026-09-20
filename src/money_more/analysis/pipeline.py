@@ -372,6 +372,7 @@ class DecisionPipeline:
             watch_sectors=list(self.config.watch_sectors),
             force_codes=force_codes,
             sector_analyses=sector_analyses,
+            stale_rounds=self._deep_stale_rounds(screen_cfg),
         )
         result["screen"] = screen_result
         result["data_quality"] = self._merge_screen_into_dq(
@@ -1447,6 +1448,23 @@ class DecisionPipeline:
         out["excerpt"] = combined[:max_chars]
         out["matched_sections"] = len(chunks)
         return out
+
+    def _deep_stale_rounds(self, screen_cfg: Any) -> dict[str, int]:
+        """深度池轮换输入：连续 N 轮在建议中且终局均为 watch 的代码 → 连击轮数。
+
+        失败（库不可用/表缺失）时返回空，轮换静默关闭，不影响主链。
+        """
+        rotate_after = max(0, int(getattr(screen_cfg, "deep_rotate_after", 0) or 0))
+        if rotate_after <= 0:
+            return {}
+        try:
+            from money_more.analysis.screen import deep_stale_rounds
+
+            rows = self.db.get_recent_run_recommendations(limit_runs=5)
+            return deep_stale_rounds(rows, max_runs=5)
+        except Exception as exc:
+            log.warning("deep stale rounds failed: %s", exc)
+            return {}
 
     def _load_paper_holdings(self) -> list[dict[str, Any]]:
         """模拟账本持仓（非真实账户）；数量>0 才进纸面通道。"""

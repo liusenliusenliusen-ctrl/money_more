@@ -40,10 +40,13 @@ def run_stock_screen(
     force_codes: list[str] | None = None,
     must_codes: list[str] | None = None,  # 兼容旧调用名
     sector_analyses: list[dict[str, Any]] | None = None,
+    stale_rounds: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """返回 deep_codes（供 LLM）与筛选过程摘要。
 
     force_codes：通常为声明持仓，强制进深度池且不占 max_deep。
+    stale_rounds：代码→连续 watch 轮数（见 deep_stale_rounds）；达到
+    config.deep_rotate_after 的票在深度池遴选时降权到新候选之后。
     """
     force = _uniq_codes(list(force_codes if force_codes is not None else (must_codes or [])))
     if not config.enabled:
@@ -157,6 +160,27 @@ def run_stock_screen(
     quant_df = universe_df.head(config.max_quant)
     quant_codes = [normalize_code(c) for c in quant_df["code"].tolist()]
 
+    # 深度池轮换：连续 N 轮 watch 的老面孔降权到新候选之后（不硬踢、不动主题上限）
+    rotate_after = max(0, int(getattr(config, "deep_rotate_after", 0) or 0))
+    stale_map: dict[str, int] = {
+        normalize_code(str(k)): int(v)
+        for k, v in (stale_rounds or {}).items()
+        if str(k).strip() and int(v or 0) > 0
+    }
+    stale_in_quant: dict[str, int] = {}
+    if rotate_after > 0 and stale_map and not quant_df.empty:
+        stale_in_quant = {
+            c: n for c, n in stale_map.items() if n >= rotate_after and c in set(quant_codes)
+        }
+        if stale_in_quant:
+            quant_df = quant_df.copy()
+            quant_df["_stale"] = [
+                1 if normalize_code(str(c)) in stale_in_quant else 0 for c in quant_df["code"]
+            ]
+            quant_df = quant_df.sort_values(
+                ["_stale", "screen_score"], ascending=[True, False], kind="stable"
+            )
+
     deep, screened_added, diversify_meta = _select_deep_codes(
         quant_df,
         force=force,
@@ -179,7 +203,13 @@ def run_stock_screen(
 
     top_rows = []
     deep_set = set(deep)
-    for _, row in quant_df.head(15).iterrows():
+    # top_candidates 保持量化分排序（不受轮换降权影响），如实呈现打分结果
+    top_view = (
+        quant_df.sort_values("screen_score", ascending=False, kind="stable")
+        if stale_in_quant
+        else quant_df
+    )
+    for _, row in top_view.head(15).iterrows():
         code = normalize_code(str(row["code"]))
         sector, theme = _row_sector_theme(row)
         top_rows.append(
@@ -196,8 +226,11 @@ def run_stock_screen(
                 "in_deep": code in deep_set,
                 "forced": code in force,
                 "must": code in force,
+                **({"stale_rounds": stale_map[code]} if code in stale_map else {}),
             }
         )
+
+    rotated_out = [c for c in stale_in_quant if c not in deep_set] if stale_in_quant else []
 
     coverage_ok = screened_added > 0 or (mode == "spot_all" and before_filter > len(force))
     force_bit = f"持仓强制{len(force)}不占名额 + " if force else ""
@@ -276,6 +309,8 @@ def run_stock_screen(
         "excluded_surge_samples": list(filter_stats.get("surge_samples") or []),
         "amount_avg_days": avg_days if avg_days > 0 else 0,
         "amount_avg_meta": amount_avg_meta,
+        "stale_rounds": {c: stale_map[c] for c in quant_codes if c in stale_map},
+        "rotated_out": rotated_out,
     }
     if avg_days > 0:
         fb = int(amount_avg_meta.get("fallback") or 0)
@@ -285,6 +320,12 @@ def run_stock_screen(
         out["plain_note"] += (
             f" PE 硬过滤未生效（现货估值覆盖率 {filter_stats.get('pe_coverage_pct', 0)}%），"
             "估值仅软降权、不作硬门槛。"
+        )
+    if stale_in_quant:
+        out["plain_note"] += (
+            f" 轮换：{len(stale_in_quant)} 只连续≥{rotate_after}轮观察的老面孔降权"
+            + (f"，出池：{'、'.join(rotated_out[:5])}" if rotated_out else "，仍在池（新候选不足或主题保底）")
+            + "。"
         )
     if not coverage_ok and len(deep) <= max(len(force), 1):
         out["degraded"] = True
@@ -316,6 +357,42 @@ def run_stock_screen(
                 )
     log.info("screen %s", out["note"])
     return out
+
+
+def deep_stale_rounds(rows: list[dict[str, Any]], max_runs: int = 5) -> dict[str, int]:
+    """连续 N 轮（新→旧）出现在建议中且动作均为 watch 的代码 → 连击轮数。
+
+    rows 需含 run_date/stock_code/action 且按 run_date 新→旧排序。
+    规则：最新动作非 watch 的不计；连击中途缺席或动作变化即定格，更老轮次不再累加。
+    """
+    by_date: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+    for row in rows or []:
+        d = str(row.get("run_date") or "")
+        code = str(row.get("stock_code") or row.get("code") or "")
+        if not d or not code:
+            continue
+        if d not in by_date:
+            by_date[d] = {}
+            order.append(d)
+        by_date[d][code] = str(row.get("action") or "").lower()
+    streaks: dict[str, int] = {}
+    final: dict[str, int] = {}
+    blocked: set[str] = set()
+    for d in order[:max_runs]:
+        day = by_date[d]
+        for code in list(streaks.keys()):
+            if day.get(code) != "watch":  # 缺席或动作变化：连击定格
+                final[code] = streaks.pop(code)
+        for code, action in day.items():
+            if action == "watch":
+                if code not in final and code not in blocked:
+                    streaks[code] = streaks.get(code, 0) + 1
+            else:
+                blocked.add(code)
+                streaks.pop(code, None)
+    final.update(streaks)
+    return final
 
 
 def _row_sector_theme(row: pd.Series | dict[str, Any]) -> tuple[str | None, str]:

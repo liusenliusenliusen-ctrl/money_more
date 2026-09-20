@@ -612,6 +612,27 @@ class Database:
             ).fetchall()
         return [str(r["run_date"]) for r in rows]
 
+    def get_recent_run_recommendations(self, limit_runs: int = 5) -> list[dict[str, Any]]:
+        """最近 N 个成功运行日的建议（run_date/stock_code/action，新→旧）。"""
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT d.run_date, r.stock_code, r.action
+                FROM recommendations r
+                JOIN daily_runs d ON d.id = r.run_id
+                WHERE d.status = 'success'
+                  AND d.run_date IN (
+                      SELECT run_date FROM daily_runs
+                      WHERE status = 'success'
+                      ORDER BY run_date DESC
+                      LIMIT ?
+                  )
+                ORDER BY d.run_date DESC
+                """,
+                (limit_runs,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_market_analysis_series(self, limit: int = 30) -> list[dict[str, Any]]:
         with self.session() as conn:
             rows = conn.execute(

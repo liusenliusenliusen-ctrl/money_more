@@ -133,7 +133,36 @@ def test_conclusion_card_shows_verify_and_gap() -> None:
     assert "验证窗口" in md
     assert "缺标的" in md or "无映射标的" in md
     assert "主副分歧" in md
-    assert "逻辑链" in md
+    # 空仓 + 全观察：A3 收成卡点表，逐票全文（含逻辑链）移到 B2④
+    assert "一句话卡点" in md
+
+    # 有持仓时 A3 仍逐票全量渲染（含逻辑链）
+    lines2 = render_conclusion_card(
+        {
+            "run_date": "2026-08-08",
+            "market": {"analysis": {"phase": "range", "style": "均衡", "risk_level": "medium", "confidence": 0.5, "summary": "震荡"}},
+            "recommendations": [
+                {
+                    "code": "600519",
+                    "action": "hold",
+                    "confidence": 0.5,
+                    "position_pct": 10,
+                    "rationale": "继续持有",
+                    "sector_link": {
+                        "sector": "白酒",
+                        "sector_priority": "low",
+                        "action_rationale_vs_research": "research buy → hold",
+                    },
+                }
+            ],
+            "sectors": [],
+            "decision_stages": {},
+            "decision_summary": {"holdings_basis": {"is_empty": False, "codes": ["600519"]}},
+            "intelligence": {"digest": {}},
+            "data_quality": {"score": 0.9, "degraded": False},
+        }
+    )
+    assert "逻辑链" in "\n".join(lines2)
 
 
 def test_review_report_has_diff_table() -> None:
