@@ -325,6 +325,56 @@ def test_spot_source_plain_marks_pe_filter_inactive() -> None:
     assert "PE 硬过滤未生效" in spot_source_plain("sina", {"overlay": False, "n": 20})
 
 
+def test_a3_compact_watch_table() -> None:
+    """空仓 + 全观察：A3 收成一张表 + 离升级最近；逐票全文留在 B2④。"""
+    from money_more.report.writer import _a3_blocker_clause, _render_a3_compact_watch
+
+    # 卡点抽取优先级：硬门禁 > 「但」后分句 > 首句
+    assert "减持" in _a3_blocker_clause("基本面好 | 硬门禁: 近窗股东减持触 force_watch")
+    assert "估值极贵" in _a3_blocker_clause("盈利高增，但估值极贵、分位88%；继续观察。")
+    assert "只有一句" in _a3_blocker_clause("只有一句")
+
+    lines: list[str] = []
+    recs = [
+        {
+            "code": "300308",
+            "action": "watch",
+            "position_pct": 0,
+            "confidence": 0.6,
+            "rationale": "AI光模块龙头，但估值偏贵；等待回调",
+            "sector_tag": "通信",
+            "verify_signals": ["美债10Y回落至4.2%以下"],
+        },
+        {
+            "code": "600519",
+            "action": "watch",
+            "position_pct": 0,
+            "confidence": 0.4,
+            "rationale": "茅台防御，但景气下行",
+            "sector_tag": "白酒",
+        },
+    ]
+    result = {
+        "decision_stages": {
+            "research": [
+                {"code": "300308", "research_rating": "buy"},
+                {"code": "600519", "research_rating": "hold"},
+            ]
+        }
+    }
+    names = {"300308": "中际旭创", "600519": "贵州茅台"}
+    _render_a3_compact_watch(lines, recs, names, result)
+    text = "\n".join(lines)
+    assert "离升级最近" in text
+    assert "美债10Y回落至4.2%以下" in text
+    assert "| 代码 | 名称 | 板块 | 一句话卡点 |" in text
+    assert "| 300308 | 中际旭创 |" in text
+    assert "估值偏贵" in text
+    # research=hold 的票不进「离升级最近」
+    near_section = text.split("离升级最近")[1].split("| 代码 |")[0]
+    assert "600519" not in near_section
+
+
 def test_paper_hold_excluded_from_buy_like() -> None:
     from money_more.analysis.verify_tracker import is_declared_buy_like, build_verify_priors
 

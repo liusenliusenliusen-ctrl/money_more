@@ -580,6 +580,38 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_last_rec_dates_by_code(self, codes: list[str]) -> dict[str, str]:
+        """每个代码最近一次出现在建议（任意动作）中的 run_date。"""
+        if not codes:
+            return {}
+        marks = ",".join("?" for _ in codes)
+        with self.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT r.stock_code, MAX(d.run_date) AS last_date
+                FROM recommendations r
+                JOIN daily_runs d ON d.id = r.run_id
+                WHERE r.stock_code IN ({marks})
+                GROUP BY r.stock_code
+                """,
+                tuple(codes),
+            ).fetchall()
+        return {str(r["stock_code"]): str(r["last_date"]) for r in rows}
+
+    def get_recent_run_dates(self, limit: int = 60) -> list[str]:
+        """最近成功运行日（新→旧），用于数「连续 N 轮无指令」。"""
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT run_date FROM daily_runs
+                WHERE status = 'success'
+                ORDER BY run_date DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [str(r["run_date"]) for r in rows]
+
     def get_market_analysis_series(self, limit: int = 30) -> list[dict[str, Any]]:
         with self.session() as conn:
             rows = conn.execute(

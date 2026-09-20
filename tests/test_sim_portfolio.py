@@ -94,6 +94,61 @@ def test_sim_skips_buy_without_position_pct(tmp_path: Path) -> None:
     assert any("position_pct" in str(f.get("note") or "") for f in snap["fills"])
 
 
+def test_sim_orphan_positions_marked(tmp_path: Path) -> None:
+    """连续 ≥2 轮成功运行无指令的持仓标「孤儿仓·仅盯市」，与策略仓区分。"""
+    from datetime import date
+
+    db = Database(tmp_path / "sim_orphan.db")
+    engine = SimPortfolioEngine(db, SimConfig(initial_cash=50_000))
+
+    # 8/1 买入 000725（当天有建议）；此后两轮成功运行都没有 000725 的建议
+    r1 = db.start_run(date(2026, 8, 1))
+    db.save_recommendation(r1, "000725", "buy", 0.6, None, None, 5.0, "test")
+    db.finish_run(r1, "success")
+    engine.apply_recommendations(
+        run_id=r1,
+        run_date="2026-08-01",
+        recommendations=[{"code": "000725", "action": "buy", "position_pct": 5}],
+        quotes={"000725": 6.0},
+    )
+    for d in ("2026-08-05", "2026-08-08"):
+        r = db.start_run(date.fromisoformat(d))
+        db.save_recommendation(r, "600519", "watch", 0.4, None, None, 0, "other")
+        db.finish_run(r, "success")
+
+    snap = engine.apply_recommendations(
+        run_id=999,
+        run_date="2026-08-11",
+        recommendations=[{"code": "600519", "action": "watch", "position_pct": 0}],
+        quotes={"000725": 5.5},
+    )
+    pos = next(p for p in snap["positions"] if p["code"] == "000725")
+    assert pos["idle_rounds"] == 2  # 8/5、8/8 两轮无指令
+    text = "\n".join(render_sim_section(snap))
+    assert "孤儿仓·仅盯市" in text
+    assert "不计入策略效果" in text
+
+    # 本轮仍被点名的持仓不是孤儿仓
+    snap2 = engine.apply_recommendations(
+        run_id=1000,
+        run_date="2026-08-12",
+        recommendations=[{"code": "000725", "action": "watch", "position_pct": 0}],
+        quotes={"000725": 5.6},
+    )
+    r2 = db.start_run(date(2026, 8, 12))
+    db.save_recommendation(r2, "000725", "watch", 0.4, None, None, 0, "still tracked")
+    db.finish_run(r2, "success")
+    snap3 = engine.apply_recommendations(
+        run_id=1001,
+        run_date="2026-08-13",
+        recommendations=[{"code": "600519", "action": "watch", "position_pct": 0}],
+        quotes={"000725": 5.6},
+    )
+    pos3 = next(p for p in snap3["positions"] if p["code"] == "000725")
+    assert pos3["idle_rounds"] == 0  # 8/12 刚被点名，锚点刷新
+    assert "孤儿仓" not in "\n".join(render_sim_section(snap3))
+
+
 def test_sim_quote_missing_marks_pnl_failed(tmp_path: Path) -> None:
     """取价失败不得用成本冒充现价/持平盈亏。"""
     db = Database(tmp_path / "sim_mtm.db")

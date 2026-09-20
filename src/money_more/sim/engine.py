@@ -303,6 +303,30 @@ class SimPortfolioEngine:
         )
         return snap
 
+    def _idle_rounds(
+        self,
+        positions: dict[str, dict[str, Any]],
+        run_date: str | None,
+    ) -> dict[str, int]:
+        """连续多少轮成功运行里该持仓未出现在任何建议中（0=本轮仍被点名）。
+
+        锚点 = 最后一次出现在建议表的 run_date；从未出现过的用开仓日。
+        只数 anchor 之后、且不晚于本轮 run_date 的成功运行轮数。
+        """
+        codes = [str(c) for c in positions.keys() if c]
+        if not codes or not run_date:
+            return {}
+        try:
+            last = self.db.get_last_rec_dates_by_code(codes)
+            runs = [d for d in self.db.get_recent_run_dates(limit=60) if d <= run_date]
+        except Exception:
+            return {}
+        out: dict[str, int] = {}
+        for code in codes:
+            anchor = last.get(code) or str((positions.get(code) or {}).get("opened_at") or "")[:10]
+            out[code] = sum(1 for d in runs if d > anchor)
+        return out
+
     def _rewind_if_rerun(self, run_date: str) -> None:
         existing = self.db.sim_get_snapshot(run_date)
         if not existing:
@@ -494,6 +518,11 @@ class SimPortfolioEngine:
                 }
             )
             mtm += value
+
+        # 孤儿仓标注：连续 N 轮成功运行未出现在建议中的持仓，仅盯市、不计入策略效果
+        idle = self._idle_rounds(pos_map, run_date)
+        for row in pos_rows:
+            row["idle_rounds"] = int(idle.get(str(row.get("code") or ""), 0))
 
         mtm_ok = not failed_codes
         if mtm_ok:
@@ -815,20 +844,36 @@ def render_sim_section(
     if positions:
         lines.append("## 模拟持仓（非真实）")
         lines.append("")
+        orphan_value = 0.0
+        orphan_codes: list[str] = []
         for p in positions:
+            idle = int(p.get("idle_rounds") or 0)
+            orphan = idle >= 2
+            tag = ""
+            if orphan:
+                orphan_codes.append(str(p.get("code") or ""))
+                if p.get("value"):
+                    orphan_value += float(p["value"])
+                tag = f" · **孤儿仓·仅盯市**（连续 {idle} 轮无指令，历史遗留，不计入策略效果）"
             if p.get("mark_ok") is False or p.get("mark") is None:
                 err = p.get("mark_error") or "取价失败"
                 lines.append(
                     f"- `{p.get('code')}` {p.get('shares'):.0f}股 · 成本 {p.get('avg_cost')} · "
-                    f"现价 — · 市值 — · **浮盈亏：{err}（盈亏计算失败）** · 仓位 —"
+                    f"现价 — · 市值 — · **浮盈亏：{err}（盈亏计算失败）** · 仓位 —{tag}"
                 )
             else:
                 lines.append(
                     f"- `{p.get('code')}` {p.get('shares'):.0f}股 · 成本 {p.get('avg_cost')} · "
                     f"现价 {p.get('mark')} · 市值 {p.get('value'):,.2f} · "
-                    f"浮盈亏 {p.get('pnl_pct')}% · 仓位 {p.get('weight_pct')}%"
+                    f"浮盈亏 {p.get('pnl_pct')}% · 仓位 {p.get('weight_pct')}%{tag}"
                 )
         lines.append("")
+        if orphan_codes:
+            lines.append(
+                f"_孤儿仓 {('、'.join(f'`{c}`' for c in orphan_codes))} 市值约 {orphan_value:,.2f} 元："
+                "A3 已不再给它们指令，仅机械盯市；评估策略效果时请剔除。_"
+            )
+            lines.append("")
     else:
         lines.append("_模拟盘当前空仓（现金待命）_")
         lines.append("")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,67 @@ def _one_line(text: Any, limit: int | None = 72) -> str:
     if limit is None or len(s) <= limit:
         return s
     return s[: limit - 1] + "…"
+
+
+def _a3_blocker_clause(rationale: str) -> str:
+    """从终局理由里抽「一句话卡点」：硬门禁后缀 > 「但」后第一个分句 > 首句。"""
+    text = " ".join(str(rationale or "").split())
+    if not text:
+        return "-"
+    m = re.search(r"硬门禁[:：]\s*([^；;。|]+)", text)
+    if m:
+        return _one_line(m.group(1), 42)
+    clauses = [c for c in re.split(r"[；;。]", text) if c.strip()]
+    for c in clauses:
+        if "但" in c:
+            after = c.split("但", 1)[1].strip("，, ")
+            if after:
+                return _one_line(after, 42)
+    return _one_line(clauses[0] if clauses else text, 42)
+
+
+def _render_a3_compact_watch(
+    lines: list[str],
+    recs: list[dict[str, Any]],
+    names: dict[str, str],
+    result: dict[str, Any],
+) -> None:
+    """空仓 + 终局全观察：A3 收成一张表 + 「离升级最近」；逐票全文仍在 B2④。"""
+    research_rows = (result.get("decision_stages") or {}).get("research") or []
+    rating_by_code = {
+        str(r.get("code") or ""): str(r.get("research_rating") or "").lower()
+        for r in research_rows
+        if isinstance(r, dict)
+    }
+    lines.append(
+        f"_空仓 + 终局全观察（{len(recs)} 只）：下表只留一句话卡点；"
+        "逐票完整理由见下方 **B2 · ④**。_"
+    )
+    lines.append("")
+    near = [
+        r
+        for r in recs
+        if rating_by_code.get(str(r.get("code") or "")) in ("buy", "strong_buy")
+    ]
+    near.sort(key=lambda r: float(r.get("confidence") or 0), reverse=True)
+    if near:
+        lines.append("**离升级最近**（研究层 buy 被风控压成观察；满足验证信号才升级）：")
+        lines.append("")
+        for r in near[:3]:
+            code = str(r.get("code") or "")
+            name = names.get(code, "")
+            sigs = [str(x) for x in (r.get("verify_signals") or []) if str(x).strip()]
+            need = _one_line(sigs[0], 60) if sigs else "见 B2④ 失效条件"
+            lines.append(f"- `{code}`{(' ' + name) if name else ''} — 差：{need}")
+        lines.append("")
+    lines.append("| 代码 | 名称 | 板块 | 一句话卡点 |")
+    lines.append("| --- | --- | --- | --- |")
+    for r in recs:
+        code = str(r.get("code") or "")
+        sl = r.get("sector_link") if isinstance(r.get("sector_link"), dict) else {}
+        sector = sanitize_sector_label(sl.get("sector") or r.get("sector_tag"), code=code) or "-"
+        lines.append(f"| {code} | {names.get(code, '') or '-'} | {sector} | {_a3_blocker_clause(str(r.get('rationale') or ''))} |")
+    lines.append("")
 
 
 def _stock_name_map(result: dict[str, Any]) -> dict[str, str]:
@@ -971,12 +1033,30 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
         )
     eb = result.get("equity_bond") or gl.get("equity_bond") or {}
     if eb.get("ok"):
+        # 有效上限去重：override 里已有「总仓上限维持≤X%」时，隐含值降级为括号注释
+        eff_cap: str | None = None
+        for x in ov:
+            m = re.search(r"总仓上限[^≤]*≤\s*(\d+(?:\.\d+)?)\s*%", str(x))
+            if m:
+                eff_cap = m.group(1)
+                break
+        implied = eb.get("implied_max_total_pct")
+        if eff_cap is not None and implied is not None:
+            try:
+                if float(eff_cap) < float(implied):
+                    cap_bit = f" · 隐含 {implied}%（有效上限 **{eff_cap}%**，见上方 override）"
+                else:
+                    cap_bit = f" · 隐含总仓上限 **{implied}%**"
+            except (TypeError, ValueError):
+                cap_bit = f" · 隐含总仓上限 **{implied}%**"
+        else:
+            cap_bit = f" · 隐含总仓上限 **{implied}%**"
         lines.append(
             f"- **股债相对价值**: ERP={eb.get('erp_bp')}bp"
             f" · {eb.get('index') or '沪深300'} PE={eb.get('pe_ttm')}"
             f" · 盈利收益率 {eb.get('earnings_yield_pct')}%"
-            f" · 隐含总仓上限 **{eb.get('implied_max_total_pct')}%**"
-            f"（regime=`{eb.get('regime')}`）"
+            + cap_bit
+            + f"（regime=`{eb.get('regime')}`）"
         )
     elif eb.get("note"):
         lines.append(f"- **股债相对价值**: {_one_line(eb.get('note'), 100)}")
@@ -1177,6 +1257,14 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
     lines.append("")
     if not recs:
         lines.append("- （本轮无结构化建议）")
+    elif basis.get("is_empty") and not [
+        r
+        for r in recs
+        if str(r.get("action") or "").lower() in ("buy", "add", "sell", "reduce")
+        and float(r.get("position_pct") or 0) > 0
+    ]:
+        # 空仓 + 无可执行动作：15 张观察墙收成一张表，逐票全文留在 B2④
+        _render_a3_compact_watch(lines, recs, names, result)
     else:
         for rec in recs:
             code = str(rec.get("code") or "")
