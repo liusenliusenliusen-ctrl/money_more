@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -512,6 +512,54 @@ class TushareSource:
         except Exception as exc:
             result["errors"].append(f"sf_month: {exc}")
 
+        return result
+
+    def fetch_market_turnover(self, days: int = 25) -> dict[str, Any]:
+        """沪深两市成交额（index_daily 沪+深聚合），单位：元。
+
+        用于把「日均成交额站稳 X 亿」类验证信号机械化。amount 单位为千元。
+        失败不抛错，只在 errors 里记录；调用方按缺失处理。
+        """
+        result: dict[str, Any] = {
+            "latest": None,
+            "avg5": None,
+            "avg20": None,
+            "as_of": None,
+            "source": "tushare_index_daily",
+            "errors": [],
+        }
+        if not self.available:
+            result["errors"].append("tushare_unavailable")
+            return result
+        start = (self.as_of - timedelta(days=days * 2 + 15)).strftime("%Y%m%d")
+        end = self.as_of.strftime("%Y%m%d")
+        by_date: dict[str, float] = {}
+        for ts_code in ("000001.SH", "399001.SZ"):
+            try:
+                df = self._safe_call(
+                    "index_daily", ts_code=ts_code, start_date=start, end_date=end
+                )
+            except Exception as exc:
+                result["errors"].append(f"index_daily@{ts_code}: {exc}")
+                continue
+            if df is None or df.empty or "amount" not in df.columns:
+                continue
+            for _, row in df.iterrows():
+                d = str(row.get("trade_date") or "")
+                amt = pd.to_numeric(pd.Series([row.get("amount")]), errors="coerce").iloc[0]
+                if d and amt == amt:
+                    by_date[d] = by_date.get(d, 0.0) + float(amt) * 1000.0  # 千元→元
+        # 只用沪深同日齐备的交易日（与 fetch_margin_market 同口径）
+        dates = sorted(by_date.keys())[-days:]
+        if not dates:
+            return result
+        series = [by_date[d] for d in dates]
+        result["as_of"] = dates[-1]
+        result["latest"] = round(series[-1], 0)
+        if len(series) >= 5:
+            result["avg5"] = round(sum(series[-5:]) / 5, 0)
+        if len(series) >= 20:
+            result["avg20"] = round(sum(series[-20:]) / 20, 0)
         return result
 
     def fetch_margin_market(self, lookback: int = 15) -> dict[str, Any]:

@@ -150,8 +150,14 @@ def build_verify_ledger(
     fetcher: Any,
     as_of: date | None = None,
     max_lookback_days: int = 120,
+    signal_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """汇总台账：到期建议的命中率。"""
+    """汇总台账：到期建议的命中率 + 验证信号机械校验（条件维度）。
+
+    signal_context 见 signal_checks.build_signal_context；为 None 时跳过校验。
+    """
+    from money_more.analysis.signal_checks import check_signal, summarize_signal_checks
+
     as_of = as_of or date.today()
     digests = _load_digests(digests_dir)
     candidates = _iter_verify_candidates(digests)
@@ -167,6 +173,17 @@ def build_verify_ledger(
         end = min(as_of, run_d + timedelta(days=int(row.get("verify_in_days") or 14)))
         prices = _price_path(fetcher, row["code"], run_d.isoformat(), end.isoformat())
         evaluated.append(evaluate_verify_window(row, prices, as_of))
+
+    # 条件维度：pending 也校验——「条件已提前达成而仍观察」正是要暴露的信息
+    if signal_context:
+        for row in evaluated:
+            checks = [
+                check_signal(s, signal_context, sector=row.get("sector"))
+                for s in (row.get("verify_signals") or [])
+            ]
+            if checks:
+                row["signal_checks"] = checks
+                row["signals_met"] = sum(1 for c in checks if c.get("verdict") == "met")
 
     done = [r for r in evaluated if r.get("verdict") in ("hit", "miss", "avoided", "avoid_failed", "flat")]
     buy_like = [r for r in done if is_declared_buy_like(r)]
@@ -193,10 +210,13 @@ def build_verify_ledger(
     if paper_hold:
         notes.append("纸面/空仓 hold（仓位=0）不计入 buy/hold 命中率。")
 
+    signal_coverage = summarize_signal_checks(evaluated) if signal_context else None
+
     return {
         "as_of": as_of.isoformat(),
         "total_due": len(done),
         "pending": sum(1 for r in evaluated if r.get("verdict") == "pending"),
+        "signal_coverage": signal_coverage,
         "buy_like": {
             "count": len(buy_like),
             "hit": hit,

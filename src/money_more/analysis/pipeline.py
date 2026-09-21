@@ -388,6 +388,7 @@ class DecisionPipeline:
                 as_of=datetime.strptime(run_date, "%Y-%m-%d").date()
                 if isinstance(run_date, str)
                 else None,
+                signal_context=self._build_signal_context(result),
             )
         except Exception as v_exc:
             log.warning("verify_ledger build failed (non-fatal): %s", v_exc)
@@ -1448,6 +1449,24 @@ class DecisionPipeline:
         out["excerpt"] = combined[:max_chars]
         out["matched_sections"] = len(chunks)
         return out
+
+    def _build_signal_context(self, result: dict[str, Any]) -> dict[str, Any] | None:
+        """验证信号机械校验的指标快照；失败返回 None（台账退化为纯价格判定）。"""
+        try:
+            from money_more.analysis.signal_checks import build_signal_context
+
+            macro_raw = (result.get("intelligence") or {}).get("macro_raw") or {}
+            turnover: dict[str, Any] = {}
+            ts = getattr(self.intelligence, "tushare", None)
+            if ts is not None and getattr(ts, "available", False):
+                try:
+                    turnover = ts.fetch_market_turnover(days=25)
+                except Exception as exc:
+                    turnover = {"errors": [f"market_turnover: {exc}"]}
+            return build_signal_context(macro_raw=macro_raw, turnover=turnover)
+        except Exception as exc:
+            log.warning("signal context build failed (non-fatal): %s", exc)
+            return None
 
     def _deep_stale_rounds(self, screen_cfg: Any) -> dict[str, int]:
         """深度池轮换输入：连续 N 轮在建议中且终局均为 watch 的代码 → 连击轮数。

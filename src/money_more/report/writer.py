@@ -935,6 +935,13 @@ def render_conclusion_card(result: dict[str, Any]) -> list[str]:
             )
         if bits:
             a0_bits.append("验证窗口 " + "；".join(bits))
+        sc = vl.get("signal_coverage") or {}
+        if sc.get("total"):
+            a0_bits.append(
+                f"验证信号机查 {sc.get('checkable')}/{sc.get('total')} 条"
+                f"（达成 {sc.get('met')} · 未达成 {sc.get('unmet')} · 指标缺失 {sc.get('unknown')}）"
+                f"；其余 {sc.get('narrative')} 条需叙事判断"
+            )
         if vl.get("reading_note") and not bl.get("count") and wl.get("avoid_failed"):
             a0_bits.append(str(vl["reading_note"]))
     # A0-5：社融期次落后告警（机读滞后期，勿称「最新社融」）
