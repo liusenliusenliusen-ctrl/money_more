@@ -137,6 +137,15 @@ def test_pe_filter_inactive_flag_when_coverage_low() -> None:
     assert float(stats2.get("pe_coverage_pct") or 0) > 50.0
 
 
+def test_pe_filter_inactive_when_column_absent() -> None:
+    """新浪备源根本没有 PE 列（不是全 NaN）：也要标未生效，0% 覆盖如实呈现。"""
+    cfg = ScreenConfig(min_amount=1e6, exclude_negative_pe=True, pe_max=90)
+    df = _normalize_spot(_sample_spot()).drop(columns=["pe"])
+    _out, stats = _apply_hard_filters(df, cfg)
+    assert stats.get("pe_filter_inactive") is True
+    assert stats.get("pe_coverage_pct") == 0.0
+
+
 def test_deep_stale_rounds_streaks() -> None:
     from money_more.analysis.screen import deep_stale_rounds
 

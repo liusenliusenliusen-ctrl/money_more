@@ -760,6 +760,10 @@ def _apply_hard_filters(df: pd.DataFrame, config: ScreenConfig) -> tuple[pd.Data
             mask = pe.isna() | (pe <= config.pe_max)
             stats["high_pe"] = int((~mask).sum())
             out = out[mask]
+    else:
+        # 现货源根本没有 PE 列（如新浪）：过滤同样未生效，0% 覆盖如实标注
+        stats["pe_coverage_pct"] = 0.0
+        stats["pe_filter_inactive"] = True
     if "price" in out.columns:
         mask = out["price"].fillna(0) > 0
         stats["bad_price"] = int((~mask).sum())
