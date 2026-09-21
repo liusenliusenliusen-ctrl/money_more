@@ -31,6 +31,14 @@ class _MemCache:
         return self._stale.get(key) or self._store.get(key)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_em_health(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """健康计数落盘隔离到 tmp，避免测试污染真实 data/cache 且互相累计。"""
+    monkeypatch.setattr(
+        "money_more.data.fetcher._em_health_path", lambda: tmp_path / "em_health.json"
+    )
+
+
 def _em_like(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
@@ -126,7 +134,7 @@ def test_fetch_spot_uses_stale_cache_when_live_fails(monkeypatch: pytest.MonkeyP
 def test_market_fetcher_get_spot_records_source(monkeypatch: pytest.MonkeyPatch) -> None:
     fetcher = MarketDataFetcher(as_of=date(2026, 7, 19))
 
-    def _fake_fetch(*, cache_key: str, cache: Any) -> tuple[pd.DataFrame, str, list[str]]:
+    def _fake_fetch(*, cache_key: str, cache: Any, **_kw: Any) -> tuple[pd.DataFrame, str, list[str]]:
         df = _em_like(
             [{"代码": "600519", "名称": "贵州茅台", "最新价": 1400, "涨跌幅": 0.5, "成交额": 3e9}]
         )

@@ -95,6 +95,12 @@ class DecisionPipeline:
         self.fetcher = fetcher
         self.llm = llm
         self.intelligence = intelligence or IntelligenceFetcher(config)
+        # 东财现货持续失败时，用 Tushare daily_basic(T-1) 给备源现货补 PE/PB/总市值
+        _ts = getattr(self.intelligence, "tushare", None)
+        if _ts is not None:
+            from money_more.data.fetcher import make_tushare_valuation_overlay
+
+            self.fetcher.valuation_overlay = make_tushare_valuation_overlay(_ts)
         self.trend_builder = TrendReportBuilder(db, llm)
         self._orchestrator = None
         if getattr(config, "agents", None) and config.agents.enabled:

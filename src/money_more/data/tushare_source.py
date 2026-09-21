@@ -562,6 +562,59 @@ class TushareSource:
             result["avg20"] = round(sum(series[-20:]) / 20, 0)
         return result
 
+    def fetch_daily_basic_valuation(self, lookback_days: int = 10) -> dict[str, Any]:
+        """全市场估值快照（daily_basic，最近一个交易日）：code6 → pe_ttm/pb/total_mv/circ_mv。
+
+        用途：东财现货（push2）持续失败时，给新浪备源补 PE/PB/总市值列，
+        让初筛估值约束恢复生效。daily_basic 需 2000 积分；权限不足/失败不抛错，
+        rows 为空、errors 记录，调用方按缺失处理。
+
+        注意：按单个 trade_date 逐日回退查询（周末/节假日返回空），
+        不用 start/end 区间——区间查询会撞单次行数上限导致截断。
+        total_mv/circ_mv 单位：万元（overlay 侧负责换算）。
+        """
+        result: dict[str, Any] = {"as_of": None, "rows": {}, "errors": []}
+        if not self.available:
+            result["errors"].append("tushare_unavailable")
+            return result
+        df: pd.DataFrame | None = None
+        used_date = ""
+        for back in range(lookback_days):
+            td = (self.as_of - timedelta(days=back)).strftime("%Y%m%d")
+            try:
+                cand = self._safe_call(
+                    "daily_basic",
+                    trade_date=td,
+                    fields="ts_code,trade_date,pe,pe_ttm,pb,total_mv,circ_mv,turnover_rate",
+                )
+            except Exception as exc:
+                result["errors"].append(f"daily_basic@{td}: {exc}")
+                return result  # 权限/限频类错误：回退重试无意义，直接出
+            if cand is not None and not cand.empty:
+                df = cand
+                used_date = td
+                break
+        if df is None or df.empty:
+            result["errors"].append("daily_basic_empty")
+            return result
+        rows: dict[str, dict[str, Any]] = {}
+        for _, r in df.iterrows():
+            code = normalize_code(str(r.get("ts_code") or "")[:6])
+            if not code:
+                continue
+            rows[code] = {
+                "pe_ttm": _safe_float(r.get("pe_ttm")),
+                "pb": _safe_float(r.get("pb")),
+                "total_mv": _safe_float(r.get("total_mv")),
+                "circ_mv": _safe_float(r.get("circ_mv")),
+                "turnover_rate": _safe_float(r.get("turnover_rate")),
+            }
+        result["as_of"] = used_date
+        result["rows"] = rows
+        if len(df) >= 5900:
+            result["errors"].append(f"daily_basic_maybe_truncated:rows={len(df)}")
+        return result
+
     def fetch_margin_market(self, lookback: int = 15) -> dict[str, Any]:
         """市场两融：按日汇总沪+深融资余额，构造与 Ak margin_trend 近似结构。
 

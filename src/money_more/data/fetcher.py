@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+import json
 import time
 
 import akshare as ak
@@ -373,10 +374,90 @@ def _overlay_em_valuation(live: pd.DataFrame, em_rows: list[dict[str, Any]] | No
     return out
 
 
+def _overlay_tushare_valuation(
+    live: pd.DataFrame, rows: dict[str, dict[str, Any]] | None
+) -> pd.DataFrame:
+    """用 Tushare daily_basic(T-1) 补 PE(TTM)/PB/总市值；只填空缺，不覆盖已有值。
+
+    列名对齐 _normalize_spot 别名表（市盈率TTM/市净率/总市值）。
+    daily_basic 的 total_mv 单位是万元，换算成元（与东财现货口径一致）。
+    """
+    if live is None or live.empty or not rows or "代码" not in live.columns:
+        return live
+    out = live.copy()
+    codes = out["代码"].astype(str).map(normalize_code)
+
+    def _map(field: str) -> pd.Series:
+        return pd.to_numeric(
+            codes.map(lambda c: (rows.get(c) or {}).get(field)), errors="coerce"
+        )
+
+    for col, field, scale in (
+        ("市盈率TTM", "pe_ttm", 1.0),
+        ("市净率", "pb", 1.0),
+        ("总市值", "total_mv", 1e4),  # 万元 → 元
+    ):
+        vals = _map(field) * scale
+        if col not in out.columns:
+            out[col] = vals
+        else:
+            cur = pd.to_numeric(out[col], errors="coerce")
+            out[col] = cur.where(cur.notna(), vals)
+    return out
+
+
+def make_tushare_valuation_overlay(ts: Any) -> Callable[[pd.DataFrame], pd.DataFrame]:
+    """把 TushareSource 包成 fetch_spot_with_fallback 可用的 overlay callable。
+
+    惰性求值 + 每次调用方会话内只拉一次（daily_basic 全市场约 5k 行）。
+    ts 无 fetch_daily_basic_valuation 或返回空时 overlay 为 no-op。
+    """
+    cache: dict[str, Any] = {"done": False, "rows": {}}
+
+    def _overlay(df: pd.DataFrame) -> pd.DataFrame:
+        if not cache["done"]:
+            cache["done"] = True
+            try:
+                res = ts.fetch_daily_basic_valuation()
+                cache["rows"] = res.get("rows") or {}
+                cache["as_of"] = res.get("as_of")
+            except Exception:
+                cache["rows"] = {}
+        return _overlay_tushare_valuation(df, cache["rows"])
+
+    return _overlay
+
+
+def _em_health_path() -> Path:
+    return Path("data/cache") / "em_health.json"
+
+
+def _bump_em_spot_health(ok: bool) -> int:
+    """东财现货连续失败计数（跨轮持久化）：成功清零，失败 +1。返回当前连失败轮数。"""
+    try:
+        st = json.loads(_em_health_path().read_text(encoding="utf-8"))
+    except Exception:
+        st = {}
+    if ok:
+        n = 0
+        st["last_ok"] = date.today().isoformat()
+    else:
+        n = int(st.get("spot_consec_fail") or 0) + 1
+    st["spot_consec_fail"] = n
+    st["updated"] = date.today().isoformat()
+    try:
+        _em_health_path().parent.mkdir(parents=True, exist_ok=True)
+        _em_health_path().write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return n
+
+
 def fetch_spot_with_fallback(
     *,
     cache_key: str,
     cache: Any | None = None,
+    valuation_overlay: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
 ) -> tuple[pd.DataFrame, str, list[str]]:
     """全 A 现货：东财（可重试）→ 东财分市场 → 新浪（可叠东财估值）→ 过期磁盘缓存。"""
     from money_more.data.cache import DiskTTLCache
@@ -417,6 +498,7 @@ def fetch_spot_with_fallback(
                 errors.append(annotate_em_error(f"spot_{source}_empty", "empty"))
                 continue
             if source in ("em_all", "em_split"):
+                _bump_em_spot_health(True)
                 try:
                     disk.set(em_val_key, df.to_dict(orient="records"), ttl_sec=7 * 24 * 3600)
                 except Exception:
@@ -434,6 +516,23 @@ def fetch_spot_with_fallback(
                         f"spot_sina_em_valuation_overlay:pe={cov['pe_ok']}/{cov['n']}"
                         f",pb={cov['pb_ok']}/{cov['n']}"
                     )
+                # 东财缓存没有/覆盖仍低 → Tushare daily_basic(T-1) 补估值
+                cov_now = spot_valuation_coverage(df)
+                pe_low = not cov_now["n"] or cov_now["pe_ok"] / cov_now["n"] < 0.5
+                if pe_low and valuation_overlay is not None:
+                    try:
+                        df = valuation_overlay(df)
+                        cov2 = spot_valuation_coverage(df)
+                        errors.append(
+                            f"spot_tushare_valuation_overlay:pe={cov2['pe_ok']}/{cov2['n']}"
+                            f",pb={cov2['pb_ok']}/{cov2['n']}"
+                        )
+                    except Exception as exc:
+                        errors.append(f"spot_tushare_overlay: {exc}")
+            if source not in ("em_all", "em_split"):
+                consec = _bump_em_spot_health(False)
+                if consec >= 2:
+                    errors.append(f"spot_em_consecutive_failures:{consec}")
             try:
                 disk.set(cache_key, df.to_dict(orient="records"), ttl_sec=3600)
             except Exception:
@@ -450,8 +549,14 @@ def fetch_spot_with_fallback(
         df = _canonicalize_spot_df(pd.DataFrame(stale))
         if not df.empty:
             errors.append("spot_stale_cache")
+            consec = _bump_em_spot_health(False)
+            if consec >= 2:
+                errors.append(f"spot_em_consecutive_failures:{consec}")
             return df, "stale_cache", errors
 
+    consec = _bump_em_spot_health(False)
+    if consec >= 2:
+        errors.append(f"spot_em_consecutive_failures:{consec}")
     return pd.DataFrame(), "", errors
 
 
@@ -539,6 +644,9 @@ class MarketDataFetcher:
         self._spot_warnings: list[str] = []
         self._spot_valuation: dict[str, Any] = {}
         self._hs300_hist: pd.DataFrame | None = None
+        # 估值 overlay 接线（由 pipeline 注入 Tushare daily_basic；None = 不补）。
+        # 属长生命周期装配，reset_run_cache/set_as_of 不清。
+        self.valuation_overlay: Callable[[pd.DataFrame], pd.DataFrame] | None = None
 
     @property
     def spot_source(self) -> str | None:
@@ -584,11 +692,18 @@ class MarketDataFetcher:
 
         cache = DiskTTLCache(Path("data/cache"), default_ttl_sec=3600)
         key = f"spot_em:{self.as_of.isoformat()}"
-        df, source, warnings = fetch_spot_with_fallback(cache_key=key, cache=cache)
+        df, source, warnings = fetch_spot_with_fallback(
+            cache_key=key, cache=cache, valuation_overlay=self.valuation_overlay
+        )
         self._spot_source = source or None
         self._spot_warnings = warnings
         cov = spot_valuation_coverage(df)
-        cov["overlay"] = any("em_valuation_overlay" in str(w) for w in warnings)
+        cov["overlay"] = any("valuation_overlay" in str(w) for w in warnings)
+        cov["overlay_src"] = (
+            "tushare_daily_basic"
+            if any("tushare_valuation_overlay" in str(w) for w in warnings)
+            else ("em_cache" if cov["overlay"] else None)
+        )
         self._spot_valuation = cov
         if df is not None and not df.empty:
             self._spot_df = df

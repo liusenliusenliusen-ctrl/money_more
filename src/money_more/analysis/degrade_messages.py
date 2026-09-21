@@ -24,12 +24,17 @@ def spot_source_plain(source: str | None, valuation: dict[str, Any] | None = Non
     pe_ok = int(val.get("pe_ok") or 0)
     pb_ok = int(val.get("pb_ok") or 0)
     if src == "sina":
+        overlay_src = str(val.get("overlay_src") or "")
+        src_label = {
+            "tushare_daily_basic": "Tushare daily_basic(T-1)",
+            "em_cache": "东财估值缓存",
+        }.get(overlay_src, "估值")
         if val.get("overlay") and pe_ok > 0:
             cov = (pe_ok / n) if n else 0.0
             tail = "；PE 覆盖<50%，硬过滤仍未生效" if cov < 0.5 else ""
-            return f"新浪现货备源（东财估值 overlay：PE {pe_ok}/{n}、PB {pb_ok}/{n}{tail}）"
+            return f"新浪现货备源（{src_label} overlay：PE {pe_ok}/{n}、PB {pb_ok}/{n}{tail}）"
         if val.get("overlay"):
-            return "新浪现货备源（尝试东财估值 overlay 但 PE/PB 未补上，估值分已降权，PE 硬过滤未生效）"
+            return f"新浪现货备源（尝试{src_label} overlay 但 PE/PB 未补上，估值分已降权，PE 硬过滤未生效）"
         return "新浪现货备源（无 PE/PB overlay，估值分已降权，PE 硬过滤未生效，非中性=齐备）"
     return _SPOT_HINTS.get(src, f"现货源=`{src}`")
 
