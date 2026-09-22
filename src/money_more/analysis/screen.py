@@ -344,8 +344,13 @@ def run_stock_screen(
             n = int(val.get("n") or 0)
             pb_ok = int(val.get("pb_ok") or 0)
             if val.get("overlay") and pe_ok > 0:
+                src_label = (
+                    "Tushare daily_basic"
+                    if val.get("overlay_src") == "tushare_daily_basic"
+                    else "估值"
+                )
                 out["plain_note"] += (
-                    f" 行情备源={spot_source}（东财估值 overlay 补到 PE {pe_ok}/{n}、PB {pb_ok}/{n}）。"
+                    f" 行情备源={spot_source}（{src_label} overlay 补到 PE {pe_ok}/{n}、PB {pb_ok}/{n}）。"
                 )
             elif val.get("overlay"):
                 out["plain_note"] += (
@@ -655,7 +660,7 @@ def _enrich_amount_avg(
         if isinstance(cached, (int, float)) and cached > 0:
             return code, float(cached)
         try:
-            hist = fetcher._fetch_daily_hist(code, start, end)
+            hist = fetcher._fetch_daily_hist(code, start, end, prefer="sina")
             if hist is None or hist.empty:
                 return code, None
             amt_col = next(

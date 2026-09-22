@@ -43,6 +43,36 @@ def _em_like(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def test_daily_hist_prefers_sina_for_screening(monkeypatch: pytest.MonkeyPatch) -> None:
+    """筛股均额走新浪，不打东财 K 线（几百只连打会把 push 限流续上）。"""
+    from datetime import date
+
+    from money_more.data.fetcher import MarketDataFetcher
+
+    called = {"em": 0, "sina": 0}
+
+    def _em(*_a, **_k):
+        called["em"] += 1
+        raise ConnectionError("push2his down")
+
+    def _sina(*_a, **_k):
+        called["sina"] += 1
+        return pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-09-18", "2026-09-19"]),
+                "close": [10.0, 10.2],
+                "amount": [1e8, 1.1e8],
+            }
+        )
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_hist", _em)
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_daily", _sina)
+    fetcher = MarketDataFetcher(as_of=date(2026, 9, 19))
+    df = fetcher._fetch_daily_hist("600519", "20260901", "20260919", prefer="sina")
+    assert called["em"] == 0 and called["sina"] == 1
+    assert len(df) == 2
+
+
 def test_canonicalize_spot_normalizes_prefixed_codes() -> None:
     raw = pd.DataFrame(
         [
@@ -81,30 +111,37 @@ def test_fetch_spot_falls_back_to_sina(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(df) == 2
     assert set(df["代码"]) == {"601398", "000001"}
     assert any("spot_fallback:sina" in w for w in warnings)
-    assert "spot_em_attempts:3" in warnings
+    assert "spot_em_attempts:1" in warnings
 
 
-def test_fetch_spot_em_third_attempt_recovers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """em_all 前两次瞬时失败，第三次退避后成功：不回落备源。"""
+def test_fetch_spot_em_fails_once_then_sina(monkeypatch: pytest.MonkeyPatch) -> None:
+    """东财全量只打一次。失败后不再整段重试，也不再打分市场（同一 clist 接口）。"""
     cache = _MemCache()
-    calls = {"n": 0}
+    calls = {"n": 0, "split": 0}
 
-    def _flaky_em() -> pd.DataFrame:
+    def _em_fail() -> pd.DataFrame:
         calls["n"] += 1
-        if calls["n"] < 3:
-            raise ConnectionError("push2 timeout")
-        return _em_like(
-            [{"代码": "sh600519", "名称": "贵州茅台", "最新价": 1400, "涨跌幅": 1.0, "成交额": 1e9}]
-        )
+        raise ConnectionError("push2 RemoteDisconnected")
 
-    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _flaky_em)
-    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
+    def _split() -> pd.DataFrame:
+        calls["split"] += 1
+        return pd.DataFrame()
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _em_fail)
+    monkeypatch.setattr("money_more.data.fetcher._fetch_em_split_spot", _split)
+    monkeypatch.setattr(
+        "money_more.data.fetcher.ak.stock_zh_a_spot",
+        lambda: _em_like(
+            [{"代码": "sh600519", "名称": "贵州茅台", "最新价": 1400, "涨跌幅": 1.0, "成交额": 1e9}]
+        ),
+    )
 
     df, source, warnings = fetch_spot_with_fallback(cache_key="spot:test3", cache=cache)
-    assert source == "em_all"
-    assert calls["n"] == 3
+    assert source == "sina"
+    assert calls["n"] == 1
+    assert calls["split"] == 0
     assert len(df) == 1
-    assert not any("spot_fallback" in w for w in warnings)
+    assert "spot_em_attempts:1" in warnings
 
 
 def test_fetch_spot_uses_stale_cache_when_live_fails(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -254,6 +254,37 @@ def test_em_health_counter_accumulates_and_resets(tmp_path) -> None:
     assert _bump_em_spot_health(False) == 1
 
 
+def test_spot_circuit_skips_em_then_half_opens(monkeypatch: pytest.MonkeyPatch) -> None:
+    """连续两轮失败后熔断，不再打东财；累计到 3 的下一轮半开，探测一次。"""
+    from money_more.data.fetcher import em_push_circuit_open
+
+    calls = {"n": 0}
+
+    def _em_fail() -> pd.DataFrame:
+        calls["n"] += 1
+        raise ConnectionError("push2 down")
+
+    monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _em_fail)
+    monkeypatch.setattr(
+        "money_more.data.fetcher.ak.stock_zh_a_spot",
+        lambda: _sina_df(),
+    )
+
+    for i in range(2):
+        fetch_spot_with_fallback(cache_key=f"spot:{i}", cache=_MemCache())
+    assert calls["n"] == 2
+    assert em_push_circuit_open() is True
+
+    _, _, skipped = fetch_spot_with_fallback(cache_key="spot:skip", cache=_MemCache())
+    assert calls["n"] == 2
+    assert any(w.startswith("spot_em_circuit_open:") for w in skipped)
+
+    # 跳过这一轮把计数加到 3，下一轮半开，允许再探测一次
+    assert em_push_circuit_open() is False
+    fetch_spot_with_fallback(cache_key="spot:half", cache=_MemCache())
+    assert calls["n"] == 3
+
+
 def test_spot_em_consecutive_failures_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     """连续第 2 轮起，errors 带 spot_em_consecutive_failures:N（进错误抽样可见）。"""
     cache = _MemCache()
@@ -262,9 +293,7 @@ def test_spot_em_consecutive_failures_marker(monkeypatch: pytest.MonkeyPatch) ->
         raise ConnectionError("push2 down")
 
     monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot_em", _em_fail)
-    monkeypatch.setattr("money_more.data.fetcher._fetch_em_split_spot", lambda: pd.DataFrame())
     monkeypatch.setattr("money_more.data.fetcher.ak.stock_zh_a_spot", _sina_df)
-    monkeypatch.setattr("money_more.data.fetcher.time.sleep", lambda *_a, **_k: None)
 
     _, _, w1 = fetch_spot_with_fallback(cache_key="spot:test", cache=_MemCache())
     assert not any("consecutive_failures" in w for w in w1)  # 第 1 轮不标
@@ -272,3 +301,4 @@ def test_spot_em_consecutive_failures_marker(monkeypatch: pytest.MonkeyPatch) ->
     assert "spot_em_consecutive_failures:2" in w2
     _, _, w3 = fetch_spot_with_fallback(cache_key="spot:test3", cache=_MemCache())
     assert "spot_em_consecutive_failures:3" in w3
+    assert any(w.startswith("spot_em_circuit_open:") for w in w3)

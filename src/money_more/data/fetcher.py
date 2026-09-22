@@ -432,12 +432,17 @@ def _em_health_path() -> Path:
     return Path("data/cache") / "em_health.json"
 
 
-def _bump_em_spot_health(ok: bool) -> int:
-    """东财现货连续失败计数（跨轮持久化）：成功清零，失败 +1。返回当前连失败轮数。"""
+def _read_em_health() -> dict[str, Any]:
     try:
         st = json.loads(_em_health_path().read_text(encoding="utf-8"))
     except Exception:
-        st = {}
+        return {}
+    return st if isinstance(st, dict) else {}
+
+
+def _bump_em_spot_health(ok: bool) -> int:
+    """东财现货连续失败计数（跨轮持久化）：成功清零，失败 +1。返回当前连失败轮数。"""
+    st = _read_em_health()
     if ok:
         n = 0
         st["last_ok"] = date.today().isoformat()
@@ -453,13 +458,30 @@ def _bump_em_spot_health(ok: bool) -> int:
     return n
 
 
+def em_push_circuit_open() -> bool:
+    """东财 push 系接口是否应停打。
+
+    akshare 全 A 现货是约 55 页 clist 连打，外加我们自己的整段重试，会把机房 IP
+    打进 RemoteDisconnected 限流；限流期间连单页、K 线也会被掐。连续失败 ≥2 轮后
+    停止请求，避免把封禁续上。每累计 3 轮失败做一次半开探测，成功则计数清零。
+    """
+    n = int(_read_em_health().get("spot_consec_fail") or 0)
+    if n < 2:
+        return False
+    return n % 3 != 0
+
+
 def fetch_spot_with_fallback(
     *,
     cache_key: str,
     cache: Any | None = None,
     valuation_overlay: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
 ) -> tuple[pd.DataFrame, str, list[str]]:
-    """全 A 现货：东财（可重试）→ 东财分市场 → 新浪（可叠东财估值）→ 过期磁盘缓存。"""
+    """全 A 现货：东财一次 → 新浪（可叠估值）→ 过期磁盘缓存。
+
+    东财 clist 被限流时不再重试、也不走分市场（同一接口）。连续失败后熔断，
+    半开轮才再探测一次。估值缺口由调用方的 valuation_overlay（Tushare daily_basic）补。
+    """
     from money_more.data.cache import DiskTTLCache
 
     errors: list[str] = []
@@ -472,22 +494,17 @@ def fetch_spot_with_fallback(
         if not df.empty:
             return df, "cache", errors
 
-    attempts: list[tuple[str, Any]] = [
-        ("em_all", ak.stock_zh_a_spot_em),
-        ("em_all", ak.stock_zh_a_spot_em),  # 瞬时超时再试一次
-        ("em_all", ak.stock_zh_a_spot_em),  # 第三次：更长退避后再试
-        ("em_split", _fetch_em_split_spot),
-        ("sina", ak.stock_zh_a_spot),
-    ]
+    attempts: list[tuple[str, Any]] = [("sina", ak.stock_zh_a_spot)]
     em_tried = 0
+    if em_push_circuit_open():
+        n = int(_read_em_health().get("spot_consec_fail") or 0)
+        errors.append(f"spot_em_circuit_open:{n}")
+    else:
+        attempts.insert(0, ("em_all", ak.stock_zh_a_spot_em))
     for source, caller in attempts:
         try:
             if source == "em_all":
                 em_tried += 1
-                if em_tried == 2:
-                    time.sleep(1.0)
-                elif em_tried > 2:
-                    time.sleep(3.0)
             if source.startswith("em"):
                 with eastmoney_direct_session():
                     raw = caller()
@@ -712,33 +729,49 @@ class MarketDataFetcher:
         self._spot_df = pd.DataFrame()
         return self._spot_df
 
-    def _fetch_daily_hist(self, code: str, start: str, end: str) -> pd.DataFrame:
-        """优先东方财富 K 线（直连+一次重试），失败则回退新浪日线。"""
-        errors: list[str] = []
-        for attempt in range(2):
-            try:
-                with eastmoney_direct_session():
-                    df = ak.stock_zh_a_hist(
-                        symbol=normalize_code(code),
-                        period="daily",
-                        start_date=start,
-                        end_date=end,
-                        adjust="qfq",
-                    )
-                if df is not None and not df.empty:
-                    return df
-                errors.append(annotate_em_error(f"em_hist_empty(attempt={attempt + 1})", "empty"))
-            except Exception as exc:
-                errors.append(annotate_em_error(f"em_hist({attempt + 1})", exc))
-
+    def _fetch_sina_daily(self, code: str, start: str, end: str) -> pd.DataFrame:
         df = ak.stock_zh_a_daily(symbol=code_with_prefix(code), adjust="qfq")
         if df is None or df.empty:
-            raise RuntimeError("K线获取失败: " + "; ".join(errors))
+            return pd.DataFrame()
         df = df.copy()
         df["date"] = pd.to_datetime(df["date"])
         start_ts = pd.Timestamp(datetime.strptime(start, "%Y%m%d"))
         end_ts = pd.Timestamp(datetime.strptime(end, "%Y%m%d"))
         return df[(df["date"] >= start_ts) & (df["date"] <= end_ts)]
+
+    def _fetch_daily_hist(
+        self, code: str, start: str, end: str, *, prefer: str = "em"
+    ) -> pd.DataFrame:
+        """日线：默认东财一次，失败回新浪。
+
+        prefer='sina' 或东财 push 熔断打开时直接走新浪，避免筛股几百只票把限流续上。
+        """
+        if prefer == "sina" or em_push_circuit_open():
+            df = self._fetch_sina_daily(code, start, end)
+            if df is not None and not df.empty:
+                return df
+            if prefer == "sina":
+                raise RuntimeError("K线获取失败: sina_empty")
+        errors: list[str] = []
+        try:
+            with eastmoney_direct_session():
+                df = ak.stock_zh_a_hist(
+                    symbol=normalize_code(code),
+                    period="daily",
+                    start_date=start,
+                    end_date=end,
+                    adjust="qfq",
+                )
+            if df is not None and not df.empty:
+                return df
+            errors.append(annotate_em_error("em_hist_empty", "empty"))
+        except Exception as exc:
+            errors.append(annotate_em_error("em_hist", exc))
+
+        df = self._fetch_sina_daily(code, start, end)
+        if df is None or df.empty:
+            raise RuntimeError("K线获取失败: " + "; ".join(errors))
+        return df
 
     def _hist_close_series(self, df: pd.DataFrame) -> pd.Series:
         if "收盘" in df.columns:
