@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -186,6 +187,32 @@ def cmd_email_test(args: argparse.Namespace) -> int:
     return 2
 
 
+def _hard_exit(code: int) -> None:
+    """批处理入口硬退出：跳过 atexit 与线程 join。
+
+    到此处时工作已全部落盘（报告/邮件/台账）。若仍有线程卡在死 socket 的
+    recv()（行情/LLM 库的连接泄漏），解释器正常退出会被 join 永久拖住——
+    服务器上曾因此累积 12 个「跑完不退出」的僵尸进程。os._exit 前 flush
+    控制台与日志，保证输出不丢。
+    """
+    try:
+        console.file.flush()
+    except Exception:
+        pass
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    try:
+        import logging
+
+        logging.shutdown()
+    except Exception:
+        pass
+    os._exit(code)
+
+
 def cmd_scheduled(args: argparse.Namespace) -> int:
     """周期流程：按 cadence / interval_days 门禁 → 分析报告（可发邮件）。"""
     from money_more.schedule_gate import should_run, write_last_run
@@ -200,7 +227,7 @@ def cmd_scheduled(args: argparse.Namespace) -> int:
     )
     if not ok:
         console.print(Panel(reason, title="跳过本次（未到间隔）", style="yellow"))
-        return 0
+        _hard_exit(0)
 
     console.print(Panel(reason, title="周期门禁", style="cyan"))
     args.skip_debate = getattr(args, "skip_debate", False)
@@ -209,7 +236,8 @@ def cmd_scheduled(args: argparse.Namespace) -> int:
         run_date = date.fromisoformat(args.date) if args.date else date.today()
         write_last_run(config.project_root, run_date)
         console.print(Panel(f"已记录成功运行日: {run_date.isoformat()}", style="green"))
-    return code
+    _hard_exit(code)
+    return code  # 不可达；仅为类型标注
 
 
 def cmd_weekly(args: argparse.Namespace) -> int:
