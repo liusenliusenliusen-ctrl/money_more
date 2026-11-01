@@ -463,12 +463,13 @@ def em_push_circuit_open() -> bool:
 
     akshare 全 A 现货是约 55 页 clist 连打，外加我们自己的整段重试，会把机房 IP
     打进 RemoteDisconnected 限流；限流期间连单页、K 线也会被掐。连续失败 ≥2 轮后
-    停止请求，避免把封禁续上。每累计 3 轮失败做一次半开探测，成功则计数清零。
+    停止请求，避免把封禁续上。每累计 6 轮失败做一次半开探测，成功则计数清零。
+    探测会再打一整段 clist，太密会把封禁续上。
     """
     n = int(_read_em_health().get("spot_consec_fail") or 0)
     if n < 2:
         return False
-    return n % 3 != 0
+    return n % 6 != 0
 
 
 def fetch_spot_with_fallback(

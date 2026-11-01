@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +17,7 @@ TREND_UPDATE_SYSTEM = """你是 A 股趋势跟踪分析师。任务是把「今�
 3. 区分「短期噪声」与「趋势切换」；仅当证据充分时才宣布 regime 切换
 4. 板块侧重 watch_sectors / 资金流自动扩；个股侧重深度池与声明持仓，勿扩写无关标的
 5. 叙事要可追溯：引用日期与关键信号
+6. 今日分析已经给出阶段、风格、风险时，禁止写「无新增分析」「无新增今日分析数据」「维持前日判断」。change_note 与 executive_summary 必须写出今日阶段，并点出至少一项今日变化（微观结构、美债、成交或融资）
 
 必须输出 JSON：
 {
@@ -72,6 +74,20 @@ TREND_UPDATE_SYSTEM = """你是 A 股趋势跟踪分析师。任务是把「今�
   "executive_summary": "200字内：当前趋势状态 + 今日新增变化 + 下一步关注点"
 }
 """
+
+_STALE_NO_ANALYSIS = re.compile(r"无新增(?:今日)?分析|当日无|维持前[日一]*判断")
+
+
+def _drop_stale_no_analysis(text: str, fallback: str) -> str:
+    """趋势叙事不得声称「今日无分析」。含该句时删掉，整段都是则改用确定性变化说明。"""
+    raw = (text or "").strip()
+    if not raw or not _STALE_NO_ANALYSIS.search(raw):
+        return raw
+    parts = re.split(r"[。；;]", raw)
+    kept = [p.strip() for p in parts if p.strip() and not _STALE_NO_ANALYSIS.search(p)]
+    if not kept:
+        return fallback
+    return "。".join(kept) + "。"
 
 
 class TrendReportBuilder:
@@ -343,6 +359,12 @@ class TrendReportBuilder:
 
         if not out.get("executive_summary"):
             out["executive_summary"] = llm_report.get("executive_summary") or ""
+        fallback = str((deterministic.get("market_regime") or {}).get("change_note") or "关键指标见本轮序列")
+        out["executive_summary"] = _drop_stale_no_analysis(str(out.get("executive_summary") or ""), fallback)
+        regime = out.get("market_regime")
+        if isinstance(regime, dict):
+            regime["change_note"] = _drop_stale_no_analysis(str(regime.get("change_note") or ""), fallback)
+            out["market_regime"] = regime
         out["as_of"] = run_date
         return out
 

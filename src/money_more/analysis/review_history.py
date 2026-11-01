@@ -387,6 +387,8 @@ def compact_current_view(current_view: dict[str, Any] | None) -> dict[str, Any]:
             "sector_allocation_hint": market.get("sector_allocation_hint"),
             "invalidation": list(market.get("invalidation") or [])[:4],
             "summary": (market.get("summary") or "")[:240],
+            "micro_regime": (market.get("market_microstructure") or {}).get("regime"),
+            "micro_severity": (market.get("market_microstructure") or {}).get("severity"),
         },
         "narratives": {
             "headline_themes": list(digest.get("headline_themes") or [])[:5],

@@ -184,6 +184,26 @@ def normalize_industry(hint: str | None) -> str | None:
     return best_label
 
 
+def sector_labels_in_text(text: str | None) -> list[str]:
+    """从一句复盘主题里抽出已知行业短名，长句也能挂上对照表。"""
+    raw = str(text or "")
+    if not raw.strip():
+        return []
+    pairs: list[tuple[str, str]] = []
+    for keys, label in _INDUSTRY_ALIASES:
+        pairs.append((label, label))
+        for key in keys:
+            pairs.append((str(key), label))
+    pairs.sort(key=lambda item: len(item[0]), reverse=True)
+    found: list[str] = []
+    for key, label in pairs:
+        if len(key) < 2 or key not in raw:
+            continue
+        if label not in found:
+            found.append(label)
+    return found
+
+
 def is_known_sector_label(name: str | None) -> bool:
     """行业短名 / 别名命中才算板块；个股名（东山精密、长鑫科技）不得进板块对照表。"""
     text = str(name or "").strip()

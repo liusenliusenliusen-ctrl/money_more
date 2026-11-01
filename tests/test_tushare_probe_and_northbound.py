@@ -10,6 +10,7 @@ import pandas as pd
 from money_more.data.intelligence import IntelligenceFetcher
 from money_more.data.tushare_source import (
     TushareSource,
+    cn_pmi_rows,
     is_tushare_news_optional_error,
     public_errors_sample,
 )
@@ -97,3 +98,59 @@ def test_public_errors_sample_drops_optional_news() -> None:
     )
     assert sample[0] == "economic_calendar_primary_empty_used_alt"
     assert all("cctv_news" not in e and not e.startswith("news:") for e in sample)
+
+
+def test_cn_pmi_rows_accept_lowercase_column() -> None:
+    df = pd.DataFrame(
+        [
+            {"month": "202608", "pmi010000": 49.8},
+            {"month": "202609", "pmi010000": 50.1},
+        ]
+    )
+    rows = cn_pmi_rows(df, limit=2)
+    assert rows[0]["月份"] == "202609"
+    assert rows[0]["value"] == 50.1
+    assert rows[0]["制造业"] == 50.1
+
+
+def test_fetch_macro_hard_retries_when_pmi_fields_mismatch() -> None:
+    ts = TushareSource("fake_token_xxxxxx", as_of=date(2026, 10, 30))
+    df = pd.DataFrame([{"month": "202609", "pmi010000": 50.1}])
+    calls: list[dict] = []
+
+    def _call(method: str, **kwargs):
+        calls.append({"method": method, **kwargs})
+        if method == "cn_pmi" and "fields" not in kwargs:
+            raise RuntimeError("查询数据失败，指定了返回列，但是列名不匹配，[]")
+        if method == "cn_pmi":
+            return df
+        return pd.DataFrame()
+
+    ts._safe_call = _call  # type: ignore[method-assign]
+    out = ts.fetch_macro_hard(limit=3)
+    assert out["pmi"][0]["value"] == 50.1
+    assert out["errors"] == []
+    pmi_calls = [c for c in calls if c.get("method") == "cn_pmi"]
+    assert pmi_calls[1].get("fields") == "month,pmi010000"
+
+
+def test_trend_drops_claim_of_no_new_analysis() -> None:
+    from money_more.analysis.trend import TrendReportBuilder
+
+    out = TrendReportBuilder._merge_llm_into_deterministic(
+        {
+            "market_regime": {"current_phase": "range", "change_note": "舆情分 48→50"},
+            "executive_summary": "",
+            "market_series": [{"date": "2026-10-30"}],
+        },
+        {
+            "as_of": "2026-10-30",
+            "market_regime": {"change_note": "无新增今日分析数据，维持前日判断"},
+            "executive_summary": "今日无新增分析数据，维持前一日判断。下一步关注信用数据。",
+            "market_series": [{"date": "2026-10-30"}],
+        },
+        "2026-10-30",
+    )
+    assert "无新增" not in out["executive_summary"]
+    assert "信用数据" in out["executive_summary"]
+    assert out["market_regime"]["change_note"] == "舆情分 48→50"

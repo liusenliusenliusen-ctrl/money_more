@@ -53,6 +53,11 @@ def assess_earnings_revision(
         "none": "unknown",
     }.get(bias, "unknown")
 
+    dt_yoy = None
+    ind_rows = [r for r in indicators if isinstance(r, dict)]
+    if ind_rows:
+        dt_yoy = _safe_float(ind_rows[0].get("dt_netprofit_yoy"))
+
     evidence = (fc_evidence + fina_evidence)[:6]
     confidence = 0.35
     if fc_bias in ("upgrade", "downgrade"):
@@ -78,6 +83,7 @@ def assess_earnings_revision(
         "fina_bias": fina_bias,
         "data_source": data_source,
         "evidence": evidence,
+        "dt_netprofit_yoy": dt_yoy,
         "note": note,
         "layer": "mainline",
     }

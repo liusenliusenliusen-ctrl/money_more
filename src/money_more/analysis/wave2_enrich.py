@@ -281,16 +281,24 @@ def build_dimension_diff_table(
     for name in sorted(set(then_secs) | set(now_secs)):
         if not name:
             continue
+        then_raw = then_secs.get(name)
+        now_raw = now_secs.get(name)
+        if then_raw and not now_raw:
+            verdict, now_show = "exited", "退出跟踪"
+        elif not then_raw and now_raw:
+            verdict, now_show = "new", now_raw
+        else:
+            verdict, now_show = _verdict_equal(then_raw, now_raw), (now_raw or "—")
         rows.append(
             {
                 "dimension": "sector",
                 "field": "priority",
                 "sector": name,
-                "then": then_secs.get(name) or "—",
+                "then": then_raw or "—",
                 "then_date": oldest.get("date"),
-                "now": now_secs.get(name) or "—",
+                "now": now_show,
                 "now_date": newest.get("date") if newest is not oldest else None,
-                "verdict": _verdict_equal(then_secs.get(name), now_secs.get(name)),
+                "verdict": verdict,
             }
         )
     return rows

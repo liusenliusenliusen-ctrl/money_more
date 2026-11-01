@@ -2067,7 +2067,10 @@ def render_review_report(result: dict[str, Any]) -> str:
             verdict = row.get("verdict") or "unknown"
             lines.append(f"| {dim} | {field} | {then} | {now} | `{verdict}` |")
         lines.append("")
-        lines.append("_下节 LLM 解释应锚定此表；stable=延续，changed=已漂移，unknown=材料不足。_")
+        lines.append(
+            "_下节 LLM 解释应锚定此表；stable=延续，changed=已漂移，"
+            "exited=退出跟踪，new=窗口内新出现，unknown=材料不足。_"
+        )
         lines.append("")
 
     dim_reviews = result.get("dimension_reviews") or []
@@ -2083,36 +2086,50 @@ def render_review_report(result: dict[str, Any]) -> str:
         by_dim: dict[str, list] = {}
         for dr in dim_reviews:
             by_dim.setdefault(str(dr.get("dimension") or "other"), []).append(dr)
+        from money_more.analysis.sector_map import sector_labels_in_text
+
         for key in ("market", "sector", "narrative", "linkage"):
             group = by_dim.pop(key, [])
             if not group:
                 continue
-            lines.append(f"### {dim_labels.get(key, key)}")
-            lines.append("")
-            from money_more.analysis.sector_map import is_known_sector_label
-
+            body: list[str] = []
             for dr in group:
-                if key == "sector" and not is_known_sector_label(str(dr.get("subject") or "")):
+                blob = f"{dr.get('subject') or ''} {dr.get('diagnosis') or ''}"
+                labels = sector_labels_in_text(blob) if key == "sector" else []
+                if key == "sector" and not labels:
                     continue
                 subject = dr.get("subject") or ""
+                if key == "sector" and labels:
+                    subject = f"{subject}（{ '、'.join(labels[:4]) }）" if subject else "、".join(labels[:4])
                 outcome = dr.get("outcome") or "pending"
                 as_of_f = dr.get("as_of_forecast") or ""
                 pq = dr.get("process_quality") or ""
                 cat = dr.get("diagnosis_category") or ""
-                lines.append(
+                body.append(
                     f"- **{subject}** → `{outcome}`"
                     + (f" · 预测:{as_of_f}" if as_of_f else "")
                     + (f" · 过程:{pq}" if pq and pq != "unclear" else "")
                     + (f" · [{cat}]" if cat else "")
                 )
                 if dr.get("diagnosis"):
-                    lines.append(f"  - {dr['diagnosis']}")
+                    body.append(f"  - {dr['diagnosis']}")
                 if dr.get("what_worked"):
-                    lines.append(f"  - 做对: {'; '.join(str(x) for x in dr['what_worked'][:3])}")
+                    body.append(f"  - 做对: {'; '.join(str(x) for x in dr['what_worked'][:3])}")
                 if dr.get("what_failed"):
-                    lines.append(f"  - 做错: {'; '.join(str(x) for x in dr['what_failed'][:3])}")
-                if dr.get("lesson"):
-                    lines.append(f"  - 经验: {dr['lesson']}")
+                    body.append(f"  - 做错: {'; '.join(str(x) for x in dr['what_failed'][:3])}")
+                if dr.get("absorbed"):
+                    body.append(
+                        f"  - 已吸收: {'; '.join(str(x) for x in dr['absorbed'][:3])}"
+                    )
+                if dr.get("lesson") and not dr.get("lesson_folded"):
+                    body.append(f"  - 经验: {dr['lesson']}")
+                elif dr.get("lesson_folded_into"):
+                    body.append(f"  - 经验并入: {dr['lesson_folded_into']}")
+            if not body:
+                continue
+            lines.append(f"### {dim_labels.get(key, key)}")
+            lines.append("")
+            lines.extend(body)
             lines.append("")
         for key, group in by_dim.items():
             lines.append(f"### {key}")
@@ -2163,10 +2180,16 @@ def render_review_report(result: dict[str, Any]) -> str:
                 lines.append(
                     f"  - 失效触发: {', '.join(str(x) for x in (inv.get('fired') or [])[:3])}"
                 )
+            if rv.get("material_gap"):
+                lines.append(f"  - 材料不足: {rv['material_gap']}")
             if rv.get("diagnosis"):
                 lines.append(f"  - {rv['diagnosis']}")
-            if rv.get("lesson"):
+            if rv.get("absorbed"):
+                lines.append(f"  - 已吸收: {'; '.join(str(x) for x in rv['absorbed'][:3])}")
+            if rv.get("lesson") and not rv.get("lesson_folded"):
                 lines.append(f"  - 经验: {rv['lesson']}")
+            elif rv.get("lesson_folded_into"):
+                lines.append(f"  - 经验并入: {rv['lesson_folded_into']}")
             if rv.get("prompt_adjustment"):
                 lines.append(f"  - 分析改进: {rv['prompt_adjustment']}")
     if not dim_reviews and not reviews:

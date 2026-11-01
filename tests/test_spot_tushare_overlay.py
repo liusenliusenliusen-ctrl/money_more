@@ -255,7 +255,7 @@ def test_em_health_counter_accumulates_and_resets(tmp_path) -> None:
 
 
 def test_spot_circuit_skips_em_then_half_opens(monkeypatch: pytest.MonkeyPatch) -> None:
-    """连续两轮失败后熔断，不再打东财；累计到 3 的下一轮半开，探测一次。"""
+    """连续两轮失败后熔断，不再打东财；累计到 6 的下一轮才半开，探测一次。"""
     from money_more.data.fetcher import em_push_circuit_open
 
     calls = {"n": 0}
@@ -279,7 +279,12 @@ def test_spot_circuit_skips_em_then_half_opens(monkeypatch: pytest.MonkeyPatch) 
     assert calls["n"] == 2
     assert any(w.startswith("spot_em_circuit_open:") for w in skipped)
 
-    # 跳过这一轮把计数加到 3，下一轮半开，允许再探测一次
+    # 跳过把计数从 3 加到 5，期间一直熔断，避免每 3 轮就再打一整段 clist
+    for i in range(3):
+        assert em_push_circuit_open() is True
+        fetch_spot_with_fallback(cache_key=f"spot:skip{i}", cache=_MemCache())
+    assert calls["n"] == 2
+    # 计数到 6，下一轮半开，允许再探测一次
     assert em_push_circuit_open() is False
     fetch_spot_with_fallback(cache_key="spot:half", cache=_MemCache())
     assert calls["n"] == 3

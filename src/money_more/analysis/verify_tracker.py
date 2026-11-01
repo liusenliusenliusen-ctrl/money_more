@@ -178,7 +178,9 @@ def build_verify_ledger(
     if signal_context:
         for row in evaluated:
             checks = [
-                check_signal(s, signal_context, sector=row.get("sector"))
+                check_signal(
+                    s, signal_context, sector=row.get("sector"), code=row.get("code")
+                )
                 for s in (row.get("verify_signals") or [])
             ]
             if checks:

@@ -79,6 +79,31 @@ def _social_financing_lag_months(hard: dict[str, Any], *, as_of: date) -> int | 
     return (as_of.year - period.year) * 12 + (as_of.month - period.month)
 
 
+def _round_facts(result: dict[str, Any]) -> dict[str, Any]:
+    macro = ((result.get("intelligence") or {}).get("macro_raw") or {})
+    gl = (macro.get("global_liquidity") or {}).get("us_10y") or {}
+    pmi_rows = ((macro.get("macro_hard") or {}).get("pmi") or [])
+    pmi = pmi_rows[0].get("value") if pmi_rows and isinstance(pmi_rows[0], dict) else None
+    return {"us10y": gl.get("latest"), "pmi": pmi}
+
+
+def _round_anchor_text(compact: dict[str, Any], current_view: dict[str, Any] | None) -> str:
+    """本轮必须引用的数字。复盘不得改写成「当日无分析」。"""
+    market = (compact or {}).get("market") or {}
+    facts = (current_view or {}).get("round_facts") or {}
+    bits = [
+        f"阶段={market.get('phase') or '—'}",
+        f"风格={market.get('style') or '—'}",
+        f"风险={market.get('risk_level') or '—'}",
+        f"微观结构={market.get('micro_regime') or '—'}/{market.get('micro_severity') or '—'}",
+    ]
+    if facts.get("us10y") is not None:
+        bits.append(f"美债10Y={facts.get('us10y')}%")
+    if facts.get("pmi") is not None:
+        bits.append(f"PMI={facts.get('pmi')}")
+    return "本轮视图（必须引用）：" + "，".join(bits)
+
+
 class DecisionPipeline:
     """情报 → 市场 → 板块 → 个股 → 交易 → 复盘 → 趋势更新。"""
 
@@ -1100,6 +1125,7 @@ class DecisionPipeline:
                     "sectors": sector_analyses,
                     "intelligence_digest": intel_digest,
                     "recommendations": recommendations,
+                    "round_facts": _round_facts(result),
                 },
             )
         except Exception as exc:
@@ -1192,6 +1218,7 @@ class DecisionPipeline:
             max_items=24,
         )
         current_compact = compact_current_view(current_view)
+        round_anchor = _round_anchor_text(current_compact, current_view)
         dimension_diff_table = build_dimension_diff_table(prior_dims, current_compact)
 
         historical_reports = load_historical_reports_corpus(
@@ -1271,12 +1298,14 @@ class DecisionPipeline:
                     "return_pct": return_pct,
                     "invalidation_check": inv_check,
                     "action_lifecycle": lifecycle,
+                    "verify_signals": list(extra.get("verify_signals") or []),
                     "original_context": {
                         "db_analysis": original,
                         "recommendation_extra": {
                             "evidence_chain": extra.get("evidence_chain"),
                             "key_risk": extra.get("key_risk"),
                             "invalidation": extra.get("invalidation"),
+                            "verify_signals": extra.get("verify_signals"),
                             "time_horizon": extra.get("time_horizon"),
                             "factor_scorecard": extra.get("factor_scorecard"),
                         },
@@ -1299,12 +1328,14 @@ class DecisionPipeline:
                 "prior_dimension_forecasts": prior_dims,
                 "action_lifecycles": action_lifecycles,
                 "current_view": current_compact,
+                "round_anchor": round_anchor,
                 "past_lessons": self.db.get_active_lessons(limit=30),
                 "prior_context": self.db.get_prior_context(limit=min(24, max(5, lookback // 5))),
                 "historical_reports": historical_reports,
                 "trend_report_summary": self._trend_summary_for_llm(existing_trend),
                 "instruction": (
-                    "0) 先解释 dimension_diff_table（忽略近5日噪声，看约60日位置与基本面匹配）；"
+                    "0) 先引用 round_anchor 的本轮数字，禁止写「当日无新增分析」；"
+                    "再解释 dimension_diff_table（忽略近5日噪声，看约60日位置与基本面匹配）；"
                     "1) 用窗口内 prior_dimension_forecasts 对照 current_view，复盘 market/sector/narrative/linkage；"
                     "2) 个股用 status（tracking/thesis_intact/invalidation_fired/...），禁止仅凭 return_pct 打 wrong/correct；"
                     "3) 对错都要写清有效信号或归因；动作链看 action_lifecycles。"
@@ -1313,10 +1344,34 @@ class DecisionPipeline:
             required_keys=["dimension_reviews"],
         )
 
+        from money_more.analysis.review_postprocess import (
+            fold_lessons,
+            mark_absorbed_failures,
+            sanitize_window_note,
+            watches_without_checkable_signals,
+        )
+
+        dimension_reviews = [
+            normalize_dimension_review(r)
+            for r in (review_payload.get("dimension_reviews") or [])
+            if isinstance(r, dict)
+        ]
+        stock_payload = [
+            r for r in (review_payload.get("reviews") or []) if isinstance(r, dict)
+        ]
+        mark_absorbed_failures(dimension_reviews)
+        mark_absorbed_failures(stock_payload)
+        fold_lessons(dimension_reviews, stock_payload)
+        watches_without_checkable_signals(stock_payload, enriched)
+        review_payload["reviews"] = stock_payload
+        review_payload["review_window_note"] = sanitize_window_note(
+            review_payload.get("review_window_note"), round_anchor
+        )
+
         saved_reviews: list[dict[str, Any]] = []
         review_map = {
             int(r["recommendation_id"]): r
-            for r in review_payload.get("reviews") or []
+            for r in stock_payload
             if r.get("recommendation_id")
         }
         for item in enriched:
@@ -1356,7 +1411,7 @@ class DecisionPipeline:
                 diagnosis_category=str(rv.get("diagnosis_category") or "") or None,
                 extra=extra,
             )
-            if lesson.strip():
+            if lesson.strip() and not rv.get("lesson_folded"):
                 self.db.insert_lesson_if_new(category="review", content=lesson.strip(), lookback_days=14)
             saved_reviews.append(
                 {
@@ -1372,19 +1427,19 @@ class DecisionPipeline:
                     "diagnosis": diagnosis,
                     "diagnosis_category": rv.get("diagnosis_category"),
                     "lesson": lesson,
+                    "lesson_folded": rv.get("lesson_folded"),
+                    "lesson_folded_into": rv.get("lesson_folded_into"),
+                    "absorbed": rv.get("absorbed"),
+                    "material_gap": rv.get("material_gap"),
+                    "original_action": item.get("action"),
                     "prompt_adjustment": rv.get("prompt_adjustment"),
                     "invalidation_check": item.get("invalidation_check"),
                 }
             )
 
-        dimension_reviews = [
-            normalize_dimension_review(r)
-            for r in (review_payload.get("dimension_reviews") or [])
-            if isinstance(r, dict)
-        ]
         for dr in dimension_reviews:
             lesson = str(dr.get("lesson") or "").strip()
-            if not lesson:
+            if not lesson or dr.get("lesson_folded"):
                 continue
             dim = str(dr.get("dimension") or "meta").strip() or "meta"
             self.db.insert_lesson_if_new(category=f"dim:{dim}"[:32], content=lesson, lookback_days=14)
@@ -1469,7 +1524,22 @@ class DecisionPipeline:
                     turnover = ts.fetch_market_turnover(days=25)
                 except Exception as exc:
                     turnover = {"errors": [f"market_turnover: {exc}"]}
-            return build_signal_context(macro_raw=macro_raw, turnover=turnover)
+            fundamentals: dict[str, dict[str, Any]] = {}
+            for code, ocf in (result.get("ocf_quality") or {}).items():
+                if isinstance(ocf, dict):
+                    fundamentals[str(code)] = {
+                        "ocf_to_profit": ocf.get("ocf_to_profit_avg") or ocf.get("ocf_to_profit")
+                    }
+            for code, rev in (result.get("earnings_revisions") or {}).items():
+                if isinstance(rev, dict) and rev.get("dt_netprofit_yoy") is not None:
+                    fundamentals.setdefault(str(code), {})["dt_netprofit_yoy"] = rev.get(
+                        "dt_netprofit_yoy"
+                    )
+            return build_signal_context(
+                macro_raw=macro_raw,
+                turnover=turnover,
+                fundamentals_by_code=fundamentals,
+            )
         except Exception as exc:
             log.warning("signal context build failed (non-fatal): %s", exc)
             return None

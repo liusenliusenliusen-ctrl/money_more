@@ -77,6 +77,18 @@ def parse_verify_signal(text: str) -> dict[str, Any] | None:
     if re.search(r"主力|资金", t) and re.search(r"净流入|回流|流入|净买入", t):
         return {"indicator": "sector_flow", "op": ">=", "threshold": 0.0, "unit": "元"}
 
+    # 经营现金流质量（深度池已有 ocf_to_profit，默认门槛 0.5）
+    if re.search(r"OCF|经营现金流", t, re.IGNORECASE):
+        m = re.search(r"([0-9]+(?:\.[0-9]+)?)", t)
+        thr = float(m.group(1)) if m and float(m.group(1)) <= 5 else 0.5
+        if re.search(r"回升|改善|转正|站上|高于|以上", t):
+            return {"indicator": "ocf_ratio", "op": ">=", "threshold": thr, "unit": ""}
+        return None
+
+    # 扣非同比（深度池 fina_indicator.dt_netprofit_yoy）
+    if "扣非" in t and re.search(r"转正|回升|改善|增长", t):
+        return {"indicator": "dt_netprofit_yoy", "op": ">=", "threshold": 0.0, "unit": "%"}
+
     return None
 
 
@@ -87,6 +99,7 @@ def build_signal_context(
     *,
     macro_raw: dict[str, Any] | None,
     turnover: dict[str, Any] | None,
+    fundamentals_by_code: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """汇总可计算指标当前值。缺失为 None，由 check_signal 标 unknown。"""
     macro_raw = macro_raw or {}
@@ -123,11 +136,26 @@ def build_signal_context(
         "market_amount_as_of": turnover.get("as_of"),
         "sector_net_inflow": sector_net,
         "turnover_errors": list(turnover.get("errors") or []),
+        "fundamentals_by_code": fundamentals_by_code or {},
     }
 
 
+def _fundamental(ctx: dict[str, Any], code: str | None, field: str) -> float | None:
+    if not code:
+        return None
+    row = (ctx.get("fundamentals_by_code") or {}).get(code) or {}
+    value = row.get(field)
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _measure(
-    spec: dict[str, Any], ctx: dict[str, Any], sector: str | None
+    spec: dict[str, Any],
+    ctx: dict[str, Any],
+    sector: str | None,
+    code: str | None = None,
 ) -> tuple[float | None, str]:
     """返回 (measured, 展示用 detail)。None = 指标缺失。"""
     ind = spec["indicator"]
@@ -165,6 +193,16 @@ def _measure(
             if sector in name or name in sector:
                 return net, f"板块[{name}]主力净流入 {net / 1e8:+.1f} 亿"
         return None, f"板块[{sector}]不在当期资金流表内"
+    if ind == "ocf_ratio":
+        v = _fundamental(ctx, code, "ocf_to_profit")
+        if v is None:
+            return None, "该股 OCF/净利润本轮缺失"
+        return v, f"OCF/净利润 {v:.2f}"
+    if ind == "dt_netprofit_yoy":
+        v = _fundamental(ctx, code, "dt_netprofit_yoy")
+        if v is None:
+            return None, "该股扣非同比本轮缺失"
+        return v, f"扣非净利同比 {v}"
     return None, "未知指标"
 
 
@@ -173,12 +211,13 @@ def check_signal(
     ctx: dict[str, Any],
     *,
     sector: str | None = None,
+    code: str | None = None,
 ) -> dict[str, Any]:
     """校验一条信号。verdict: met / unmet / unknown / narrative。"""
     spec = parse_verify_signal(text)
     if not spec:
         return {"text": str(text or ""), "checkable": False, "verdict": "narrative"}
-    measured, detail = _measure(spec, ctx, sector)
+    measured, detail = _measure(spec, ctx, sector, code)
     out = {
         "text": str(text or ""),
         "checkable": True,

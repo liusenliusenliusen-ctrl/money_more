@@ -44,6 +44,26 @@ def test_parse_margin_pmi_sector() -> None:
     assert spec4 and spec4["indicator"] == "sector_flow"
 
 
+def test_parse_ocf_and_deducted() -> None:
+    spec = parse_verify_signal("OCF/净利润回升至0.5以上")
+    assert spec and spec["indicator"] == "ocf_ratio" and spec["threshold"] == 0.5
+    spec2 = parse_verify_signal("扣非同比转正")
+    assert spec2 and spec2["indicator"] == "dt_netprofit_yoy" and spec2["op"] == ">="
+    # 没有来源的仍是叙事
+    assert parse_verify_signal("DRAM现货价止跌") is None
+    assert parse_verify_signal("FCC禁令出清") is None
+
+
+def test_check_ocf_uses_code_fundamentals() -> None:
+    ctx = _ctx()
+    ctx["fundamentals_by_code"] = {
+        "300750": {"ocf_to_profit": 0.8, "dt_netprofit_yoy": -3.0},
+    }
+    assert check_signal("经营现金流回升", ctx, code="300750")["verdict"] == "met"
+    assert check_signal("扣非同比转正", ctx, code="300750")["verdict"] == "unmet"
+    assert check_signal("经营现金流回升", ctx, code="600519")["verdict"] == "unknown"
+
+
 def test_parse_narrative_signals() -> None:
     # 无稳定数据源的必须走叙事，不硬猜
     assert parse_verify_signal("中秋动销显著超预期") is None

@@ -26,6 +26,42 @@ def is_tushare_news_optional_error(msg: str | None) -> bool:
     return False
 
 
+def _match_col(columns: Any, *names: str) -> str | None:
+    """列名大小写不敏感。cn_pmi 已从 PMI010000 改为 pmi010000。"""
+    lookup = {str(c).casefold(): c for c in columns}
+    for name in names:
+        hit = lookup.get(name.casefold())
+        if hit is not None:
+            return str(hit)
+    return None
+
+
+def cn_pmi_rows(df: pd.DataFrame | None, limit: int = 6) -> list[dict[str, Any]]:
+    """制造业 PMI（pmi010000）→ 新到旧。列名大小写都认。"""
+    if df is None or df.empty:
+        return []
+    month_col = _match_col(df.columns, "month", "月份")
+    val_col = _match_col(df.columns, "pmi010000")
+    if not month_col or not val_col:
+        return []
+    work = df[[month_col, val_col]].dropna()
+    work = work.sort_values(month_col, ascending=False)
+    rows: list[dict[str, Any]] = []
+    for _, row in work.head(limit).iterrows():
+        month = str(row[month_col]).strip().replace("-", "")[:6]
+        val = _safe_float(row[val_col])
+        rows.append(
+            {
+                "月份": month,
+                "制造业": val,
+                "value": val,
+                "label": "制造业PMI",
+                "source": "tushare_cn_pmi",
+            }
+        )
+    return rows
+
+
 def public_errors_sample(errors: list[Any] | None, *, limit: int = 8) -> list[str]:
     """报告「数据错误抽样」只放会影响研究/连接判断的条目；可选新闻权限失败另见台账。"""
     out: list[str] = []
@@ -414,29 +450,20 @@ class TushareSource:
             "social_financing": [],
             "errors": [],
         }
-        # —— PMI：制造业 PMI010000 ——
+        # —— PMI：制造业 pmi010000（接口列名已改为小写；旧字段名会触发「列名不匹配」）——
         try:
-            df = self._safe_call("cn_pmi", start_m="200001", end_m=ymd(self.as_of)[:6])
-            if df is not None and not df.empty:
-                month_col = "month" if "month" in df.columns else ("MONTH" if "MONTH" in df.columns else None)
-                val_col = "PMI010000" if "PMI010000" in df.columns else None
-                if month_col and val_col:
-                    work = df[[month_col, val_col]].dropna()
-                    work = work.sort_values(month_col, ascending=False)
-                    rows = []
-                    for _, row in work.head(limit).iterrows():
-                        month = str(row[month_col]).strip().replace("-", "")[:6]
-                        val = _safe_float(row[val_col])
-                        rows.append(
-                            {
-                                "月份": month,
-                                "制造业": val,
-                                "value": val,
-                                "label": "制造业PMI",
-                                "source": "tushare_cn_pmi",
-                            }
-                        )
-                    result["pmi"] = rows
+            kwargs = {"start_m": "200001", "end_m": ymd(self.as_of)[:6]}
+            try:
+                df = self._safe_call("cn_pmi", **kwargs)
+            except Exception as exc:
+                if "列名不匹配" not in str(exc):
+                    raise
+                df = self._safe_call("cn_pmi", **kwargs, fields="month,pmi010000")
+            rows = cn_pmi_rows(df, limit)
+            if rows:
+                result["pmi"] = rows
+            elif df is not None and not df.empty:
+                result["errors"].append("cn_pmi: 未找到制造业列 pmi010000")
         except Exception as exc:
             result["errors"].append(f"cn_pmi: {exc}")
 
