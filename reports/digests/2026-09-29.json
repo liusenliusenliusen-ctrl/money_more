@@ -1,0 +1,718 @@
+{
+  "run_date": "2026-09-29",
+  "prompt_version": "v3-midlong-5d",
+  "market_phase": "range",
+  "market_phase_label": "震荡偏防御，流动性/微观结构压力未解除",
+  "market_style": "value",
+  "market_style_label": "偏价值防御",
+  "risk_level": "high",
+  "confidence": 0.272,
+  "primary_driver": "国内信用收缩能否被稳增长政策实质扭转（9月PMI/社融/信贷验证），叠加美债10Y高位对估值折现率的约束",
+  "sector_allocation_hint": "降仓观望",
+  "invalidation": [
+    "若9月PMI回升至50上方且社融/信贷连续两月改善，国内信用收缩证伪，可下调risk至medium",
+    "若美债10Y快速回落至4.8%以下且全球流动性stance转easing，成长估值压制解除",
+    "若微观结构回归normal（跌停家数<20、上涨占比>50%），禁新开仓取消，可考虑逐步回补",
+    "若政策强加码且权威口径明确稳增长加力，风险偏好可能快速修复"
+  ],
+  "contradictions": [
+    "政策暖风（央行逆回购、中美共识、通信基建）与硬数据偏弱（PMI收缩、信贷大跌）背离，主情景不假装解决",
+    "估值吸引（ERP 636bp、总仓上限80%）与流动性收紧/微观结构severe相矛盾，不能简单加仓",
+    "行业资金流入（半导体净流入226.6亿）与指数下跌（-0.53%）分歧，反映左侧承接与短线抛压并存",
+    "社融数据存在冲突（gap=4个月），新增信贷数据需进一步验证，宏观判断置信度受扰"
+  ],
+  "headline_themes": [
+    "全球流动性紧缩与美债高位压制风险偏好",
+    "国内制造业PMI收缩、信贷走弱，信用扩张待政策验证",
+    "微观结构流动性压力升级至severe，触发禁新开仓",
+    "地缘冲突频发，避险情绪尚未充分定价",
+    "医药生物领涨，防御性轮动迹象显现"
+  ],
+  "market_narratives": [
+    "流动性收紧与信用收缩共振，防御价值优于成长",
+    "医药生物作为防御与政策受益板块获阶段性资金青睐",
+    "半导体资金净流入但股价走弱，反映分歧/左侧承接",
+    "地缘风险与中美关系缓解交织，但未根本改变风险溢价"
+  ],
+  "risk_flags": [
+    "美债10Y升至5.17%，20日上行50bp，全球流动性stance=tightening",
+    "制造业PMI 49.8连续收缩，8月新增信贷同比大幅回落",
+    "微观结构liquidity_stress/severe，跌停56家，下跌家数占比82%，已禁新开仓",
+    "地缘冲突：以军打击黎巴嫩、欧盟未能就提供爱国者导弹达成一致、伊朗谈判悲观"
+  ],
+  "macro_events_watchlist": [
+    {
+      "event": "中国9月官方制造业PMI",
+      "date": "2026-10-01（预计）",
+      "importance": "high"
+    },
+    {
+      "event": "中国9月社融/新增信贷数据",
+      "date": "2026-10中旬",
+      "importance": "high"
+    },
+    {
+      "event": "美联储主席/官员讲话及美国通胀数据",
+      "date": "2026-10上旬",
+      "importance": "medium"
+    }
+  ],
+  "sectors": [
+    {
+      "sector": "新能源",
+      "priority": "low",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "政策偏暖，新能源车渗透率高位但9月上旬零售偏弱，风光装机稳步增长；估值未知，资金未验证；美债5.17%高企、微观结构severe禁新开仓，传导受扰。中长期产业趋势仍在，但中期配置需等PMI/社融/美债与资金信号，暂维持低优先研究。"
+    },
+    {
+      "sector": "地产",
+      "priority": "low",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "政策高频托底但信用收缩与美债高压未解，微观结构severe禁新开仓；地产处于政策底向基本面底过渡，估值未知、资金分歧。中长线暂不具备配置条件，跟踪销售/社融硬信号，维持观望。"
+    },
+    {
+      "sector": "半导体",
+      "priority": "low",
+      "policy_wind": "tailwind",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "半导体中期景气未破，但美债高位、微观结构severe压制估值，资金分歧明显，建议观望等待流动性回稳。"
+    },
+    {
+      "sector": "通信",
+      "priority": "medium",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "通信受AI算力/光模块与新一代通信网政策支撑，但美债高位、微观结构severe、资金分歧，估值未验证；当前禁新开仓，中长线跟踪，待流动性企稳。"
+    },
+    {
+      "sector": "元件",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "up",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "元件中期景气未证伪，但宏观流动性紧、微观结构severe禁新开仓，今日重挫资金流出，暂观望跟踪，不追。"
+    },
+    {
+      "sector": "银行",
+      "priority": "medium",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "cheap",
+      "worth_research": true,
+      "crowding_risk": "low",
+      "summary": "银行低估值高股息防御属性延续，净息差低位企稳、大行盈利韧性提供支撑，但信贷收缩、零售贷款弱限制弹性；美债10Y高位5.17%压制高股息估值锚，板块资金净流出9.24亿排名靠后，微观结构severe禁新开仓。中期跟踪等待社融与美债信号，不追高。"
+    },
+    {
+      "sector": "白酒",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "down",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "unknown",
+      "summary": "白酒仍处景气下行与盈利磨底，双节动销平淡，资金未连续流入；估值股息率提供安全边际但缺分位硬数据，全球流动性收紧与微观结构severe禁新开仓，暂不作为数周-数季配置方向。"
+    },
+    {
+      "sector": "医药",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "unknown",
+      "summary": "医药板块景气仍受集采与回款压制，盈利未上修、估值未知；短期生物医药领涨有防御性轮动，但资金面分歧、全球流动性收紧且微观结构severe禁新开仓，中长线配置证据不足。"
+    },
+    {
+      "sector": "保险",
+      "priority": "low",
+      "policy_wind": "tailwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "保险板块政策面长期偏暖，创新业务催化不断，但盈利改善与估值安全边际未验证；全球流动性收紧、微观结构禁新开仓，板块短期资金流出，仅作防御观察，不宜加配。"
+    },
+    {
+      "sector": "券商",
+      "priority": "low",
+      "policy_wind": "neutral",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": true,
+      "crowding_risk": "unknown",
+      "summary": "券商中报高增、注销式回购与并购重组提供催化，估值破净隐含安全边际，但全球流动性收紧、美债5.17%高压、微观结构severe禁新开仓，高beta配置窗口未开启。维持低优先级观察，等待成交额与信用数据验证。"
+    },
+    {
+      "sector": "有色",
+      "priority": "low",
+      "policy_wind": "headwind",
+      "prosperity": "flat",
+      "valuation": "unknown",
+      "worth_research": false,
+      "crowding_risk": "unknown",
+      "summary": "全球流动性收紧与国内信用收缩继续压制有色板块，铜价高位但需求未验证，板块情绪负面、资金存在分歧；微观结构禁新开仓，中长线缺乏政策与景气支撑，暂不配置。"
+    }
+  ],
+  "data_quality_score": 0.92,
+  "degraded": false,
+  "recommendations": [
+    {
+      "code": "600519",
+      "action": "watch",
+      "confidence": 0.47,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 69.6,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "白酒",
+      "invalidation": "若批价连续回升、盈利预期重新上修且白酒景气转 up，可重新评估；若盈利继续下修或美债高位延续压制，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "白酒板块周度资金是否转为连续净流入",
+        "茅台批价周环比是否回升",
+        "9月社融/PMI是否改善带动消费风险偏好"
+      ],
+      "sector_link": {
+        "sector": "白酒",
+        "sector_priority": "low",
+        "sector_prosperity": "down",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601318",
+      "action": "watch",
+      "confidence": 0.46,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 61.4,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "保险",
+      "invalidation": "若9月PMI/社融改善且美债10Y回落至4.8%以下，可重新评估；若寿险NBV增速回落或投资端减值，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "保险板块主力资金周度转为净流入",
+        "美债10Y是否回落或站稳5.2%上方",
+        "9月社融/PMI是否改善"
+      ],
+      "sector_link": {
+        "sector": "保险",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601899",
+      "action": "watch",
+      "confidence": 0.46,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 59.2,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "有色",
+      "invalidation": "若美债10Y明显回落且铜价企稳，可重新评估；若赤峰收购失败或单季净利转负，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "有色板块资金周度是否转为净流入",
+        "铜价是否企稳回升",
+        "美债10Y是否回落"
+      ],
+      "sector_link": {
+        "sector": "有色",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601600",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 59.0,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "有色",
+      "invalidation": "若铝价企稳且美债回落、解禁消化，可重新评估；若Q3盈利环比走弱，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "铝价周度走势",
+        "有色板块资金是否回流",
+        "12月解禁前减持压力是否释放"
+      ],
+      "sector_link": {
+        "sector": "有色",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600030",
+      "action": "watch",
+      "confidence": 0.47,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 55.6,
+      "factor_signal": "constructive",
+      "debate_referee": null,
+      "sector_tag": "券商",
+      "invalidation": "若日均成交额站稳1.5万亿且社融改善，可重新评估；若成交持续萎缩或市场再大幅下行，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "A股日均成交额是否回升",
+        "券商板块资金周度是否净流入",
+        "9月社融/信贷是否改善"
+      ],
+      "sector_link": {
+        "sector": "券商",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600938",
+      "action": "watch",
+      "confidence": 0.44,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 54.7,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "石油石化",
+      "invalidation": "若油价中枢稳定且美债回落，估值修复可期；若油价跌破成本或产量指引下修，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "国际油价周走势",
+        "全球流动性指标是否缓和",
+        "石油板块资金是否持续流入"
+      ],
+      "sector_link": {
+        "sector": "石油石化",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "688525",
+      "action": "watch",
+      "confidence": 0.35,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 53.8,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "若经营现金流连续两季转正且存储价格维持高位，可重新评估；若现金流继续恶化，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "存储价格指数是否见顶",
+        "公司经营现金流改善信号",
+        "股东减持是否结束"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "low",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600036",
+      "action": "watch",
+      "confidence": 0.48,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 53.7,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "银行",
+      "invalidation": "若9月社融/信贷改善且美债回落，可重新评估；若息差快速收窄，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "银行板块周度资金是否转为净流入",
+        "9月社融/新增信贷数据",
+        "美债10Y是否回落"
+      ],
+      "sector_link": {
+        "sector": "银行",
+        "sector_priority": "medium",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601857",
+      "action": "watch",
+      "confidence": 0.44,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 52.0,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "石油石化",
+      "invalidation": "若布伦特原油跌破70美元且趋势向下，或分红比例下降，维持 watch；若油价企稳且估值消化，可重新评估",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "国际油价周走势",
+        "板块资金流向",
+        "美债10Y变化"
+      ],
+      "sector_link": {
+        "sector": "石油石化",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600276",
+      "action": "watch",
+      "confidence": 0.39,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 50.3,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "医药",
+      "invalidation": "若Q3收入/扣非止跌且现金流改善，可重新评估；若继续双降，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "医药板块资金周度趋势",
+        "公司Q3业绩预告",
+        "创新药BD/临床数据是否落地"
+      ],
+      "sector_link": {
+        "sector": "医药",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601398",
+      "action": "watch",
+      "confidence": 0.44,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.9,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "银行",
+      "invalidation": "若社融/信贷明显改善且美债回落，可重新评估；若估值继续透支或资产质量恶化，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "银行板块资金是否回流",
+        "9月社融/信贷数据",
+        "美债10Y是否回落"
+      ],
+      "sector_link": {
+        "sector": "银行",
+        "sector_priority": "medium",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "000725",
+      "action": "watch",
+      "confidence": 0.42,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.8,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "电子",
+      "invalidation": "若面板价格企稳且新业务验证通过，可重新评估；若价格下跌或美债继续上行，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "面板价格走势",
+        "玻璃基载板客户验证进展",
+        "板块资金是否回流"
+      ],
+      "sector_link": {
+        "sector": "电子",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "601288",
+      "action": "watch",
+      "confidence": 0.46,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 49.0,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "银行",
+      "invalidation": "若社融/信贷连续改善且息差企稳，可重新评估；若不良率上升，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "9月社融/信贷数据",
+        "银行板块资金周度趋势",
+        "美债10Y变化"
+      ],
+      "sector_link": {
+        "sector": "银行",
+        "sector_priority": "medium",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "600362",
+      "action": "watch",
+      "confidence": 0.45,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 47.2,
+      "factor_signal": "neutral",
+      "debate_referee": null,
+      "sector_tag": "有色",
+      "invalidation": "若铜价企稳且美债回落，减持消化后可重新评估；若Q3环比大幅走弱，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "铜价周走势",
+        "有色板块资金是否回流",
+        "股东减持进展"
+      ],
+      "sector_link": {
+        "sector": "有色",
+        "sector_priority": "low",
+        "sector_prosperity": "flat",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    },
+    {
+      "code": "301308",
+      "action": "watch",
+      "confidence": 0.38,
+      "position_pct": 0.0,
+      "target_price": null,
+      "stop_loss": null,
+      "factor_total": 45.0,
+      "factor_signal": "cautious",
+      "debate_referee": null,
+      "sector_tag": "半导体",
+      "invalidation": "若经营现金流连续两季转正且存储价格维持，可重新评估；若周期证伪，维持 watch",
+      "verify_in_days": 14,
+      "verify_signals": [
+        "存储晶圆价格走势",
+        "公司Q3净利润环比",
+        "经营现金流改善信号"
+      ],
+      "sector_link": {
+        "sector": "半导体",
+        "sector_priority": "low",
+        "sector_prosperity": "up",
+        "from_research_rating": "hold",
+        "action_rationale_vs_research": "research hold → watch"
+      }
+    }
+  ],
+  "risk_check_ok": true,
+  "validation_override_count": 9,
+  "factor_weights_adapted": {
+    "valuation": 0.25,
+    "momentum": 0.1,
+    "fund_flow": 0.1,
+    "sentiment": 0.1,
+    "quality": 0.3,
+    "narrative": 0.15
+  },
+  "sector_coverage": [
+    {
+      "sector": "银行",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "600036",
+        "601398",
+        "601288"
+      ],
+      "rec_codes": [
+        "600036",
+        "601398",
+        "601288"
+      ],
+      "missing_target": false,
+      "note": "银行 由深度池代码回填（本轮无高优先级板块分析）"
+    },
+    {
+      "sector": "保险",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "601318"
+      ],
+      "rec_codes": [
+        "601318"
+      ],
+      "missing_target": false,
+      "note": "保险 由深度池代码回填（本轮无高优先级板块分析）"
+    },
+    {
+      "sector": "券商",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "600030"
+      ],
+      "rec_codes": [
+        "600030"
+      ],
+      "missing_target": false,
+      "note": "券商 由深度池代码回填（本轮无高优先级板块分析）"
+    },
+    {
+      "sector": "元件",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "000725"
+      ],
+      "rec_codes": [],
+      "missing_target": false,
+      "note": "元件 由深度池代码回填（本轮无高优先级板块分析）"
+    },
+    {
+      "sector": "白酒",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "600519"
+      ],
+      "rec_codes": [
+        "600519"
+      ],
+      "missing_target": false,
+      "note": "白酒 由深度池代码回填（本轮无高优先级板块分析）"
+    },
+    {
+      "sector": "医药",
+      "priority": "from_deep",
+      "prosperity": null,
+      "deep_codes": [
+        "600276"
+      ],
+      "rec_codes": [
+        "600276"
+      ],
+      "missing_target": false,
+      "note": "医药 由深度池代码回填（本轮无高优先级板块分析）"
+    }
+  ],
+  "micro_regime": "liquidity_stress",
+  "micro_severity": "severe",
+  "synthesis_audit_brief": {
+    "agreed_buys": [],
+    "dropped_buys": [],
+    "agent_only_buys": {}
+  },
+  "contradiction_branches": [
+    {
+      "branch_id": "margin_shrink",
+      "topic": "杠杆资金",
+      "fact": "融资余额近窗收缩(-0.2%)",
+      "if_improves": "融资余额止跌回升 5 日 → 矛盾权重下调，可评估进攻仓位",
+      "if_worsens": "融资余额继续收缩 → 总仓 haircut 维持，禁止追题材"
+    },
+    {
+      "branch_id": "pmi_contraction",
+      "topic": "景气（PMI）",
+      "fact": "PMI收缩(49.8)",
+      "value": 49.8,
+      "if_improves": "PMI 回 50 上方且新订单改善 → 解除「禁进攻」，phase 可升档",
+      "if_worsens": "PMI 连续两月 <50 → 维持防御，成长升档继续被拦截",
+      "prior_status": "worsened",
+      "status": "worsened",
+      "same_period": true,
+      "reactivated": false
+    }
+  ],
+  "prior_branch_status": [
+    {
+      "branch_id": "narrative_0",
+      "topic": "叙事矛盾",
+      "fact": "政策暖风与硬数据偏弱：央行逆回购、通信基建、经贸磋商积极，但PMI收缩、信贷大幅下滑，主情景不假装解决",
+      "if_improves": "叙事被硬数据证实 → 升权",
+      "if_worsens": "叙事被证伪 → 降权或剔除",
+      "prior_status": "unchanged",
+      "status": "unchanged"
+    },
+    {
+      "branch_id": "narrative_1",
+      "topic": "叙事矛盾",
+      "fact": "估值吸引与流动性收紧/微观传导受阻：ERP 627bp、总仓上限80%，但美债高位、微观结构severe，不能简单加仓",
+      "if_improves": "叙事被硬数据证实 → 升权",
+      "if_worsens": "叙事被证伪 → 降权或剔除",
+      "prior_status": "unchanged",
+      "status": "unchanged"
+    },
+    {
+      "branch_id": "pmi_contraction",
+      "topic": "景气（PMI）",
+      "fact": "PMI收缩(49.8)",
+      "value": 49.8,
+      "if_improves": "PMI 回 50 上方且新订单改善 → 解除「禁进攻」，phase 可升档",
+      "if_worsens": "PMI 连续两月 <50 → 维持防御，成长升档继续被拦截",
+      "prior_status": "worsened",
+      "status": "worsened",
+      "same_period": true,
+      "reactivated": false
+    }
+  ]
+}
