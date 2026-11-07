@@ -386,7 +386,7 @@ def _print_sim_status(config, db) -> None:
         db,
         SimConfig(
             enabled=bool(getattr(sim_cfg, "enabled", True)),
-            initial_cash=float(getattr(sim_cfg, "initial_cash", 50_000)),
+            initial_cash=float(getattr(sim_cfg, "initial_cash", 100_000)),
             lot_size=int(getattr(sim_cfg, "lot_size", 100)),
             default_buy_pct=float(getattr(sim_cfg, "default_buy_pct", 10)),
         ),
@@ -437,7 +437,7 @@ def cmd_sim(args: argparse.Namespace) -> int:
         db,
         SimConfig(
             enabled=bool(getattr(sim_cfg, "enabled", True)),
-            initial_cash=float(getattr(sim_cfg, "initial_cash", 50_000)),
+            initial_cash=float(getattr(sim_cfg, "initial_cash", 100_000)),
             lot_size=int(getattr(sim_cfg, "lot_size", 100)),
             default_buy_pct=float(getattr(sim_cfg, "default_buy_pct", 10)),
         ),

@@ -66,7 +66,7 @@ holdings: []
 # 模拟组合：独立小报告 *-sim.md，评估「若完全按④终局执行」；与真实 holdings 分离
 sim:
   enabled: true
-  initial_cash: 50000
+  initial_cash: 100000
   lot_size: 100
   default_buy_pct: 10        # 仅作配置保留；报告缺 position_pct 时模拟盘不再静默开仓
 

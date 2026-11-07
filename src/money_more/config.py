@@ -159,7 +159,7 @@ class SimTradingConfig:
     """模拟组合：按报告动作评估分析效果（与真实 holdings 分离）。"""
 
     enabled: bool = True
-    initial_cash: float = 50_000.0
+    initial_cash: float = 100_000.0
     lot_size: int = 100
     default_buy_pct: float = 10.0
 
@@ -502,7 +502,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         ),
         sim=SimTradingConfig(
             enabled=bool(sim_raw.get("enabled", True)),
-            initial_cash=float(sim_raw.get("initial_cash", 50_000)),
+            initial_cash=float(sim_raw.get("initial_cash", 100_000)),
             lot_size=int(sim_raw.get("lot_size", 100)),
             default_buy_pct=float(sim_raw.get("default_buy_pct", 10)),
         ),

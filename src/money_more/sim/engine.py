@@ -19,7 +19,7 @@ _STAMP_RATE = 0.0005
 @dataclass
 class SimConfig:
     enabled: bool = True
-    initial_cash: float = 50_000.0
+    initial_cash: float = 100_000.0
     lot_size: int = 100
     default_buy_pct: float = 10.0  # 报告未给 position_pct 时
 
