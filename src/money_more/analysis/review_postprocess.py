@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any
 
 # 这些说法对应已经在跑的闸门。再写成「做错」只会每轮重复审判旧案。
@@ -75,13 +77,60 @@ def fold_lessons(*groups: list[dict[str, Any]]) -> list[str]:
     return kept
 
 
+def _clean_signals(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def load_digest_verify_signals(digests_dir: Path | None) -> dict[tuple[str, str], list[str]]:
+    """旧建议的 extra_json 没存验证信号时，从当日摘要按日期+代码回填。"""
+    out: dict[tuple[str, str], list[str]] = {}
+    root = Path(digests_dir) if digests_dir else None
+    if root is None or not root.exists():
+        return out
+    for path in root.glob("????-??-??.json"):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        day = str(raw.get("run_date") or path.stem)[:10]
+        for rec in raw.get("recommendations") or []:
+            if not isinstance(rec, dict):
+                continue
+            digits = "".join(ch for ch in str(rec.get("code") or "") if ch.isdigit())
+            code = digits[-6:].zfill(6) if digits else ""
+            signals = _clean_signals(rec.get("verify_signals"))
+            if code and signals:
+                out[(day, code)] = signals
+    return out
+
+
+def resolve_verify_signals(
+    stored: Any,
+    run_date: Any,
+    code: Any,
+    digest_index: dict[tuple[str, str], list[str]] | None,
+) -> list[str]:
+    """库里已有信号就用库里的；否则用当日摘要。"""
+    signals = _clean_signals(stored)
+    if signals:
+        return signals
+    digits = "".join(ch for ch in str(code or "") if ch.isdigit())
+    norm = digits[-6:].zfill(6) if digits else ""
+    day = str(run_date or "")[:10]
+    if not norm or not day:
+        return []
+    return list((digest_index or {}).get((day, norm)) or [])
+
+
 def watches_without_checkable_signals(
     reviews: list[dict[str, Any]],
     pending: list[dict[str, Any]],
 ) -> None:
-    """观察票一条可机查信号都没有 → 标材料不足，不继续当成有效跟踪。"""
-    from money_more.analysis.signal_checks import parse_verify_signal
-
+    """观察票完全没有验证信号 → 标材料不足。有信号但还不能机查的，留给叙事，不盖章。"""
     by_id = {int(p["id"]): p for p in pending or [] if p.get("id") is not None}
     for row in reviews or []:
         if not isinstance(row, dict):
@@ -92,14 +141,12 @@ def watches_without_checkable_signals(
             action = str(item.get("action") or "")
         if action != "watch":
             continue
-        signals = list(item.get("verify_signals") or [])
-        if signals and any(parse_verify_signal(s) for s in signals):
+        if _clean_signals(item.get("verify_signals")):
             continue
-        if not signals or not any(parse_verify_signal(s) for s in signals):
-            row["material_gap"] = "无可机查验证信号"
-            if str(row.get("status") or "") in ("", "tracking"):
-                row["status"] = "pending"
-                row["outcome"] = "pending"
+        row["material_gap"] = "未记录验证信号"
+        if str(row.get("status") or "") in ("", "tracking"):
+            row["status"] = "pending"
+            row["outcome"] = "pending"
 
 
 def sanitize_window_note(note: str | None, anchor: str) -> str:

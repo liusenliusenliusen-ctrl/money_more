@@ -70,6 +70,25 @@ def test_score_universe_ignores_day_change() -> None:
     assert abs(s1 - s2) < 1e-6
 
 
+def test_missing_limit_down_is_not_extreme_crowding() -> None:
+    from money_more.data.fetcher import limit_pool_count
+
+    assert limit_pool_count(pd.DataFrame()) == 0
+    assert limit_pool_count(None) is None
+    micro = assess_market_microstructure(
+        {"limit_up_count": 84},
+        config=MicrostructureConfig(extreme_limit_ratio=50.0),
+    )
+    assert micro["extreme_crowding"] is False
+    assert all("极端拥挤" not in f for f in micro["flags"])
+    zero = assess_market_microstructure(
+        {"limit_up_count": 84, "limit_down_count": 0},
+        config=MicrostructureConfig(extreme_limit_ratio=50.0),
+    )
+    assert zero["extreme_crowding"] is True
+    assert any("84:0" in f for f in zero["flags"])
+
+
 def test_micro_severe_forbids_same_day() -> None:
     overview = {
         "limit_up_count": 100,

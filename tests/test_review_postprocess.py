@@ -2,7 +2,9 @@
 
 from money_more.analysis.review_postprocess import (
     fold_lessons,
+    load_digest_verify_signals,
     mark_absorbed_failures,
+    resolve_verify_signals,
     sanitize_window_note,
     watches_without_checkable_signals,
 )
@@ -36,12 +38,31 @@ def test_fold_near_duplicate_lessons() -> None:
     assert stocks[1]["lesson_folded"] is False
 
 
-def test_watch_without_checkable_signal_is_pending() -> None:
+def test_watch_without_any_signal_is_pending() -> None:
+    reviews = [{"recommendation_id": 1, "status": "tracking", "outcome": "tracking"}]
+    pending = [{"id": 1, "action": "watch", "verify_signals": []}]
+    watches_without_checkable_signals(reviews, pending)
+    assert reviews[0]["status"] == "pending"
+    assert reviews[0]["material_gap"] == "未记录验证信号"
+
+
+def test_narrative_signal_is_not_stamped_missing() -> None:
     reviews = [{"recommendation_id": 1, "status": "tracking", "outcome": "tracking"}]
     pending = [{"id": 1, "action": "watch", "verify_signals": ["中秋动销超预期"]}]
     watches_without_checkable_signals(reviews, pending)
-    assert reviews[0]["status"] == "pending"
-    assert reviews[0]["material_gap"] == "无可机查验证信号"
+    assert reviews[0]["status"] == "tracking"
+    assert "material_gap" not in reviews[0]
+
+
+def test_old_recommendation_signals_come_from_digest(tmp_path) -> None:
+    day = tmp_path / "2026-10-30.json"
+    day.write_text(
+        '{"run_date":"2026-10-30","recommendations":[{"code":"600519","verify_signals":["飞天批价企稳"]}]}',
+        encoding="utf-8",
+    )
+    index = load_digest_verify_signals(tmp_path)
+    assert resolve_verify_signals(None, "2026-10-30", "600519", index) == ["飞天批价企稳"]
+    assert resolve_verify_signals(["库内信号"], "2026-10-30", "600519", index) == ["库内信号"]
 
 
 def test_window_note_conflict_replaced_by_anchor() -> None:

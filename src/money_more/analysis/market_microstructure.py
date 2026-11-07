@@ -42,15 +42,13 @@ def assess_market_microstructure(
     if isinstance(limit_up, int) and isinstance(limit_down, int) and limit_up + limit_down >= 80:
         flags.append(f"涨跌停合计偏多({limit_up}+{limit_down})")
 
-    # 极端扩散/拥挤：涨停远多于跌停（如 103:1）
+    # 极端扩散/拥挤：涨停远多于跌停（如 103:1）。跌停数缺失不算 0，否则接口失败会印成「84:None」并误判单边涨停。
     extreme_crowding = False
-    if isinstance(limit_up, int) and limit_up >= 40:
-        denom = max(int(limit_down or 0), 1)
+    if isinstance(limit_up, int) and isinstance(limit_down, int) and limit_up >= 40:
+        denom = max(limit_down, 1)
         ratio = limit_up / denom
         metrics["limit_up_down_ratio"] = round(ratio, 2)
-        if ratio >= float(cfg.extreme_limit_ratio) or (
-            limit_up >= 80 and int(limit_down or 0) <= 2
-        ):
+        if ratio >= float(cfg.extreme_limit_ratio) or (limit_up >= 80 and limit_down <= 2):
             extreme_crowding = True
             flags.append(f"涨跌停比极端拥挤({limit_up}:{limit_down})")
 

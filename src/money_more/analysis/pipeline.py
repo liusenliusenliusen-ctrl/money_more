@@ -1043,6 +1043,12 @@ class DecisionPipeline:
                 "invalidation": rec.get("invalidation"),
                 "invalidation_check": rec.get("invalidation_check"),
                 "time_horizon": rec.get("time_horizon"),
+                "verify_in_days": rec.get("verify_in_days"),
+                "verify_signals": [
+                    str(x).strip()
+                    for x in (rec.get("verify_signals") or [])
+                    if str(x).strip()
+                ],
                 "validation": rec.get("validation"),
                 "factor_scorecard": sc,
                 "debate": rec.get("debate") or debates.get(code),
@@ -1250,6 +1256,12 @@ class DecisionPipeline:
                 "dimension_diff_table": dimension_diff_table,
             }
 
+        from money_more.analysis.review_postprocess import (
+            load_digest_verify_signals,
+            resolve_verify_signals,
+        )
+
+        digest_signals = load_digest_verify_signals(reports_dir / "digests")
         enriched: list[dict[str, Any]] = []
         for item in pending:
             rec_date = item["run_date"]
@@ -1281,6 +1293,12 @@ class DecisionPipeline:
                 (x for x in action_lifecycles if x.get("code") == normalize_code(str(code))),
                 None,
             )
+            verify_signals = resolve_verify_signals(
+                extra.get("verify_signals"),
+                rec_date,
+                code,
+                digest_signals,
+            )
 
             enriched.append(
                 {
@@ -1298,14 +1316,14 @@ class DecisionPipeline:
                     "return_pct": return_pct,
                     "invalidation_check": inv_check,
                     "action_lifecycle": lifecycle,
-                    "verify_signals": list(extra.get("verify_signals") or []),
+                    "verify_signals": verify_signals,
                     "original_context": {
                         "db_analysis": original,
                         "recommendation_extra": {
                             "evidence_chain": extra.get("evidence_chain"),
                             "key_risk": extra.get("key_risk"),
                             "invalidation": extra.get("invalidation"),
-                            "verify_signals": extra.get("verify_signals"),
+                            "verify_signals": verify_signals,
                             "time_horizon": extra.get("time_horizon"),
                             "factor_scorecard": extra.get("factor_scorecard"),
                         },

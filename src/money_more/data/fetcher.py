@@ -25,6 +25,16 @@ def code_with_prefix(code: str) -> str:
     return f"sz{c}"
 
 
+def limit_pool_count(df: Any) -> int | None:
+    """涨跌停池成功返回时，空表记 0。None 表示没拿到，不能当成 0 家。"""
+    if df is None:
+        return None
+    try:
+        return int(len(df))
+    except TypeError:
+        return None
+
+
 def _safe_float(value: Any, default: float | None = None) -> float | None:
     try:
         if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -893,17 +903,17 @@ class MarketDataFetcher:
         except Exception as exc:
             overview["errors"].append(f"相对强弱: {exc}")
 
-        # 涨跌停家数（若接口可用）
+        # 涨跌停家数。空池是 0 家，不是缺失；请求失败才不写，避免把失败当成单边涨停。
         try:
-            zt = ak.stock_zt_pool_em(date=ymd(self.as_of))
-            if zt is not None and not zt.empty:
-                overview["limit_up_count"] = int(len(zt))
+            n_up = limit_pool_count(ak.stock_zt_pool_em(date=ymd(self.as_of)))
+            if n_up is not None:
+                overview["limit_up_count"] = n_up
         except Exception as exc:
             overview["errors"].append(f"涨停池: {exc}")
         try:
-            dt = ak.stock_zt_pool_dtgc_em(date=ymd(self.as_of))
-            if dt is not None and not dt.empty:
-                overview["limit_down_count"] = int(len(dt))
+            n_down = limit_pool_count(ak.stock_zt_pool_dtgc_em(date=ymd(self.as_of)))
+            if n_down is not None:
+                overview["limit_down_count"] = n_down
         except Exception as exc:
             overview["errors"].append(f"跌停池: {exc}")
 
