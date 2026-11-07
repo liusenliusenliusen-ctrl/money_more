@@ -20,7 +20,7 @@ A 股 **中长线** AI 研究助手：需要时 **手动** 跑一轮——分析
 
 ```
 money-more scheduled
-  ├─ 排期门禁（cadence=tue_fri：仅周二/周五；--force 可强制）
+  ├─ 排期门禁（cadence=friday：仅周五；--force 可强制）
   ├─ 情报（14 日窗口）
   ├─ 市场 / 板块（watch_sectors + 资金流自动扩 → 结论卡 B1）/ 个股漏斗
   ├─ 决策链：①研究 → ②组合草案（双分析师 → 综合）→ ③辩论（凡 buy/add）→ ④风控终局
@@ -85,8 +85,8 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 | `screen.pe_max` / `exclude_negative_pe` | 默认 `0` / `false`（高 PE、负 PE 不硬剔，打分降权） |
 | `screen.auto_sector_from_flow` | 资金流入前列自动扩 B1 板块（默认 3） |
 | `analysis.debate_top_k` | `>0` 开启：所有 `buy`/`add` 必辩；`0` 关闭（如 `--skip-debate`） |
-| `schedule.cadence` | 默认 `tue_fri`（每周二/周五）；也可用 `every_5_days` |
-| `schedule.interval_days` | 非 `tue_fri` 时的间隔门禁天数 |
+| `schedule.cadence` | 默认 `friday`（每周五）；也可用 `tue_fri`、`every_5_days` |
+| `schedule.interval_days` | 非按星期排期时的间隔门禁天数 |
 | `schedule.run_hour` | 定时触发小时（默认 1=凌晨） |
 | `trading.stop_loss_pct` / `take_profit_pct` | `15` / `40` |
 | `sim.*` | 独立小报告 `*-sim.md`；缺 `position_pct` 不静默开仓 |
@@ -125,7 +125,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 
 ## 运行方式
 
-**定时（已启用）**：每周二、周五本地 **01:00** 由 LaunchAgent 拉起 `periodic_run.sh`（分析；可发邮件）。  
+**定时（已启用）**：每周五本地 **01:00** 由 LaunchAgent 拉起 `periodic_run.sh`（分析；可发邮件）。  
 安装/重装：`./scripts/install_launchd.sh`（macOS 推荐）；或 `./scripts/install_cron.sh`。
 
 手动：
@@ -138,7 +138,7 @@ money-more email-test                # 验证邮件（需先配好 SMTP）
 ./scripts/periodic_run.sh --force
 ```
 
-`schedule.cadence=tue_fri` 时，非周二/周五会被门禁跳过（`--force` 除外）。  
+`schedule.cadence=friday` 时，非周五会被门禁跳过（`--force` 除外）。  
 项目在 `~/Documents` 下时，请给 `/bin/bash`「完整磁盘访问权限」，否则定时任务可能 `Operation not permitted`。
 
 ## 信息源

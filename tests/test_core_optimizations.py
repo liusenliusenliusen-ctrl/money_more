@@ -549,7 +549,7 @@ def test_midlong_defaults():
     from money_more.config import load_config
 
     c = load_config()
-    assert c.schedule.cadence == "tue_fri"
+    assert c.schedule.cadence == "friday"
     assert c.schedule.run_hour == 1
     assert c.analysis.investment_horizon == "medium_long"
     assert c.analysis.review_min_hold_days >= 14
@@ -596,6 +596,21 @@ def test_schedule_gate_tue_fri(tmp_path: Path):
     assert ok_f is True
     ok_force, _ = should_run(tmp_path, cadence="tue_fri", today=wed, force=True)
     assert ok_force is True
+
+
+def test_schedule_gate_friday_only(tmp_path: Path):
+    from datetime import date
+
+    from money_more.schedule_gate import should_run
+
+    tue = date(2026, 7, 28)
+    fri = date(2026, 7, 31)
+    ok_tue, reason_tue = should_run(tmp_path, cadence="friday", today=tue)
+    assert ok_tue is False
+    assert "非周五" in reason_tue
+    ok_fri, reason_fri = should_run(tmp_path, cadence="friday", today=fri)
+    assert ok_fri is True
+    assert "周五排期" in reason_fri
 
 
 def test_email_ready_and_preview():

@@ -106,8 +106,8 @@ class AnalysisConfig:
 
 @dataclass
 class ScheduleConfig:
-    cadence: str = "tue_fri"  # tue_fri | every_5_days | weekly | daily
-    interval_days: int = 3  # 非 tue_fri 时的间隔门禁；tue_fri 以星期为准
+    cadence: str = "friday"  # friday | tue_fri | every_5_days | weekly | daily
+    interval_days: int = 3  # 非按星期排期时的间隔门禁；friday / tue_fri 以星期为准
     run_hour: int = 1  # 本地凌晨 1 点（由 LaunchAgent/cron 触发）
 
 
@@ -459,7 +459,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             default_time_horizon=str(analysis_raw.get("default_time_horizon", "medium")),
         ),
         schedule=ScheduleConfig(
-            cadence=str(schedule_raw.get("cadence", "tue_fri")),
+            cadence=str(schedule_raw.get("cadence", "friday")),
             interval_days=int(schedule_raw.get("interval_days", 3)),
             run_hour=int(schedule_raw.get("run_hour", 1)),
         ),

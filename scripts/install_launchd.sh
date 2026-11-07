@@ -1,5 +1,5 @@
 #!/bin/bash
-# 安装 macOS LaunchAgent：每周二、周五 01:00 跑一轮分析
+# 安装 macOS LaunchAgent：每周五 01:00 跑一轮分析
 # 项目若在 ~/Documents，还必须给 /bin/bash「完整磁盘访问权限」，否则仍会 Operation not permitted。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,24 +26,14 @@ cat >"$DST" <<EOF
     <string>${ROOT}/scripts/periodic_run.sh</string>
   </array>
   <key>StartCalendarInterval</key>
-  <array>
-    <dict>
-      <key>Weekday</key>
-      <integer>2</integer>
-      <key>Hour</key>
-      <integer>1</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key>
-      <integer>5</integer>
-      <key>Hour</key>
-      <integer>1</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-  </array>
+  <dict>
+    <key>Weekday</key>
+    <integer>5</integer>
+    <key>Hour</key>
+    <integer>1</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
   <key>StandardOutPath</key>
   <string>${ROOT}/logs/cron.log</string>
   <key>StandardErrorPath</key>
@@ -66,7 +56,7 @@ launchctl enable "gui/$(id -u)/${LABEL}" || true
 
 echo
 echo "已加载 LaunchAgent: ${LABEL}"
-echo "排期: 每周二、周五 01:00（分析；config schedule.cadence=tue_fri）"
+echo "排期: 每周五 01:00（分析；config schedule.cadence=friday）"
 echo "plist: ${DST}"
 echo
 echo "【重要 · macOS】项目在 Documents 下会被系统拦截。请："

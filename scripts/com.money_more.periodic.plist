@@ -12,24 +12,14 @@
     <string>/Users/liusen/Documents/money_more/scripts/periodic_run.sh</string>
   </array>
   <key>StartCalendarInterval</key>
-  <array>
-    <dict>
-      <key>Weekday</key>
-      <integer>2</integer>
-      <key>Hour</key>
-      <integer>1</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Weekday</key>
-      <integer>5</integer>
-      <key>Hour</key>
-      <integer>1</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-  </array>
+  <dict>
+    <key>Weekday</key>
+    <integer>5</integer>
+    <key>Hour</key>
+    <integer>1</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
   <key>StandardOutPath</key>
   <string>/Users/liusen/Documents/money_more/logs/cron.log</string>
   <key>StandardErrorPath</key>

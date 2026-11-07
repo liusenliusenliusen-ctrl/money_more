@@ -10,6 +10,7 @@ LAST_RUN_FILE = "logs/last_full_run.txt"
 
 # Python date.weekday(): Mon=0 … Sun=6
 _TUE_FRI = frozenset({1, 4})  # Tuesday, Friday
+_FRIDAY = 4
 
 
 def last_run_path(project_root: Path) -> Path:
@@ -50,7 +51,8 @@ def should_run(
     """返回 (是否应跑, 原因说明)。
 
     cadence:
-      - tue_fri / tuesday_friday: 仅周二、周五（由外部定时在 01:00 触发）
+      - friday / fri: 仅周五（由外部定时在 01:00 触发）
+      - tue_fri / tuesday_friday: 仅周二、周五
       - every_5_days / weekly / daily / 其它: 按 interval_days 间隔门禁
     """
     if force:
@@ -59,9 +61,19 @@ def should_run(
     cadence_n = str(cadence or "every_5_days").strip().lower()
     last = read_last_run(project_root)
 
+    names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
+    if cadence_n in ("friday", "fri"):
+        if today.weekday() != _FRIDAY:
+            return (
+                False,
+                f"今日 {today.isoformat()}（{names.get(today.weekday(), '?')}）非周五排期，跳过",
+            )
+        if last == today:
+            return False, f"今日 {today.isoformat()} 已成功跑过，跳过重复触发"
+        return True, f"周五排期（{today.isoformat()}），允许运行"
+
     if cadence_n in ("tue_fri", "tuesday_friday"):
         if today.weekday() not in _TUE_FRI:
-            names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
             return (
                 False,
                 f"今日 {today.isoformat()}（{names.get(today.weekday(), '?')}）非周二/周五排期，跳过",

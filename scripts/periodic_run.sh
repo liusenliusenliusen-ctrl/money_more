@@ -1,9 +1,9 @@
 #!/bin/bash
-# 周二/周五 01:00 周期任务：分析报告（可发邮件）
-# 由 LaunchAgent / cron 在排期日触发；门禁见 schedule.cadence=tue_fri
+# 周五 01:00 周期任务：分析报告（可发邮件）
+# 由 LaunchAgent / cron 在排期日触发；门禁见 schedule.cadence=friday
 #
-# crontab 示例（周二、周五 01:00）：
-# 0 1 * * 2,5 cd /path/to/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
+# crontab 示例（周五 01:00）：
+# 0 1 * * 5 cd /path/to/money_more && ./scripts/periodic_run.sh >> logs/cron.log 2>&1
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
